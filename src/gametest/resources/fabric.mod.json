@@ -1,0 +1,16 @@
+{
+	"schemaVersion": 1,
+	"id": "mobsthinknow-gametest",
+	"version": "1.0.0",
+	"name": "Mobs Think Now Game Tests",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.wjz.mobsthinknow.gametest.MobsThinkNowGameTests"
+		]
+	},
+	"depends": {
+		"mobsthinknow": "*",
+		"fabric-api": "*"
+	}
+}
