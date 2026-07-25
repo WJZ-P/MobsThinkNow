@@ -14,7 +14,7 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 		this.zombie = zombie;
 		this.controller = new ZombieTacticalController(zombie);
 	}
-
+	//	这里的CanUse就是判断是否可以执行攻击
 	@Override
 	public boolean canUse() {
 		if (!ConfigManager.get().enabled || !ConfigManager.get().zombieAiEnabled) {
@@ -29,7 +29,7 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 		this.controller.observe(target);
 		return this.controller.hasTrackableTarget() && super.canUse();
 	}
-
+	//	判断是否能继续攻击
 	@Override
 	public boolean canContinueToUse() {
 		if (!ConfigManager.get().enabled || !ConfigManager.get().zombieAiEnabled) {
