@@ -8,6 +8,8 @@ import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -39,6 +41,10 @@ final class ZombieTacticalController {
 	private static final double SHIELD_RAISE_MAX_DISTANCE_SQUARED = 5.0 * 5.0;
 	private static final double SHIELD_LOWER_MIN_DISTANCE_SQUARED = 2.0 * 2.0;
 	private static final double SHIELD_LOWER_MAX_DISTANCE_SQUARED = 6.5 * 6.5;
+	/** 拉扯参数：撤退目标距离、单次撤退时长上限（须短于 60 tick 的目击记忆）与再次触发冷却。 */
+	private static final double RETREAT_DISTANCE = 8.0;
+	private static final long RETREAT_MAX_TICKS = 50L;
+	private static final long RETREAT_COOLDOWN_TICKS = 140L;
 
 	private final Zombie zombie;
 	private ZombieTactic tactic = ZombieTactic.PRESSURE;
@@ -54,6 +60,11 @@ final class ZombieTacticalController {
 	private boolean alternateFlank;
 	private boolean hasLineOfSight;
 	private boolean kitingAsBait;
+	private boolean retreating;
+	private @Nullable Vec3 retreatDestination;
+	private long retreatUntil;
+	private long nextRetreatAllowedAt;
+	private int lastObservedHurtTimestamp = Integer.MIN_VALUE;
 
 	ZombieTacticalController(final Zombie zombie) {
 		this.zombie = zombie;
@@ -100,12 +111,15 @@ final class ZombieTacticalController {
 	}
 
 	boolean hasTacticalIntent() {
-		return this.squadDirective != null || (this.tactic != ZombieTactic.PRESSURE && this.destination != null);
+		return this.retreating
+			|| this.squadDirective != null
+			|| (this.tactic != ZombieTactic.PRESSURE && this.destination != null);
 	}
 
 	boolean shouldRunVanillaCombat(final LivingEntity target) {
-		// 正在风筝的诱饵绝不切回原版追击：否则 MeleeAttackGoal 会立刻覆盖后撤路径并原地换命。
-		if (this.kitingAsBait) {
+		// 正在风筝的诱饵和正在拉扯脱离的僵尸绝不切回原版追击：
+		// 否则 MeleeAttackGoal 会立刻覆盖后撤路径并原地换命。
+		if (this.kitingAsBait || this.retreating) {
 			return false;
 		}
 
@@ -147,12 +161,20 @@ final class ZombieTacticalController {
 			this.destination = null;
 			this.squadDirective = null;
 			this.kitingAsBait = false;
+			this.retreating = false;
+			this.retreatDestination = null;
 			this.lowerShield();
 			return;
 		}
 
-		this.updateShieldGuard(target, config);
 		long now = this.zombie.level().getGameTime();
+		this.updateRetreat(target, config, now);
+		this.updateShieldGuard(target, config);
+		if (this.retreating) {
+			this.executeRetreat(config, now);
+			return;
+		}
+
 		if (this.squadDirective != null) {
 			this.executeSquadDirective(target, config, now);
 			return;
@@ -170,6 +192,8 @@ final class ZombieTacticalController {
 		this.destination = null;
 		this.squadDirective = null;
 		this.kitingAsBait = false;
+		this.retreating = false;
+		this.retreatDestination = null;
 		this.lowerShield();
 
 		LivingEntity target = this.zombie.getTarget();
@@ -369,6 +393,93 @@ final class ZombieTacticalController {
 	}
 
 	/**
+	 * 拉扯机制：被当前目标打中后按概率触发"先脱离、再回头"的撤退。首领以保命为
+	 * 第一要务（约一半概率撤离，黑板情报与命令下发不受影响）；普通成员小概率触发，
+	 * 避免全员站桩换血到死。撤退结束或身后无路时自动回到正常战斗。
+	 */
+	private void updateRetreat(final LivingEntity target, final MobsThinkNowConfig config, final long now) {
+		if (!config.retreatTactics) {
+			this.retreating = false;
+			this.retreatDestination = null;
+			return;
+		}
+
+		if (this.retreating) {
+			boolean arrived = this.retreatDestination == null
+				|| this.zombie.position().distanceToSqr(this.retreatDestination) <= DESTINATION_REACHED_DISTANCE_SQUARED;
+			if (arrived || now >= this.retreatUntil) {
+				this.retreating = false;
+				this.retreatDestination = null;
+			}
+		}
+
+		int hurtTimestamp = this.zombie.getLastHurtByMobTimestamp();
+		if (this.lastObservedHurtTimestamp == Integer.MIN_VALUE) {
+			// 首次观测只同步基线，不把加入小队前的旧伤当成新事件。
+			this.lastObservedHurtTimestamp = hurtTimestamp;
+			return;
+		}
+		if (hurtTimestamp == this.lastObservedHurtTimestamp) {
+			return;
+		}
+		this.lastObservedHurtTimestamp = hurtTimestamp;
+
+		if (this.retreating || this.kitingAsBait || now < this.nextRetreatAllowedAt) {
+			return;
+		}
+		// 只对"当前敌人打的"作出拉扯反应；队友误伤、环境伤害不算。
+		if (this.zombie.getLastHurtByMob() != target) {
+			return;
+		}
+
+		boolean isLeader = this.squadDirective != null && this.squadDirective.role() == SquadRole.LEADER;
+		double chance = isLeader ? config.leaderRetreatChance : config.retreatChance;
+		if (this.zombie.getRandom().nextDouble() >= chance) {
+			return;
+		}
+
+		Vec3 away = horizontalUnit(this.zombie.position().subtract(target.position()), target.getLookAngle());
+		this.retreatDestination = this.zombie.position().add(away.scale(RETREAT_DISTANCE));
+		this.retreating = true;
+		this.kitingAsBait = false;
+		this.retreatUntil = now + RETREAT_MAX_TICKS;
+		this.nextRetreatAllowedAt = now + RETREAT_COOLDOWN_TICKS;
+		this.nextPathUpdateAt = now;
+		SmartZombieMetrics.retreatTriggered();
+		if (this.zombie.level() instanceof ServerLevel serverLevel) {
+			// 受惊短叫：给"脱离接触"一个可读的声音信号。
+			serverLevel.playSound(null, this.zombie, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 0.8F, 1.4F);
+		}
+	}
+
+	private void executeRetreat(final MobsThinkNowConfig config, final long now) {
+		Vec3 destination = this.retreatDestination;
+		if (destination == null) {
+			return;
+		}
+
+		this.checkProgress(now);
+		if (now >= this.nextPathUpdateAt && this.navigationTargetsDifferentPosition(destination)) {
+			boolean foundPath = this.zombie
+				.getNavigation()
+				.moveTo(destination.x, destination.y, destination.z, config.retreatSpeedModifier);
+			this.nextPathUpdateAt = now + 4L;
+			if (!foundPath) {
+				if (this.zombie.onGround()) {
+					// 身后没路（贴墙、悬崖）：放弃这次拉扯，直接回到正常战斗。
+					this.retreating = false;
+					this.retreatDestination = null;
+					SmartZombieMetrics.failedPath();
+				} else {
+					// 被击退滞空时原版寻路必然失败（canUpdatePath 要求落地），落地后立即重试，
+					// 不要把这一 tick 误判成"身后无路"而白白烧掉冷却。
+					this.nextPathUpdateAt = now + 1L;
+				}
+			}
+		}
+	}
+
+	/**
 	 * 盾卫 AI：目标在中距离且有视线时举盾推进（原版格挡管线对怪物同样生效），
 	 * 贴身收盾挥击、目标走远或丢失视线时收盾。原版盾牌禁用与耐久机制只对玩家
 	 * 生效，因此"玩家用斧破僵尸盾"由 {@link ZombieArmory#onZombieAttacked} 补上，
@@ -379,7 +490,8 @@ final class ZombieTacticalController {
 			this.lowerShield();
 			return;
 		}
-		if (ZombieArmory.isShieldDisabled(this.zombie)) {
+		// 拉扯撤离时收盾全速跑；被斧破盾后的禁用窗口内不允许重举。
+		if (this.retreating || ZombieArmory.isShieldDisabled(this.zombie)) {
 			this.lowerShield();
 			return;
 		}

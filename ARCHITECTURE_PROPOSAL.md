@@ -188,6 +188,10 @@ stateDiagram-v2
 | `squadVisualEffects` | `true` | 会议叫声、粒子、光环与怒吼 |
 | `squadRoleNameTags` | `true` | 组队期间的职业名牌 |
 | `baitTactics` | `true` | 诱饵勾引与视线突袭 |
+| `retreatTactics` | `true` | 拉扯机制总开关 |
+| `retreatChance` | `0.08` | 普通成员受击后的撤离概率，范围 `0～0.5` |
+| `leaderRetreatChance` | `0.5` | 首领受击后的撤离概率，范围 `0～1` |
+| `retreatSpeedModifier` | `1.25` | 撤退移速倍率，范围 `1.0～1.4` |
 | `squadSpeedBonus` | `0.10` | 组队期间全员移速加成，范围 `0～0.5`，`0` 关闭 |
 | `armedSquads` | `false` | 武装小队总开关 |
 | `armedChanceEasy` | `0.10` | 简单难度持械概率，范围 `0～1` |
@@ -234,6 +238,12 @@ stateDiagram-v2
 - **同队仇恨免疫的事件消费**：拦截误伤时会同时 `setLastHurtByMob(null)`
   消费事件——`lastHurtByMob` 原版会保留 100 tick，只返回 false 的话小队
   解散后旧账会被翻出来，引发僵尸内战和 alertOthers 警报连锁；
+- **拉扯机制**：控制器用 `getLastHurtByMobTimestamp` 的变化检测"刚被当前
+  目标打中"这一事件（基线同步避免旧伤误判），按角色概率触发撤退：目的地
+  为背向目标约 8 格，速度 `retreatSpeedModifier`（收盾全速跑），单次上限
+  50 tick（短于 60 tick 目击记忆，撤退不脱战），冷却 140 tick，寻路失败
+  立即放弃。撤退期间屏蔽原版追击与小队命令，结束后自然回到正常战斗；
+  首领撤离期间黑板合并与命令下发照常进行。
 - **同队仇恨免疫**：`SquadHurtByTargetGoal` 替换原版 `HurtByTargetGoal`
   （保留对僵尸猪灵的警报豁免）。攻击者是同队僵尸时 `canUse` 直接返回
   false——既不反击也不向周围广播错误仇恨；队外来源照常反击。

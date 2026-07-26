@@ -10,6 +10,8 @@
 	"mobsthinknow.config.squad_role_name_tags.tooltip": "组队期间在成员头顶显示带颜色的职业后缀，离队后自动恢复原名。",
 	"mobsthinknow.config.bait_tactics": "诱饵勾引战术",
 	"mobsthinknow.config.bait_tactics.tooltip": "智力 6+ 的首领派出诱饵在你面前游走叫嚣吸引注意力；你盯着谁，谁就绕圈，你不看的方向就有人直线突袭。",
+	"mobsthinknow.config.retreat_tactics": "拉扯机制",
+	"mobsthinknow.config.retreat_tactics.tooltip": "受击后小概率先脱离一段距离再回头进攻；首领保命优先，约一半概率撤离。撤退速度快于行走但低于疾跑。",
 	"mobsthinknow.config.armed_squads": "武装小队（实验性）",
 	"mobsthinknow.config.armed_squads.tooltip": "默认关闭。开启后僵尸持械概率随难度提高，斧手破盾、剑手包抄加速、矛手截断退路。",
 	"mobsthinknow.config.server_authority_note": "此页面只直接影响单人游戏和本地服务器。专用服务器请修改服务端配置并执行 /mtn reload。",

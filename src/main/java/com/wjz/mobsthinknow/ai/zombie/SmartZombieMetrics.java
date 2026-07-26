@@ -14,6 +14,7 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong LEADER_ELECTIONS = new AtomicLong();
 	private static final AtomicLong LEADER_REELECTIONS = new AtomicLong();
 	private static final AtomicLong SQUAD_CANDIDATE_CHECKS = new AtomicLong();
+	private static final AtomicLong RETREATS = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -58,6 +59,10 @@ public final class SmartZombieMetrics {
 		SQUAD_CANDIDATE_CHECKS.addAndGet(checks);
 	}
 
+	public static void retreatTriggered() {
+		RETREATS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -70,7 +75,8 @@ public final class SmartZombieMetrics {
 			SQUADS_DISBANDED.get(),
 			LEADER_ELECTIONS.get(),
 			LEADER_REELECTIONS.get(),
-			SQUAD_CANDIDATE_CHECKS.get()
+			SQUAD_CANDIDATE_CHECKS.get(),
+			RETREATS.get()
 		);
 	}
 
@@ -85,7 +91,8 @@ public final class SmartZombieMetrics {
 		long squadsDisbanded,
 		long leaderElections,
 		long leaderReelections,
-		long squadCandidateChecks
+		long squadCandidateChecks,
+		long retreats
 	) {
 	}
 }

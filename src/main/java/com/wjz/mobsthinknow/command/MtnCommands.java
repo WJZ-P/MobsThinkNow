@@ -32,7 +32,7 @@ public final class MtnCommands {
 	private static int status(final CommandContext<CommandSourceStack> context) {
 		MobsThinkNowConfig config = ConfigManager.get();
 		SmartZombieMetrics.Snapshot metrics = SmartZombieMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d"
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -44,7 +44,8 @@ public final class MtnCommands {
 				ZombieSquadCoordinator.activeSquadCount(),
 				metrics.leaderElections(),
 				metrics.leaderReelections(),
-				metrics.squadCandidateChecks()
+				metrics.squadCandidateChecks(),
+				metrics.retreats()
 			);
 		context.getSource().sendSuccess(() -> Component.literal(message), false);
 		return Command.SINGLE_SUCCESS;

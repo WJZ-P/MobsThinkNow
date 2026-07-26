@@ -57,9 +57,27 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.squadRoleNameTags);
 		assertEquals(true, config.baitTactics);
 		assertEquals(true, config.squadIgnoreFriendlyFire);
+		assertEquals(true, config.retreatTactics);
+		assertEquals(0.08, config.retreatChance);
+		assertEquals(0.5, config.leaderRetreatChance);
+		assertEquals(1.25, config.retreatSpeedModifier);
 		assertEquals(0.10, config.squadSpeedBonus);
 		assertEquals(0.85, config.armedChanceHard);
 		assertEquals(0.25, config.armedShieldChance);
+	}
+
+	@Test
+	void clampsRetreatValues() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.retreatChance = 0.9;
+		config.leaderRetreatChance = -1.0;
+		config.retreatSpeedModifier = 3.0;
+
+		config.validate();
+
+		assertEquals(0.5, config.retreatChance);
+		assertEquals(0.0, config.leaderRetreatChance);
+		assertEquals(1.4, config.retreatSpeedModifier);
 	}
 
 	@Test

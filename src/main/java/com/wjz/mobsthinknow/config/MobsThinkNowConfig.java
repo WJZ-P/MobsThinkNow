@@ -13,6 +13,13 @@ public final class MobsThinkNowConfig {
 	public boolean squadRoleNameTags = true;
 	/** 诱饵勾引战术：智力 6+ 的首领派出诱饵吸引注意力，侧翼趁目标视线离开时直线突袭。 */
 	public boolean baitTactics = true;
+	/** 拉扯机制：受击后小概率先脱离一段距离再回头继续进攻，而不是站桩换血到死。 */
+	public boolean retreatTactics = true;
+	public double retreatChance = 0.08;
+	/** 首领以保命为第一要务，被打时约一半概率先撤离（黑板与命令下发不受影响）。 */
+	public double leaderRetreatChance = 0.5;
+	/** 撤退移速：明显快于平时行走，但仍低于玩家疾跑，避免破坏追击平衡。 */
+	public double retreatSpeedModifier = 1.25;
 	/** 组队期间的全员移速加成（ADD_MULTIPLIED_TOTAL），离队自动移除，0 关闭。 */
 	public double squadSpeedBonus = 0.10;
 	/** 武装小队总开关。默认关闭：持械概率、兵种职位、破盾和包抄加速全部由它统一控制。 */
@@ -75,6 +82,9 @@ public final class MobsThinkNowConfig {
 		this.flankSideDistance = clamp(this.flankSideDistance, 1.0, 6.0);
 		this.tacticalSpeedModifier = clamp(this.tacticalSpeedModifier, 0.75, 1.35);
 		this.squadSpeedBonus = clamp(this.squadSpeedBonus, 0.0, 0.5);
+		this.retreatChance = clamp(this.retreatChance, 0.0, 0.5);
+		this.leaderRetreatChance = clamp(this.leaderRetreatChance, 0.0, 1.0);
+		this.retreatSpeedModifier = clamp(this.retreatSpeedModifier, 1.0, 1.4);
 		this.armedChanceEasy = clamp(this.armedChanceEasy, 0.0, 1.0);
 		this.armedChanceNormal = clamp(this.armedChanceNormal, 0.0, 1.0);
 		this.armedChanceHard = clamp(this.armedChanceHard, 0.0, 1.0);
