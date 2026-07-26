@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieAttackGoal;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
+import com.wjz.mobsthinknow.ai.zombie.SquadHurtByTargetGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceAccess;
@@ -13,6 +14,7 @@ import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.ai.goal.ZombieAttackGoal;
+import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.level.Level;
@@ -56,6 +58,16 @@ public abstract class ZombieMixin extends Monster implements ZombieIntelligenceA
 
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == ZombieAttackGoal.class);
 		this.goalSelector.addGoal(3, new SmartZombieAttackGoal(zombie, 1.0, false));
+
+		// 换成小队感知版的仇恨反击：队友误伤不转移仇恨，其余语义与原版一致。
+		boolean hasVanillaHurtByGoal = this.targetSelector
+			.getAvailableGoals()
+			.stream()
+			.anyMatch(wrapped -> wrapped.getGoal().getClass() == HurtByTargetGoal.class);
+		if (hasVanillaHurtByGoal) {
+			this.targetSelector.removeAllGoals(goal -> goal.getClass() == HurtByTargetGoal.class);
+			this.targetSelector.addGoal(1, new SquadHurtByTargetGoal(zombie));
+		}
 		SmartZombieMetrics.goalInstalled();
 	}
 

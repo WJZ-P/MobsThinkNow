@@ -8,6 +8,7 @@ import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.level.pathfinder.Path;
@@ -29,6 +30,15 @@ final class ZombieTacticalController {
 	/** 诱饵的后撤触发距离与后撤步长：目标扑过来就拉开，始终保持勾引距离。 */
 	private static final double BAIT_RETREAT_DISTANCE_SQUARED = 2.8 * 2.8;
 	private static final double BAIT_RETREAT_STEP = 3.5;
+	/**
+	 * 盾卫的举盾/收盾使用两组不同阈值形成迟滞带（内 2.0~2.6、外 5.0~6.5），
+	 * 避免目标在边界上反复横跳导致盾牌每 tick 起落——每次重举都会重置原版
+	 * 约 5 tick 的起盾延迟，抖动状态下盾牌永远格挡不到任何伤害。
+	 */
+	private static final double SHIELD_RAISE_MIN_DISTANCE_SQUARED = 2.6 * 2.6;
+	private static final double SHIELD_RAISE_MAX_DISTANCE_SQUARED = 5.0 * 5.0;
+	private static final double SHIELD_LOWER_MIN_DISTANCE_SQUARED = 2.0 * 2.0;
+	private static final double SHIELD_LOWER_MAX_DISTANCE_SQUARED = 6.5 * 6.5;
 
 	private final Zombie zombie;
 	private ZombieTactic tactic = ZombieTactic.PRESSURE;
@@ -137,9 +147,11 @@ final class ZombieTacticalController {
 			this.destination = null;
 			this.squadDirective = null;
 			this.kitingAsBait = false;
+			this.lowerShield();
 			return;
 		}
 
+		this.updateShieldGuard(target, config);
 		long now = this.zombie.level().getGameTime();
 		if (this.squadDirective != null) {
 			this.executeSquadDirective(target, config, now);
@@ -158,6 +170,7 @@ final class ZombieTacticalController {
 		this.destination = null;
 		this.squadDirective = null;
 		this.kitingAsBait = false;
+		this.lowerShield();
 
 		LivingEntity target = this.zombie.getTarget();
 		if ((target == null || !target.isAlive()) && this.zombie.level() instanceof ServerLevel serverLevel) {
@@ -353,6 +366,46 @@ final class ZombieTacticalController {
 			return Math.min(1.5, config.tacticalSpeedModifier + config.armedFlankSpeedBonus);
 		}
 		return config.tacticalSpeedModifier;
+	}
+
+	/**
+	 * 盾卫 AI：目标在中距离且有视线时举盾推进（原版格挡管线对怪物同样生效），
+	 * 贴身收盾挥击、目标走远或丢失视线时收盾。原版盾牌禁用与耐久机制只对玩家
+	 * 生效，因此"玩家用斧破僵尸盾"由 {@link ZombieArmory#onZombieAttacked} 补上，
+	 * 禁用窗口内这里不允许重新举盾。
+	 */
+	private void updateShieldGuard(final LivingEntity target, final MobsThinkNowConfig config) {
+		if (!config.armedSquads || !ZombieArmory.hasShield(this.zombie)) {
+			this.lowerShield();
+			return;
+		}
+		if (ZombieArmory.isShieldDisabled(this.zombie)) {
+			this.lowerShield();
+			return;
+		}
+
+		double distanceSquared = this.zombie.distanceToSqr(target);
+		if (this.hasLineOfSight
+			&& distanceSquared >= SHIELD_RAISE_MIN_DISTANCE_SQUARED
+			&& distanceSquared <= SHIELD_RAISE_MAX_DISTANCE_SQUARED) {
+			if (!this.zombie.isUsingItem()) {
+				this.zombie.startUsingItem(InteractionHand.OFF_HAND);
+			}
+			return;
+		}
+
+		// 迟滞带（2.0~2.6 与 5.0~6.5 之间）内保持现状，只有越过外沿才收盾。
+		if (distanceSquared < SHIELD_LOWER_MIN_DISTANCE_SQUARED
+			|| distanceSquared > SHIELD_LOWER_MAX_DISTANCE_SQUARED
+			|| !this.hasLineOfSight) {
+			this.lowerShield();
+		}
+	}
+
+	private void lowerShield() {
+		if (this.zombie.isUsingItem() && this.zombie.getUsedItemHand() == InteractionHand.OFF_HAND) {
+			this.zombie.stopUsingItem();
+		}
 	}
 
 	private static boolean isAmbushRole(final SquadRole role) {

@@ -18,10 +18,15 @@ public final class MobsThinkNowConfig {
 	/** 武装小队总开关。默认关闭：持械概率、兵种职位、破盾和包抄加速全部由它统一控制。 */
 	public boolean armedSquads = false;
 	public double armedChanceEasy = 0.10;
-	public double armedChanceNormal = 0.25;
-	public double armedChanceHard = 0.50;
+	public double armedChanceNormal = 0.30;
+	/** 困难模式下"一般僵尸都持械"：基础 85%，再乘区域难度系数。 */
+	public double armedChanceHard = 0.85;
+	/** 持械僵尸额外获得盾牌的概率；简单难度不发盾，普通减半，困难全额。 */
+	public double armedShieldChance = 0.25;
 	public double armedShieldBreakSeconds = 3.0;
 	public double armedFlankSpeedBonus = 0.12;
+	/** 同一小队的僵尸互相误伤时不转移仇恨，继续合攻原目标。 */
+	public boolean squadIgnoreFriendlyFire = true;
 	public int decisionIntervalTicks = 8;
 	public int targetMemoryTicks = 60;
 	public int maximumCoordinatedZombies = DEFAULT_MAXIMUM_COORDINATED_ZOMBIES;
@@ -73,6 +78,7 @@ public final class MobsThinkNowConfig {
 		this.armedChanceEasy = clamp(this.armedChanceEasy, 0.0, 1.0);
 		this.armedChanceNormal = clamp(this.armedChanceNormal, 0.0, 1.0);
 		this.armedChanceHard = clamp(this.armedChanceHard, 0.0, 1.0);
+		this.armedShieldChance = clamp(this.armedShieldChance, 0.0, 1.0);
 		this.armedShieldBreakSeconds = clamp(this.armedShieldBreakSeconds, 0.0, 10.0);
 		this.armedFlankSpeedBonus = clamp(this.armedFlankSpeedBonus, 0.0, 0.35);
 	}

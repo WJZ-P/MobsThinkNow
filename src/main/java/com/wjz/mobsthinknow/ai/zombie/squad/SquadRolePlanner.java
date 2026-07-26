@@ -40,6 +40,18 @@ public final class SquadRolePlanner {
 		final Map<Integer, WeaponClass> weapons,
 		final boolean allowBait
 	) {
+		Map<Integer, SquadLoadout> loadouts = new LinkedHashMap<>();
+		weapons.forEach((memberId, weapon) -> loadouts.put(memberId, new SquadLoadout(weapon, false)));
+		return planLoadouts(orderedMemberIds, leaderId, leaderIntelligence, loadouts, allowBait);
+	}
+
+	public static Map<Integer, SquadRole> planLoadouts(
+		final List<Integer> orderedMemberIds,
+		final int leaderId,
+		final int leaderIntelligence,
+		final Map<Integer, SquadLoadout> loadouts,
+		final boolean allowBait
+	) {
 		Map<Integer, SquadRole> roles = new LinkedHashMap<>();
 		roles.put(leaderId, SquadRole.LEADER);
 
@@ -50,7 +62,7 @@ public final class SquadRolePlanner {
 			}
 		}
 
-		// 职位槽仍完全由首领智力决定；兵种只影响"谁去补哪个槽"。
+		// 职位槽仍完全由首领智力决定；装备只影响"谁去补哪个槽"。
 		boolean[] assigned = new boolean[followers.size()];
 		for (int slotIndex = 0; slotIndex < followers.size(); slotIndex++) {
 			SquadRole slot = roleFor(slotIndex, leaderIntelligence, allowBait);
@@ -60,7 +72,7 @@ public final class SquadRolePlanner {
 				if (assigned[i]) {
 					continue;
 				}
-				int score = preference(slot, weapons.getOrDefault(followers.get(i), WeaponClass.NONE));
+				int score = preference(slot, loadouts.getOrDefault(followers.get(i), SquadLoadout.UNARMED));
 				// 同分时保持原有顺序（智力/血量/ID 排序），空手小队因此与旧行为完全一致。
 				if (score > chosenScore) {
 					chosenScore = score;
@@ -109,7 +121,16 @@ public final class SquadRolePlanner {
 		return SquadRole.PRESSURER;
 	}
 
-	private static int preference(final SquadRole slot, final WeaponClass weapon) {
+	private static int preference(final SquadRole slot, final SquadLoadout loadout) {
+		int base = weaponPreference(slot, loadout.weapon());
+		// 盾牌属于"顶在前面挨打"的装备：施压位当铁罐头，诱饵位当打不死的挑衅者。
+		if (loadout.shield() && (slot == SquadRole.PRESSURER || slot == SquadRole.BAIT)) {
+			base += 2;
+		}
+		return base;
+	}
+
+	private static int weaponPreference(final SquadRole slot, final WeaponClass weapon) {
 		return switch (slot) {
 			case PRESSURER -> switch (weapon) {
 				case AXE -> 3;

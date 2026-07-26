@@ -56,7 +56,10 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.squadVisualEffects);
 		assertEquals(true, config.squadRoleNameTags);
 		assertEquals(true, config.baitTactics);
+		assertEquals(true, config.squadIgnoreFriendlyFire);
 		assertEquals(0.10, config.squadSpeedBonus);
+		assertEquals(0.85, config.armedChanceHard);
+		assertEquals(0.25, config.armedShieldChance);
 	}
 
 	@Test
@@ -77,6 +80,7 @@ class MobsThinkNowConfigTest {
 		config.armedChanceEasy = -0.5;
 		config.armedChanceNormal = 3.0;
 		config.armedChanceHard = Double.NaN;
+		config.armedShieldChance = 7.0;
 		config.armedShieldBreakSeconds = 99.0;
 		config.armedFlankSpeedBonus = 2.0;
 
@@ -85,6 +89,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(0.0, config.armedChanceEasy);
 		assertEquals(1.0, config.armedChanceNormal);
 		assertEquals(0.0, config.armedChanceHard);
+		assertEquals(1.0, config.armedShieldChance);
 		assertEquals(10.0, config.armedShieldBreakSeconds);
 		assertEquals(0.35, config.armedFlankSpeedBonus);
 	}

@@ -104,6 +104,20 @@ public final class ZombieSquadCoordinator {
 		}
 	}
 
+	/** 供仇恨 Goal 判断"攻击者是不是同队队友"；两只僵尸都在同一支小队才算。 */
+	public static boolean areSquadmates(final Zombie first, final Zombie second) {
+		if (first.level() != second.level() || !(first.level() instanceof ServerLevel serverLevel)) {
+			return false;
+		}
+		ZombieSquadCoordinator coordinator = COORDINATORS.get(serverLevel);
+		if (coordinator == null) {
+			return false;
+		}
+		MemberRecord a = coordinator.members.get(first.getId());
+		MemberRecord b = coordinator.members.get(second.getId());
+		return a != null && b != null && a.squadId != 0L && a.squadId == b.squadId;
+	}
+
 	/**
 	 * 单只僵尸提交自己的观察结果。只有直接视线会刷新时间戳；旧的最后目击位置可以继续上报，
 	 * 但不会被误当成一条更新鲜的情报。
@@ -456,11 +470,11 @@ public final class ZombieSquadCoordinator {
 		MemberRecord leader = this.members.get(squad.leaderId);
 		int intelligence = leader == null ? 1 : ZombieIntelligence.get(leader.zombie);
 		squad.roles.clear();
-		squad.roles.putAll(SquadRolePlanner.plan(
+		squad.roles.putAll(SquadRolePlanner.planLoadouts(
 			ordered,
 			squad.leaderId,
 			intelligence,
-			this.memberWeapons(ordered),
+			this.memberLoadouts(ordered),
 			ConfigManager.get().baitTactics
 		));
 	}
@@ -473,20 +487,23 @@ public final class ZombieSquadCoordinator {
 		return role == SquadRole.BAIT && !config.baitTactics ? SquadRole.PRESSURER : role;
 	}
 
-	/** 武装小队开启时才读取兵种；空 Map 让规划器保持与旧版一致的分配。 */
-	private Map<Integer, WeaponClass> memberWeapons(final List<Integer> memberIds) {
+	/** 武装小队开启时才读取兵种与盾牌；空 Map 让规划器保持与旧版一致的分配。 */
+	private Map<Integer, SquadLoadout> memberLoadouts(final List<Integer> memberIds) {
 		if (!ConfigManager.get().armedSquads) {
 			return Map.of();
 		}
 
-		Map<Integer, WeaponClass> weapons = new HashMap<>();
+		Map<Integer, SquadLoadout> loadouts = new HashMap<>();
 		for (int memberId : memberIds) {
 			MemberRecord member = this.members.get(memberId);
 			if (member != null) {
-				weapons.put(memberId, ZombieArmory.weaponClassOf(member.zombie.getMainHandItem()));
+				loadouts.put(memberId, new SquadLoadout(
+					ZombieArmory.weaponClassOf(member.zombie.getMainHandItem()),
+					ZombieArmory.hasShield(member.zombie)
+				));
 			}
 		}
-		return weapons;
+		return loadouts;
 	}
 
 	private List<Integer> orderedMemberIds(final ZombieSquad squad) {

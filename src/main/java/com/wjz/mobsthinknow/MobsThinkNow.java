@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow;
 
+import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.command.MtnCommands;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -23,11 +24,21 @@ public final class MobsThinkNow implements ModInitializer {
 		// 协调器统一在每个维度 tick 的末尾做一次决策，保证本 tick 的所有僵尸心跳已经收齐。
 		ServerTickEvents.END_LEVEL_TICK.register(ZombieSquadCoordinator::tickLevel);
 		ServerLevelEvents.UNLOAD.register((server, level) -> ZombieSquadCoordinator.unloadLevel(level));
-		ServerLifecycleEvents.SERVER_STOPPED.register(server -> ZombieSquadCoordinator.clearAll());
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			ZombieSquadCoordinator.clearAll();
+			ZombieArmory.clearShieldState();
+		});
 		// 在 die() 记录“Named entity died”日志之前恢复职业名牌；只做表现清理，不改变死亡结果。
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, damageSource, damageAmount) -> {
 			if (entity instanceof Zombie zombie) {
 				ZombieSquadCoordinator.onZombieDying(zombie);
+			}
+			return true;
+		});
+		// 斧头攻击举盾僵尸时先破盾再结算伤害；原版的盾牌禁用冷却只对玩家生效，这里补对称。
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, damageSource, damageAmount) -> {
+			if (entity instanceof Zombie zombie) {
+				ZombieArmory.onZombieAttacked(zombie, damageSource, ConfigManager.get());
 			}
 			return true;
 		});

@@ -191,10 +191,12 @@ stateDiagram-v2
 | `squadSpeedBonus` | `0.10` | 组队期间全员移速加成，范围 `0～0.5`，`0` 关闭 |
 | `armedSquads` | `false` | 武装小队总开关 |
 | `armedChanceEasy` | `0.10` | 简单难度持械概率，范围 `0～1` |
-| `armedChanceNormal` | `0.25` | 普通难度持械概率，范围 `0～1` |
-| `armedChanceHard` | `0.50` | 困难难度持械概率，范围 `0～1` |
+| `armedChanceNormal` | `0.30` | 普通难度持械概率，范围 `0～1` |
+| `armedChanceHard` | `0.85` | 困难难度持械概率（一般僵尸都持械），范围 `0～1` |
+| `armedShieldChance` | `0.25` | 持械僵尸额外配盾概率；简单不发、普通减半、困难全额 |
 | `armedShieldBreakSeconds` | `3.0` | 斧手命中格挡后禁用盾牌秒数，`0` 关闭 |
 | `armedFlankSpeedBonus` | `0.12` | 两翼与截断位的机动速度加成 |
+| `squadIgnoreFriendlyFire` | `true` | 同队误伤不转移仇恨 |
 
 所有数值在加载时都会钳制到安全范围。
 
@@ -218,7 +220,23 @@ stateDiagram-v2
   按“斧→施压、剑→两翼、矛→截断”偏好匹配成员；
 - 26.1.2 中怪物普通挥击不触发原版 activeItem 破盾判定，因此斧手命中格挡
   目标后由 `BlocksAttacks.disable` 显式补一次盾牌禁用；
-- 两翼与截断位机动时获得 `armedFlankSpeedBonus` 的速度加成，上限 1.5。
+- 两翼与截断位机动时获得 `armedFlankSpeedBonus` 的速度加成，上限 1.5；
+- **盾卫**：持械僵尸按 `armedShieldChance` 额外获得副手盾（持矛者除外，
+  原版 `SpearUseGoal` 独占 useItem 槽，盾会成为死物；武装系统也因此只发
+  剑与斧）。控制器用迟滞带控制举盾：目标进入 2.6～5 格且有视线时
+  `startUsingItem(OFF_HAND)`，贴身到 2 格内或拉开超过 6.5 格才收盾，
+  两组阈值之间保持现状——避免边界抖动反复重置原版约 5 tick 的起盾延迟。
+  格挡走原版 `applyItemBlocking` 管线；原版的盾禁用冷却和盾耐久损耗都只
+  对玩家生效，所以 `ZombieArmory.onZombieAttacked`（ALLOW_DAMAGE 事件）
+  补了对称机制：斧类攻击命中举盾僵尸时先收盾并进入 `armedShieldBreakSeconds`
+  的禁用窗口，本次伤害照常结算。持盾者在职位规划中优先补施压位与诱饵位
+  （+2 偏好）；
+- **同队仇恨免疫的事件消费**：拦截误伤时会同时 `setLastHurtByMob(null)`
+  消费事件——`lastHurtByMob` 原版会保留 100 tick，只返回 false 的话小队
+  解散后旧账会被翻出来，引发僵尸内战和 alertOthers 警报连锁；
+- **同队仇恨免疫**：`SquadHurtByTargetGoal` 替换原版 `HurtByTargetGoal`
+  （保留对僵尸猪灵的警报豁免）。攻击者是同队僵尸时 `canUse` 直接返回
+  false——既不反击也不向周围广播错误仇恨；队外来源照常反击。
 
 ## 9. 验证体系
 

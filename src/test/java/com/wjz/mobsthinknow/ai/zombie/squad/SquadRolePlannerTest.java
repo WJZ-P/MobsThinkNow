@@ -39,6 +39,27 @@ class SquadRolePlannerTest {
 	}
 
 	@Test
+	void shieldBearersAnchorPressureAndBaitSlots() {
+		Map<Integer, SquadRole> roles = SquadRolePlanner.planLoadouts(
+			List.of(1, 2, 3, 4, 5),
+			1,
+			10,
+			Map.of(
+				2, new SquadLoadout(WeaponClass.SWORD, false),
+				3, new SquadLoadout(WeaponClass.AXE, true),
+				4, new SquadLoadout(WeaponClass.SPEAR, false),
+				5, new SquadLoadout(WeaponClass.NONE, true)
+			),
+			true
+		);
+
+		assertEquals(SquadRole.PRESSURER, roles.get(3));
+		assertEquals(SquadRole.FLANK_LEFT, roles.get(2));
+		assertEquals(SquadRole.BAIT, roles.get(5));
+		assertEquals(SquadRole.FLANK_RIGHT, roles.get(4));
+	}
+
+	@Test
 	void disablingBaitRestoresPreBaitRoleTable() {
 		Map<Integer, SquadRole> roles = SquadRolePlanner.plan(List.of(1, 2, 3, 4, 5), 1, 10, Map.of(), false);
 
