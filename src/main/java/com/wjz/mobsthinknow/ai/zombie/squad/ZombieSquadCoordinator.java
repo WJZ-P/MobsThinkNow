@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
+import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -43,6 +44,7 @@ public final class ZombieSquadCoordinator {
 
 	private final Map<Integer, MemberRecord> members = new HashMap<>();
 	private final Map<Long, ZombieSquad> squads = new LinkedHashMap<>();
+	private final SquadTheatrics theatrics = new SquadTheatrics();
 	private long nextSquadId = 1L;
 	private long lastTickAt = Long.MIN_VALUE;
 
@@ -79,6 +81,20 @@ public final class ZombieSquadCoordinator {
 	}
 
 	/**
+	 * 死亡结算前恢复职业名牌，避免每只小队僵尸阵亡都触发原版
+	 * “Named entity ... died” 的 INFO 日志（那是给玩家命名牌实体保留的行为）。
+	 */
+	public static void onZombieDying(final Zombie zombie) {
+		if (!(zombie.level() instanceof ServerLevel serverLevel)) {
+			return;
+		}
+		ZombieSquadCoordinator coordinator = COORDINATORS.get(serverLevel);
+		if (coordinator != null) {
+			coordinator.theatrics.restoreName(zombie);
+		}
+	}
+
+	/**
 	 * 单只僵尸提交自己的观察结果。只有直接视线会刷新时间戳；旧的最后目击位置可以继续上报，
 	 * 但不会被误当成一条更新鲜的情报。
 	 */
@@ -94,7 +110,13 @@ public final class ZombieSquadCoordinator {
 		}
 
 		long now = zombie.level().getGameTime();
-		MemberRecord member = this.members.computeIfAbsent(zombie.getId(), ignored -> new MemberRecord(zombie));
+		MemberRecord member = this.members.get(zombie.getId());
+		if (member == null) {
+			// 首次注册时剥掉上次异常退出可能残留在存档里的职业名牌。
+			SquadTheatrics.stripLeftoverRoleTag(zombie);
+			member = new MemberRecord(zombie);
+			this.members.put(zombie.getId(), member);
+		}
 		if (member.target != target) {
 			this.detachFromSquad(member);
 			member.target = target;
@@ -196,6 +218,9 @@ public final class ZombieSquadCoordinator {
 		for (ZombieSquad squad : new ArrayList<>(this.squads.values())) {
 			if (this.squads.containsKey(squad.id)) {
 				this.updateSquad(squad, config, now);
+			}
+			if (this.squads.containsKey(squad.id)) {
+				this.presentSquad(level, squad, config, now);
 			}
 		}
 		SmartZombieMetrics.coordinatorTick();
@@ -417,7 +442,23 @@ public final class ZombieSquadCoordinator {
 		MemberRecord leader = this.members.get(squad.leaderId);
 		int intelligence = leader == null ? 1 : ZombieIntelligence.get(leader.zombie);
 		squad.roles.clear();
-		squad.roles.putAll(SquadRolePlanner.plan(ordered, squad.leaderId, intelligence));
+		squad.roles.putAll(SquadRolePlanner.plan(ordered, squad.leaderId, intelligence, this.memberWeapons(ordered)));
+	}
+
+	/** 武装小队开启时才读取兵种；空 Map 让规划器保持与旧版一致的分配。 */
+	private Map<Integer, WeaponClass> memberWeapons(final List<Integer> memberIds) {
+		if (!ConfigManager.get().armedSquads) {
+			return Map.of();
+		}
+
+		Map<Integer, WeaponClass> weapons = new HashMap<>();
+		for (int memberId : memberIds) {
+			MemberRecord member = this.members.get(memberId);
+			if (member != null) {
+				weapons.put(memberId, ZombieArmory.weaponClassOf(member.zombie.getMainHandItem()));
+			}
+		}
+		return weapons;
 	}
 
 	private List<Integer> orderedMemberIds(final ZombieSquad squad) {
@@ -565,9 +606,16 @@ public final class ZombieSquadCoordinator {
 		double emergencyDistanceSquared = config.emergencyEngageDistance * config.emergencyEngageDistance;
 		for (int memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
-			if (member != null
-				&& (member.zombie.hurtTime > 0
-					|| (member.hasLineOfSight && member.zombie.distanceToSqr(squad.target) <= emergencyDistanceSquared))) {
+			if (member == null) {
+				continue;
+			}
+			// 只有被小队目标本人刚刚打了才算紧急军情；日晒着火、摔落这类无关伤害不应打断会议。
+			// hurtTime 对任何伤害源都会置位，而 lastHurtByMob 会保留 100 tick，两者组合会误报；
+			// 用"最后一次被生物攻击的时间戳距今 ≤10 tick"才能精确对应目标刚出手这一事件。
+			boolean hurtByTarget = member.zombie.getLastHurtByMob() == squad.target
+				&& member.zombie.tickCount - member.zombie.getLastHurtByMobTimestamp() <= 10;
+			if (hurtByTarget
+				|| (member.hasLineOfSight && member.zombie.distanceToSqr(squad.target) <= emergencyDistanceSquared)) {
 				return true;
 			}
 		}
@@ -635,6 +683,7 @@ public final class ZombieSquadCoordinator {
 			squad.orders.remove(member.zombie.getId());
 		}
 		member.squadId = 0L;
+		this.theatrics.restoreName(member.zombie);
 	}
 
 	private void disband(final ZombieSquad squad, final MobsThinkNowConfig config, final String reason) {
@@ -649,6 +698,7 @@ public final class ZombieSquadCoordinator {
 			MemberRecord member = this.members.get(memberId);
 			if (member != null && member.squadId == squad.id) {
 				member.squadId = 0L;
+				this.theatrics.restoreName(member.zombie);
 			}
 		}
 	}
@@ -656,9 +706,28 @@ public final class ZombieSquadCoordinator {
 	private void reset() {
 		for (MemberRecord member : this.members.values()) {
 			member.squadId = 0L;
+			this.theatrics.restoreName(member.zombie);
 		}
 		this.members.clear();
 		this.squads.clear();
+	}
+
+	/** 每 tick 的表现层输出：职业名牌、首领光环、会议叫声与部署粒子。 */
+	private void presentSquad(final ServerLevel level, final ZombieSquad squad, final MobsThinkNowConfig config, final long now) {
+		// 即使两个表现开关都被关掉也要继续调用：tickSquad 的名牌分支负责把已应用的名牌还原。
+		List<SquadTheatrics.RoleMember> roleMembers = new ArrayList<>(squad.memberIds.size());
+		Zombie leader = null;
+		for (int memberId : squad.memberIds) {
+			MemberRecord member = this.members.get(memberId);
+			if (member == null) {
+				continue;
+			}
+			if (memberId == squad.leaderId) {
+				leader = member.zombie;
+			}
+			roleMembers.add(new SquadTheatrics.RoleMember(member.zombie, squad.roles.getOrDefault(memberId, SquadRole.PRESSURER)));
+		}
+		this.theatrics.tickSquad(level, squad.id, squad.state, squad.stateStartedAt, leader, roleMembers, config, now);
 	}
 
 	private void debug(final MobsThinkNowConfig config, final ZombieSquad squad, final String reason) {

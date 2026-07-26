@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -7,6 +8,9 @@ import java.util.Map;
 /**
  * 把首领智力转化成可见的战术复杂度。低智力首领会倾向于一拥而上；更聪明的首领才会逐步
  * 解锁单侧包抄、双侧包抄和截断退路。
+ *
+ * <p>开启武装小队后还会按兵种匹配职位：斧手优先顶到正面破盾施压，剑手优先去两翼，
+ * 矛手凭长杆优先负责截断退路。全员空手时的分配结果与旧版完全一致。</p>
  */
 public final class SquadRolePlanner {
 	private SquadRolePlanner() {
@@ -17,17 +21,44 @@ public final class SquadRolePlanner {
 		final int leaderId,
 		final int leaderIntelligence
 	) {
+		return plan(orderedMemberIds, leaderId, leaderIntelligence, Map.of());
+	}
+
+	public static Map<Integer, SquadRole> plan(
+		final List<Integer> orderedMemberIds,
+		final int leaderId,
+		final int leaderIntelligence,
+		final Map<Integer, WeaponClass> weapons
+	) {
 		Map<Integer, SquadRole> roles = new LinkedHashMap<>();
 		roles.put(leaderId, SquadRole.LEADER);
 
-		int tacticalIndex = 0;
+		List<Integer> followers = new ArrayList<>(orderedMemberIds.size());
 		for (int memberId : orderedMemberIds) {
-			if (memberId == leaderId) {
-				continue;
+			if (memberId != leaderId) {
+				followers.add(memberId);
 			}
+		}
 
-			roles.put(memberId, roleFor(tacticalIndex, leaderIntelligence));
-			tacticalIndex++;
+		// 职位槽仍完全由首领智力决定；兵种只影响"谁去补哪个槽"。
+		boolean[] assigned = new boolean[followers.size()];
+		for (int slotIndex = 0; slotIndex < followers.size(); slotIndex++) {
+			SquadRole slot = roleFor(slotIndex, leaderIntelligence);
+			int chosen = -1;
+			int chosenScore = Integer.MIN_VALUE;
+			for (int i = 0; i < followers.size(); i++) {
+				if (assigned[i]) {
+					continue;
+				}
+				int score = preference(slot, weapons.getOrDefault(followers.get(i), WeaponClass.NONE));
+				// 同分时保持原有顺序（智力/血量/ID 排序），空手小队因此与旧行为完全一致。
+				if (score > chosenScore) {
+					chosenScore = score;
+					chosen = i;
+				}
+			}
+			assigned[chosen] = true;
+			roles.put(followers.get(chosen), slot);
 		}
 		return roles;
 	}
@@ -50,5 +81,28 @@ public final class SquadRolePlanner {
 			return (index & 1) == 0 ? SquadRole.FLANK_RIGHT : SquadRole.FLANK_LEFT;
 		}
 		return SquadRole.PRESSURER;
+	}
+
+	private static int preference(final SquadRole slot, final WeaponClass weapon) {
+		return switch (slot) {
+			case PRESSURER -> switch (weapon) {
+				case AXE -> 3;
+				case SPEAR -> 2;
+				case NONE -> 1;
+				case SWORD -> 0;
+			};
+			case FLANK_LEFT, FLANK_RIGHT -> switch (weapon) {
+				case SWORD -> 3;
+				case NONE -> 1;
+				case AXE, SPEAR -> 0;
+			};
+			case CUTOFF -> switch (weapon) {
+				case SPEAR -> 3;
+				case SWORD -> 2;
+				case NONE -> 1;
+				case AXE -> 0;
+			};
+			case LEADER -> 0;
+		};
 	}
 }

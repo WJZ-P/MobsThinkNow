@@ -9,6 +9,15 @@ public final class MobsThinkNowConfig {
 	public boolean zombieAiEnabled = true;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
+	public boolean squadVisualEffects = true;
+	public boolean squadRoleNameTags = true;
+	/** 武装小队总开关。默认关闭：持械概率、兵种职位、破盾和包抄加速全部由它统一控制。 */
+	public boolean armedSquads = false;
+	public double armedChanceEasy = 0.10;
+	public double armedChanceNormal = 0.25;
+	public double armedChanceHard = 0.50;
+	public double armedShieldBreakSeconds = 3.0;
+	public double armedFlankSpeedBonus = 0.12;
 	public int decisionIntervalTicks = 8;
 	public int targetMemoryTicks = 60;
 	public int maximumCoordinatedZombies = DEFAULT_MAXIMUM_COORDINATED_ZOMBIES;
@@ -56,6 +65,11 @@ public final class MobsThinkNowConfig {
 		this.flankBehindDistance = clamp(this.flankBehindDistance, 1.0, 6.0);
 		this.flankSideDistance = clamp(this.flankSideDistance, 1.0, 6.0);
 		this.tacticalSpeedModifier = clamp(this.tacticalSpeedModifier, 0.75, 1.35);
+		this.armedChanceEasy = clamp(this.armedChanceEasy, 0.0, 1.0);
+		this.armedChanceNormal = clamp(this.armedChanceNormal, 0.0, 1.0);
+		this.armedChanceHard = clamp(this.armedChanceHard, 0.0, 1.0);
+		this.armedShieldBreakSeconds = clamp(this.armedShieldBreakSeconds, 0.0, 10.0);
+		this.armedFlankSpeedBonus = clamp(this.armedFlankSpeedBonus, 0.0, 0.35);
 	}
 
 	private static int clamp(final int value, final int minimum, final int maximum) {

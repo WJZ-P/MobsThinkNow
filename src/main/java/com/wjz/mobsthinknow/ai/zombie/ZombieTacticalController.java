@@ -202,7 +202,7 @@ final class ZombieTacticalController {
 		if (now >= this.nextPathUpdateAt && this.navigationTargetsDifferentPosition(this.destination)) {
 			boolean foundPath = this.zombie
 				.getNavigation()
-				.moveTo(this.destination.x, this.destination.y, this.destination.z, config.tacticalSpeedModifier);
+				.moveTo(this.destination.x, this.destination.y, this.destination.z, this.tacticalSpeed(config));
 			this.nextPathUpdateAt = now + config.decisionIntervalTicks;
 			if (!foundPath) {
 				if (this.squadDirective == null) {
@@ -302,6 +302,19 @@ final class ZombieTacticalController {
 
 		this.lastProgressPosition = currentPosition;
 		this.nextProgressCheckAt = now + 20L;
+	}
+
+	/** 武装小队中，两翼和截断位在机动时获得少量额外速度，让包抄能真正抢到位置。 */
+	private double tacticalSpeed(final MobsThinkNowConfig config) {
+		if (!config.armedSquads || this.squadDirective == null) {
+			return config.tacticalSpeedModifier;
+		}
+
+		SquadRole role = this.squadDirective.role();
+		if (role == SquadRole.FLANK_LEFT || role == SquadRole.FLANK_RIGHT || role == SquadRole.CUTOFF) {
+			return Math.min(1.5, config.tacticalSpeedModifier + config.armedFlankSpeedBonus);
+		}
+		return config.tacticalSpeedModifier;
 	}
 
 	private static ZombieTactic tacticFor(final SquadRole role) {

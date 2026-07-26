@@ -52,10 +52,14 @@ dependencies {
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	// 26.x 依赖已经使用 Mojang 映射发布，开发环境直接使用 implementation。
-	// 两者不会被打进本 Mod JAR；生产环境中只在需要客户端配置页面时安装。
-	implementation "com.terraformersmc:modmenu:${project.modmenu_version}"
-	implementation "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
+	// 26.x 依赖已经使用 Mojang 映射发布。compileOnly 供客户端配置类编译，
+	// localRuntime 只进开发客户端运行时；两者都不进 JUnit 测试类路径——否则
+	// fabric-loader-junit 会在单元测试环境里尝试解析这两个客户端 Mod 的依赖并失败。
+	// 生产环境中只在需要客户端配置页面时安装，不会被打进本 Mod JAR。
+	compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+	compileOnly "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
+	localRuntime "com.terraformersmc:modmenu:${project.modmenu_version}"
+	localRuntime "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
 
 	// 只放进开发客户端的运行环境，用于调试光影；不会成为本 Mod 的发布依赖或打进成品 JAR。
 	// Iris 的 Fabric 版本要求 Sodium，因此两者必须使用同一 Minecraft 版本的配套构建。
@@ -80,6 +84,17 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.withType(Test).configureEach {
 	useJUnitPlatform()
+}
+
+tasks.named("test", Test) {
+	// fabric-loader-junit 把工作目录当作 gameDir 并扫描其中的 mods/ 文件夹；项目根目录的
+	// mods/ 只服务于开发客户端（小地图等辅助 Mod，可能带 kotlin 等额外依赖），
+	// 绝不能进入单元测试的 Mod 解析。给测试一个干净的独立工作目录。
+	File junitWorkingDir = file("build/junit-run")
+	workingDir = junitWorkingDir
+	doFirst {
+		junitWorkingDir.mkdirs()
+	}
 }
 
 java {

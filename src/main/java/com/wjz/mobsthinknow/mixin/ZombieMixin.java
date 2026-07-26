@@ -2,13 +2,21 @@ package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieAttackGoal;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
+import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceAccess;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
+import com.wjz.mobsthinknow.config.ConfigManager;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.DifficultyInstance;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.ai.goal.ZombieAttackGoal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,6 +24,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Zombie.class)
 public abstract class ZombieMixin extends Monster implements ZombieIntelligenceAccess {
@@ -60,6 +69,35 @@ public abstract class ZombieMixin extends Monster implements ZombieIntelligenceA
 	private void mobsthinknow$loadIntelligence(final ValueInput input, final CallbackInfo callbackInfo) {
 		int saved = input.getIntOr(mobsthinknow$INTELLIGENCE_TAG, 0);
 		this.mobsthinknow$intelligence = saved == 0 ? 0 : ZombieIntelligence.clamp(saved);
+		// 实体基础数据（含 CustomName）先于本回调加载；崩溃残留的职业名牌在这里剥掉。
+		SquadTheatrics.stripLeftoverRoleTag((Zombie)(Object)this);
+	}
+
+	@Inject(method = "convertToZombieType", at = @At("HEAD"))
+	private void mobsthinknow$stripRoleTagBeforeConversion(
+		final ServerLevel level,
+		final EntityType<? extends Zombie> zombieType,
+		final CallbackInfo callbackInfo
+	) {
+		// 原版转化会把 CustomName 原样复制给新实体（僵尸→溺尸等）；转化前剥掉职业名牌，
+		// 避免溺尸顶着本 Mod 的名牌继续存在。
+		SquadTheatrics.stripLeftoverRoleTag((Zombie)(Object)this);
+	}
+
+	@Inject(method = "finalizeSpawn", at = @At("TAIL"))
+	private void mobsthinknow$equipSquadWeapon(
+		final ServerLevelAccessor level,
+		final DifficultyInstance difficulty,
+		final EntitySpawnReason spawnReason,
+		final SpawnGroupData groupData,
+		final CallbackInfoReturnable<SpawnGroupData> callbackInfo
+	) {
+		Zombie zombie = (Zombie)(Object)this;
+		// 村民转化等 CONVERSION 路径保留原有装备语义，与原版 populateDefaultEquipmentSlots 的边界一致。
+		if (zombie.getType() != EntityType.ZOMBIE || spawnReason == EntitySpawnReason.CONVERSION) {
+			return;
+		}
+		ZombieArmory.maybeEquipForSquad(zombie, difficulty, this.random, ConfigManager.get());
 	}
 
 	@Override

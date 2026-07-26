@@ -76,6 +76,7 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 
 			if (!originalLeaderRemoved.get()) {
 				helper.assertTrue(view.leaderEntityId() == smartest.getId(), "The highest-intelligence zombie was not elected.");
+				helper.assertTrue(smartest.getCustomName() != null, "The squad leader did not receive a role name tag.");
 				helper.discard(smartest);
 				originalLeaderRemoved.set(true);
 				return;

@@ -40,6 +40,34 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.maximum_coordinated_zombies.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.maximumCoordinatedZombies = value))
 			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_visual_effects"),
+			config.squadVisualEffects
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_visual_effects.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadVisualEffects = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_role_name_tags"),
+			config.squadRoleNameTags
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_role_name_tags.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadRoleNameTags = value))
+			.build());
+
+		ConfigCategory armedCategory = builder.getOrCreateCategory(
+			Component.translatable("mobsthinknow.config.category.armed")
+		);
+		armedCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.armed_squads"),
+			config.armedSquads
+		)
+			.setDefaultValue(false)
+			.setTooltip(Component.translatable("mobsthinknow.config.armed_squads.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.armedSquads = value))
+			.build());
 
 		return builder.build();
 	}

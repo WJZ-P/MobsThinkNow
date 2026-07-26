@@ -44,15 +44,18 @@ com.wjz.mobsthinknow
 ├─ MobsThinkNow                         Fabric 初始化与世界事件注册
 ├─ ai/utility                           通用效用选择器
 ├─ ai/zombie
-│  ├─ SmartZombieAttackGoal             原版 Goal 生命周期边界
+│  ├─ SmartZombieAttackGoal             原版 Goal 生命周期边界 + 斧手破盾钩子
 │  ├─ ZombieTacticalController          单只僵尸的感知与命令执行
 │  ├─ ZombieIntelligence                持久智力值访问
 │  ├─ ZombieTacticEvaluator             无小队时的单体战术
+│  ├─ ZombieArmory                      武装小队的持械概率、兵种识别与破盾
 │  ├─ SmartZombieMetrics                运行指标
 │  └─ squad
 │     ├─ ZombieSquadCoordinator         组队、黑板、状态机与命令
 │     ├─ SquadLeaderElection            确定性首领选举
-│     ├─ SquadRolePlanner                智力到战术复杂度的映射
+│     ├─ SquadRolePlanner                智力到战术复杂度的映射 + 兵种职位偏好
+│     ├─ SquadTheatrics                 职业名牌、首领光环与会议声画表现层
+│     ├─ WeaponClass                    主手武器的战术分类
 │     └─ SquadDirective                 单只僵尸收到的只读命令
 ├─ command/MtnCommands                  status 与 reload
 ├─ config                               JSON 配置、校验和热重载
@@ -177,8 +180,38 @@ stateDiagram-v2
 | `emergencyEngageDistance` | `5.0` | 紧急接敌距离 |
 | `rallyQuorum` | `0.7` | 集结完成比例 |
 | `deploymentQuorum` | `0.6` | 部署完成比例 |
+| `squadVisualEffects` | `true` | 会议叫声、粒子、光环与怒吼 |
+| `squadRoleNameTags` | `true` | 组队期间的职业名牌 |
+| `armedSquads` | `false` | 武装小队总开关 |
+| `armedChanceEasy` | `0.10` | 简单难度持械概率，范围 `0～1` |
+| `armedChanceNormal` | `0.25` | 普通难度持械概率，范围 `0～1` |
+| `armedChanceHard` | `0.50` | 困难难度持械概率，范围 `0～1` |
+| `armedShieldBreakSeconds` | `3.0` | 斧手命中格挡后禁用盾牌秒数，`0` 关闭 |
+| `armedFlankSpeedBonus` | `0.12` | 两翼与截断位的机动速度加成 |
 
 所有数值在加载时都会钳制到安全范围。
+
+## 8.1 剧场层与武装小队
+
+表现层（`SquadTheatrics`）完全独立于战术决策：
+
+- 会议阶段首领每 14 tick 低吼一句并冒怒气云，句间由成员轮流应声冒音符，
+  形成一来一回的“布置任务”对话；
+- 首领常驻金色光环（每 3 tick 少量 dust 粒子）；部署阶段成员拖出职业颜色
+  轨迹；进入交战瞬间首领怒吼、成员声浪依次跟上；
+- 职业名牌用 `translatableWithFallback` 写入实体 CustomName，未装模组的
+  原版客户端显示英文回退；离队/解散/换目标时恢复原名，读档时剥掉异常退出
+  可能残留的名牌（名牌会阻止自然消失，必须清理）。
+
+武装小队（`ZombieArmory`，默认关闭）：
+
+- `finalizeSpawn` 尾部按难度掷持械概率，只补空手僵尸，转化路径不参与，
+  掉落率维持原版 8.5%；
+- 兵种由 `swords/axes/spears` 物品标签识别，规划器在智力决定的职位槽内
+  按“斧→施压、剑→两翼、矛→截断”偏好匹配成员；
+- 26.1.2 中怪物普通挥击不触发原版 activeItem 破盾判定，因此斧手命中格挡
+  目标后由 `BlocksAttacks.disable` 显式补一次盾牌禁用；
+- 两翼与截断位机动时获得 `armedFlankSpeedBonus` 的速度加成，上限 1.5。
 
 ## 9. 验证体系
 

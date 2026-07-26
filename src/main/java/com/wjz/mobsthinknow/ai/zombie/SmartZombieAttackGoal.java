@@ -80,4 +80,17 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 	protected boolean canPerformAttack(final LivingEntity target) {
 		return !this.controller.shouldHoldFrontalAttack(target) && super.canPerformAttack(target);
 	}
+
+	/**
+	 * 武装小队的斧手命中格挡目标后禁用盾牌。26.1.2 中怪物普通挥击不会走
+	 * activeItem 的原版破盾判定，所以在这次挥击真正发生后显式补一次。
+	 */
+	@Override
+	protected void checkAndPerformAttack(final LivingEntity target) {
+		boolean blockedHitLanding = this.canPerformAttack(target) && target.isBlocking();
+		super.checkAndPerformAttack(target);
+		if (blockedHitLanding) {
+			ZombieArmory.tryBreakShield(this.zombie, target, ConfigManager.get());
+		}
+	}
 }

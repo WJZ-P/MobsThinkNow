@@ -47,4 +47,31 @@ class MobsThinkNowConfigTest {
 
 		assertEquals(4, config.maximumCoordinatedZombies);
 	}
+
+	@Test
+	void armedSquadsAreOffByDefaultWhileVisualsAreOn() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+
+		assertEquals(false, config.armedSquads);
+		assertEquals(true, config.squadVisualEffects);
+		assertEquals(true, config.squadRoleNameTags);
+	}
+
+	@Test
+	void clampsArmedSquadValues() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.armedChanceEasy = -0.5;
+		config.armedChanceNormal = 3.0;
+		config.armedChanceHard = Double.NaN;
+		config.armedShieldBreakSeconds = 99.0;
+		config.armedFlankSpeedBonus = 2.0;
+
+		config.validate();
+
+		assertEquals(0.0, config.armedChanceEasy);
+		assertEquals(1.0, config.armedChanceNormal);
+		assertEquals(0.0, config.armedChanceHard);
+		assertEquals(10.0, config.armedShieldBreakSeconds);
+		assertEquals(0.35, config.armedFlankSpeedBonus);
+	}
 }
