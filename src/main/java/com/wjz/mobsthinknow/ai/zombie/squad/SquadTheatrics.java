@@ -68,7 +68,10 @@ public final class SquadTheatrics {
 			case FORMING, RALLYING -> emitMarchGrunts(level, members, phase);
 			case BRIEFING, REORGANIZING -> emitBriefingConversation(level, squadId, leader, members, phase);
 			case DEPLOYING -> emitRoleTrails(level, members, phase);
-			case ENGAGING -> emitWarCryRipple(level, leader, members, phase);
+			case ENGAGING -> {
+				emitWarCryRipple(level, leader, members, phase);
+				emitBaitTaunts(level, members, phase);
+			}
 		}
 	}
 
@@ -142,6 +145,7 @@ public final class SquadTheatrics {
 		return switch (role) {
 			case LEADER -> "[Leader]";
 			case PRESSURER -> "[Pressurer]";
+			case BAIT -> "[Bait]";
 			case FLANK_LEFT -> "[Left Flank]";
 			case FLANK_RIGHT -> "[Right Flank]";
 			case CUTOFF -> "[Cutoff]";
@@ -152,6 +156,7 @@ public final class SquadTheatrics {
 		return switch (role) {
 			case LEADER -> ChatFormatting.GOLD;
 			case PRESSURER -> ChatFormatting.RED;
+			case BAIT -> ChatFormatting.YELLOW;
 			case FLANK_LEFT -> ChatFormatting.GREEN;
 			case FLANK_RIGHT -> ChatFormatting.AQUA;
 			case CUTOFF -> ChatFormatting.LIGHT_PURPLE;
@@ -162,6 +167,7 @@ public final class SquadTheatrics {
 		return switch (role) {
 			case LEADER -> LEADER_AURA_DUST;
 			case PRESSURER -> new DustParticleOptions(0xE04B3A, 0.9F);
+			case BAIT -> new DustParticleOptions(0xF2E14C, 0.9F);
 			case FLANK_LEFT -> new DustParticleOptions(0x4BD37B, 0.9F);
 			case FLANK_RIGHT -> new DustParticleOptions(0x3FB8E0, 0.9F);
 			case CUTOFF -> new DustParticleOptions(0xB05CE6, 0.9F);
@@ -268,6 +274,25 @@ public final class SquadTheatrics {
 		}
 		Zombie voice = members.get(index).zombie();
 		level.playSound(null, voice, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 0.9F, 0.8F + (voice.getId() % 3) * 0.08F);
+	}
+
+	/** 交战期间诱饵持续高声叫嚣并冒黄色粒子——它的工作就是让玩家忍不住看它。 */
+	private static void emitBaitTaunts(final ServerLevel level, final List<RoleMember> members, final long phase) {
+		if (phase % 16L != 0L) {
+			return;
+		}
+		for (RoleMember member : members) {
+			if (member.role() != SquadRole.BAIT) {
+				continue;
+			}
+			Zombie bait = member.zombie();
+			level.playSound(null, bait, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 0.9F, 1.25F + (bait.getId() % 3) * 0.05F);
+			level.sendParticles(
+				roleDust(SquadRole.BAIT),
+				bait.getX(), bait.getEyeY() + 0.5, bait.getZ(),
+				2, 0.2, 0.15, 0.2, 0.0
+			);
+		}
 	}
 
 	/** 协调器传入的成员及其当前职位快照。 */

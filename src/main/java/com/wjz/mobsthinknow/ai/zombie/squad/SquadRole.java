@@ -6,6 +6,8 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 public enum SquadRole {
 	LEADER,
 	PRESSURER,
+	/** 诱饵：在目标正面保持距离横向游走叫嚣，吸引注意力给侧翼创造偷袭窗口。 */
+	BAIT,
 	FLANK_LEFT,
 	FLANK_RIGHT,
 	CUTOFF

@@ -56,6 +56,14 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.squad_role_name_tags.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadRoleNameTags = value))
 			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.bait_tactics"),
+			config.baitTactics
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.bait_tactics.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.baitTactics = value))
+			.build());
 
 		ConfigCategory armedCategory = builder.getOrCreateCategory(
 			Component.translatable("mobsthinknow.config.category.armed")

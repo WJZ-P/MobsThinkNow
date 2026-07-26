@@ -18,9 +18,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
@@ -40,6 +44,11 @@ public final class ZombieSquadCoordinator {
 	private static final int MINIMUM_SURVIVING_SQUAD_SIZE = 2;
 	private static final double ORDER_REACHED_DISTANCE_SQUARED = 4.0;
 	private static final double MINIMUM_HORIZONTAL_LENGTH_SQUARED = 1.0E-6;
+	/** 诱饵在目标正面的站位距离与横向游走幅度：足够近能拉住注意力，又不进近战距离。 */
+	private static final double BAIT_STANDOFF_DISTANCE = 3.2;
+	private static final double BAIT_WEAVE_AMPLITUDE = 2.4;
+	private static final Identifier SQUAD_SPEED_MODIFIER_ID =
+		Identifier.fromNamespaceAndPath(MobsThinkNow.MOD_ID, "squad_speed_bonus");
 	private static final Map<ServerLevel, ZombieSquadCoordinator> COORDINATORS = new IdentityHashMap<>();
 
 	private final Map<Integer, MemberRecord> members = new HashMap<>();
@@ -91,6 +100,7 @@ public final class ZombieSquadCoordinator {
 		ZombieSquadCoordinator coordinator = COORDINATORS.get(serverLevel);
 		if (coordinator != null) {
 			coordinator.theatrics.restoreName(zombie);
+			removeSquadSpeedBonus(zombie);
 		}
 	}
 
@@ -155,7 +165,10 @@ public final class ZombieSquadCoordinator {
 		}
 
 		SquadOrder order = squad.orders.get(zombie.getId());
-		SquadRole role = order == null ? squad.roles.getOrDefault(zombie.getId(), SquadRole.PRESSURER) : order.role;
+		SquadRole role = effectiveRole(
+			order == null ? squad.roles.getOrDefault(zombie.getId(), SquadRole.PRESSURER) : order.role,
+			ConfigManager.get()
+		);
 		Vec3 destination = order == null ? null : order.destination;
 		MemberRecord leader = this.members.get(squad.leaderId);
 		Vec3 focusPosition = leader == null ? squad.rallyPoint : leader.zombie.position().add(0.0, 1.0, 0.0);
@@ -221,6 +234,7 @@ public final class ZombieSquadCoordinator {
 			}
 			if (this.squads.containsKey(squad.id)) {
 				this.presentSquad(level, squad, config, now);
+				this.applySquadMobility(squad, config);
 			}
 		}
 		SmartZombieMetrics.coordinatorTick();
@@ -380,7 +394,7 @@ public final class ZombieSquadCoordinator {
 			}
 			case ENGAGING -> {
 				if (now >= squad.nextPlanRefreshAt) {
-					this.refreshCombatOrders(squad, config, true, false);
+					this.refreshCombatOrders(squad, config, true, false, now);
 					squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 				}
 			}
@@ -442,7 +456,21 @@ public final class ZombieSquadCoordinator {
 		MemberRecord leader = this.members.get(squad.leaderId);
 		int intelligence = leader == null ? 1 : ZombieIntelligence.get(leader.zombie);
 		squad.roles.clear();
-		squad.roles.putAll(SquadRolePlanner.plan(ordered, squad.leaderId, intelligence, this.memberWeapons(ordered)));
+		squad.roles.putAll(SquadRolePlanner.plan(
+			ordered,
+			squad.leaderId,
+			intelligence,
+			this.memberWeapons(ordered),
+			ConfigManager.get().baitTactics
+		));
+	}
+
+	/**
+	 * 诱饵战术被关闭时，存量小队里已分配的 BAIT 立即按施压手对待（命令、名牌、目的地全部生效），
+	 * 不必等到换届或解散才重排职位表。
+	 */
+	private static SquadRole effectiveRole(final SquadRole role, final MobsThinkNowConfig config) {
+		return role == SquadRole.BAIT && !config.baitTactics ? SquadRole.PRESSURER : role;
 	}
 
 	/** 武装小队开启时才读取兵种；空 Map 让规划器保持与旧版一致的分配。 */
@@ -498,7 +526,7 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private void enterDeploying(final ZombieSquad squad, final MobsThinkNowConfig config, final long now) {
-		this.refreshCombatOrders(squad, config, false, true);
+		this.refreshCombatOrders(squad, config, false, true, now);
 		this.enterState(
 			squad,
 			SquadState.DEPLOYING,
@@ -515,7 +543,7 @@ public final class ZombieSquadCoordinator {
 		final long now,
 		final String reason
 	) {
-		this.refreshCombatOrders(squad, config, true, true);
+		this.refreshCombatOrders(squad, config, true, true, now);
 		squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 		this.enterState(squad, SquadState.ENGAGING, now, Long.MAX_VALUE, config, reason);
 	}
@@ -524,7 +552,8 @@ public final class ZombieSquadCoordinator {
 		final ZombieSquad squad,
 		final MobsThinkNowConfig config,
 		final boolean engaging,
-		final boolean bumpPlanEpoch
+		final boolean bumpPlanEpoch,
+		final long now
 	) {
 		if (bumpPlanEpoch) {
 			squad.planEpoch++;
@@ -541,7 +570,7 @@ public final class ZombieSquadCoordinator {
 		squad.orders.clear();
 		int pressureIndex = 0;
 		for (int memberId : ordered) {
-			SquadRole role = squad.roles.getOrDefault(memberId, SquadRole.PRESSURER);
+			SquadRole role = effectiveRole(squad.roles.getOrDefault(memberId, SquadRole.PRESSURER), config);
 			Vec3 destination = this.combatDestination(
 				role,
 				targetPosition,
@@ -549,7 +578,8 @@ public final class ZombieSquadCoordinator {
 				lateral,
 				config,
 				engaging,
-				pressureIndex
+				pressureIndex,
+				now
 			);
 			if (role == SquadRole.LEADER || role == SquadRole.PRESSURER) {
 				pressureIndex++;
@@ -565,7 +595,8 @@ public final class ZombieSquadCoordinator {
 		final Vec3 lateral,
 		final MobsThinkNowConfig config,
 		final boolean engaging,
-		final int pressureIndex
+		final int pressureIndex,
+		final long now
 	) {
 		return switch (role) {
 			case LEADER, PRESSURER -> {
@@ -575,6 +606,10 @@ public final class ZombieSquadCoordinator {
 				double side = pressureIndex == 0 ? 0.0 : (pressureIndex % 2 == 0 ? 0.8 : -0.8);
 				yield targetPosition.add(forward.scale(config.formationRadius)).add(lateral.scale(side));
 			}
+			// 诱饵站在目标视线正前方，按时间横向游走：位置醒目、行为反常，天然吸引玩家注意。
+			case BAIT -> targetPosition
+				.add(forward.scale(BAIT_STANDOFF_DISTANCE))
+				.add(lateral.scale(Math.sin(now * 0.45) * BAIT_WEAVE_AMPLITUDE));
 			case FLANK_LEFT -> targetPosition
 				.subtract(forward.scale(config.flankBehindDistance))
 				.add(lateral.scale(config.flankSideDistance));
@@ -684,6 +719,7 @@ public final class ZombieSquadCoordinator {
 		}
 		member.squadId = 0L;
 		this.theatrics.restoreName(member.zombie);
+		removeSquadSpeedBonus(member.zombie);
 	}
 
 	private void disband(final ZombieSquad squad, final MobsThinkNowConfig config, final String reason) {
@@ -699,6 +735,7 @@ public final class ZombieSquadCoordinator {
 			if (member != null && member.squadId == squad.id) {
 				member.squadId = 0L;
 				this.theatrics.restoreName(member.zombie);
+				removeSquadSpeedBonus(member.zombie);
 			}
 		}
 	}
@@ -707,9 +744,46 @@ public final class ZombieSquadCoordinator {
 		for (MemberRecord member : this.members.values()) {
 			member.squadId = 0L;
 			this.theatrics.restoreName(member.zombie);
+			removeSquadSpeedBonus(member.zombie);
 		}
 		this.members.clear();
 		this.squads.clear();
+	}
+
+	/**
+	 * 组队期间给全员挂临时移速加成（transient，永不写入存档），离队即移除。
+	 * 只在数值真正变化时重建修饰符，因此 {@code /mtn reload} 修改数值会立即作用于存量小队。
+	 */
+	private void applySquadMobility(final ZombieSquad squad, final MobsThinkNowConfig config) {
+		for (int memberId : squad.memberIds) {
+			MemberRecord member = this.members.get(memberId);
+			if (member == null) {
+				continue;
+			}
+			AttributeInstance speed = member.zombie.getAttribute(Attributes.MOVEMENT_SPEED);
+			if (speed == null) {
+				continue;
+			}
+			if (config.squadSpeedBonus <= 0.0) {
+				speed.removeModifier(SQUAD_SPEED_MODIFIER_ID);
+				continue;
+			}
+			AttributeModifier existing = speed.getModifier(SQUAD_SPEED_MODIFIER_ID);
+			if (existing == null || existing.amount() != config.squadSpeedBonus) {
+				speed.addOrUpdateTransientModifier(new AttributeModifier(
+					SQUAD_SPEED_MODIFIER_ID,
+					config.squadSpeedBonus,
+					AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+				));
+			}
+		}
+	}
+
+	private static void removeSquadSpeedBonus(final Zombie zombie) {
+		AttributeInstance speed = zombie.getAttribute(Attributes.MOVEMENT_SPEED);
+		if (speed != null) {
+			speed.removeModifier(SQUAD_SPEED_MODIFIER_ID);
+		}
 	}
 
 	/** 每 tick 的表现层输出：职业名牌、首领光环、会议叫声与部署粒子。 */
@@ -725,7 +799,10 @@ public final class ZombieSquadCoordinator {
 			if (memberId == squad.leaderId) {
 				leader = member.zombie;
 			}
-			roleMembers.add(new SquadTheatrics.RoleMember(member.zombie, squad.roles.getOrDefault(memberId, SquadRole.PRESSURER)));
+			roleMembers.add(new SquadTheatrics.RoleMember(
+				member.zombie,
+				effectiveRole(squad.roles.getOrDefault(memberId, SquadRole.PRESSURER), config)
+			));
 		}
 		this.theatrics.tickSquad(level, squad.id, squad.state, squad.stateStartedAt, leader, roleMembers, config, now);
 	}

@@ -55,6 +55,20 @@ class MobsThinkNowConfigTest {
 		assertEquals(false, config.armedSquads);
 		assertEquals(true, config.squadVisualEffects);
 		assertEquals(true, config.squadRoleNameTags);
+		assertEquals(true, config.baitTactics);
+		assertEquals(0.10, config.squadSpeedBonus);
+	}
+
+	@Test
+	void clampsSquadSpeedBonus() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.squadSpeedBonus = 5.0;
+		config.validate();
+		assertEquals(0.5, config.squadSpeedBonus);
+
+		config.squadSpeedBonus = -1.0;
+		config.validate();
+		assertEquals(0.0, config.squadSpeedBonus);
 	}
 
 	@Test

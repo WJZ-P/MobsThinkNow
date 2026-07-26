@@ -24,6 +24,11 @@ final class ZombieTacticalController {
 	private static final double MIN_HORIZONTAL_VECTOR_LENGTH_SQUARED = 1.0E-6;
 	private static final double FRONT_ARC_DOT_PRODUCT = 0.2;
 	private static final double DESTINATION_REACHED_DISTANCE_SQUARED = 2.25;
+	/** 目标水平视线与"目标→僵尸"方向夹角小于约 60° 时视为"被盯着"。 */
+	private static final double WATCHED_VIEW_DOT = 0.5;
+	/** 诱饵的后撤触发距离与后撤步长：目标扑过来就拉开，始终保持勾引距离。 */
+	private static final double BAIT_RETREAT_DISTANCE_SQUARED = 2.8 * 2.8;
+	private static final double BAIT_RETREAT_STEP = 3.5;
 
 	private final Zombie zombie;
 	private ZombieTactic tactic = ZombieTactic.PRESSURE;
@@ -38,6 +43,7 @@ final class ZombieTacticalController {
 	private Vec3 lastProgressPosition;
 	private boolean alternateFlank;
 	private boolean hasLineOfSight;
+	private boolean kitingAsBait;
 
 	ZombieTacticalController(final Zombie zombie) {
 		this.zombie = zombie;
@@ -88,6 +94,11 @@ final class ZombieTacticalController {
 	}
 
 	boolean shouldRunVanillaCombat(final LivingEntity target) {
+		// 正在风筝的诱饵绝不切回原版追击：否则 MeleeAttackGoal 会立刻覆盖后撤路径并原地换命。
+		if (this.kitingAsBait) {
+			return false;
+		}
+
 		if (this.squadDirective != null) {
 			SquadState state = this.squadDirective.state();
 			if (state == SquadState.ENGAGING) {
@@ -125,6 +136,7 @@ final class ZombieTacticalController {
 			this.tactic = ZombieTactic.PRESSURE;
 			this.destination = null;
 			this.squadDirective = null;
+			this.kitingAsBait = false;
 			return;
 		}
 
@@ -134,6 +146,7 @@ final class ZombieTacticalController {
 			return;
 		}
 
+		this.kitingAsBait = false;
 		if (now >= this.nextDecisionAt) {
 			this.decideSolo(target, config, now);
 		}
@@ -144,6 +157,7 @@ final class ZombieTacticalController {
 		this.tactic = ZombieTactic.PRESSURE;
 		this.destination = null;
 		this.squadDirective = null;
+		this.kitingAsBait = false;
 
 		LivingEntity target = this.zombie.getTarget();
 		if ((target == null || !target.isAlive()) && this.zombie.level() instanceof ServerLevel serverLevel) {
@@ -163,6 +177,30 @@ final class ZombieTacticalController {
 
 		this.tactic = tacticFor(directive.role());
 		this.destination = directive.destination();
+		this.kitingAsBait = false;
+
+		if (config.baitTactics && directive.isCombatPhase()) {
+			if (directive.role() == SquadRole.BAIT) {
+				// 诱饵被目标贴近时向后拉开，始终吊着对方注意力而不换命。
+				if (this.zombie.distanceToSqr(target) <= BAIT_RETREAT_DISTANCE_SQUARED) {
+					Vec3 away = horizontalUnit(
+						this.zombie.position().subtract(target.position()),
+						target.getLookAngle().scale(-1.0)
+					);
+					this.destination = this.zombie.position().add(away.scale(BAIT_RETREAT_STEP));
+					this.kitingAsBait = true;
+				}
+			} else if (isAmbushRole(directive.role())
+				&& directive.state() == SquadState.ENGAGING
+				&& this.hasLineOfSight
+				&& this.destination != null
+				&& !this.isWatchedByTarget(target)
+				// 目标举盾且自己在其正面弧内时保持绕后弧线；直冲会撞在盾上又打不出手。
+				&& !(target.isBlocking() && this.isInFrontArc(target))) {
+				// 目标的视线不在自己身上（多半正被诱饵吊着）：放弃绕后弧线，直线突袭。
+				this.destination = target.position();
+			}
+		}
 
 		if (directive.isMeetingPhase() && directive.focusPosition() != null && directive.role() != SquadRole.LEADER) {
 			// 非首领在会议阶段面向首领，让玩家能从动作上读懂“它们正在交流”。
@@ -186,7 +224,7 @@ final class ZombieTacticalController {
 		}
 
 		boolean shouldKeepFlankingShield = this.shouldHoldFrontalAttack(target);
-		if (this.zombie.isWithinMeleeAttackRange(target) && !shouldKeepFlankingShield) {
+		if (this.zombie.isWithinMeleeAttackRange(target) && !shouldKeepFlankingShield && !this.kitingAsBait) {
 			return;
 		}
 
@@ -317,9 +355,32 @@ final class ZombieTacticalController {
 		return config.tacticalSpeedModifier;
 	}
 
+	private static boolean isAmbushRole(final SquadRole role) {
+		return role == SquadRole.FLANK_LEFT || role == SquadRole.FLANK_RIGHT || role == SquadRole.CUTOFF;
+	}
+
+	/** 目标的水平视线是否落在自己身上；诱饵勾引时其他成员据此决定绕行还是突袭。 */
+	private boolean isWatchedByTarget(final LivingEntity target) {
+		Vec3 toZombie = new Vec3(
+			this.zombie.getX() - target.getX(),
+			0.0,
+			this.zombie.getZ() - target.getZ()
+		);
+		if (toZombie.horizontalDistanceSqr() < MIN_HORIZONTAL_VECTOR_LENGTH_SQUARED) {
+			return true;
+		}
+		Vec3 view = target.getViewVector(1.0F);
+		Vec3 horizontalView = new Vec3(view.x, 0.0, view.z);
+		if (horizontalView.horizontalDistanceSqr() < MIN_HORIZONTAL_VECTOR_LENGTH_SQUARED) {
+			return false;
+		}
+		return horizontalView.normalize().dot(toZombie.normalize()) > WATCHED_VIEW_DOT;
+	}
+
 	private static ZombieTactic tacticFor(final SquadRole role) {
 		return switch (role) {
 			case LEADER, PRESSURER -> ZombieTactic.PRESSURE;
+			case BAIT -> ZombieTactic.SURROUND;
 			case FLANK_LEFT -> ZombieTactic.FLANK_LEFT;
 			case FLANK_RIGHT -> ZombieTactic.FLANK_RIGHT;
 			case CUTOFF -> ZombieTactic.SURROUND;

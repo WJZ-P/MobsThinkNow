@@ -18,8 +18,29 @@ class SquadRolePlannerTest {
 	}
 
 	@Test
-	void brilliantLeaderUnlocksTwoFlanksAndCutoff() {
-		Map<Integer, SquadRole> roles = SquadRolePlanner.plan(List.of(1, 2, 3, 4, 5), 1, 10);
+	void brilliantLeaderUnlocksBaitTwoFlanksAndCutoff() {
+		Map<Integer, SquadRole> roles = SquadRolePlanner.plan(List.of(1, 2, 3, 4, 5, 6), 1, 10);
+
+		assertEquals(SquadRole.LEADER, roles.get(1));
+		assertEquals(SquadRole.PRESSURER, roles.get(2));
+		assertEquals(SquadRole.FLANK_LEFT, roles.get(3));
+		assertEquals(SquadRole.BAIT, roles.get(4));
+		assertEquals(SquadRole.FLANK_RIGHT, roles.get(5));
+		assertEquals(SquadRole.CUTOFF, roles.get(6));
+	}
+
+	@Test
+	void intelligenceSixUnlocksBaitButFiveDoesNot() {
+		Map<Integer, SquadRole> smart = SquadRolePlanner.plan(List.of(1, 2, 3, 4), 1, 6);
+		Map<Integer, SquadRole> average = SquadRolePlanner.plan(List.of(1, 2, 3, 4), 1, 5);
+
+		assertEquals(SquadRole.BAIT, smart.get(4));
+		assertEquals(SquadRole.PRESSURER, average.get(4));
+	}
+
+	@Test
+	void disablingBaitRestoresPreBaitRoleTable() {
+		Map<Integer, SquadRole> roles = SquadRolePlanner.plan(List.of(1, 2, 3, 4, 5), 1, 10, Map.of(), false);
 
 		assertEquals(SquadRole.LEADER, roles.get(1));
 		assertEquals(SquadRole.PRESSURER, roles.get(2));
@@ -40,8 +61,8 @@ class SquadRolePlannerTest {
 		assertEquals(SquadRole.LEADER, roles.get(1));
 		assertEquals(SquadRole.PRESSURER, roles.get(3));
 		assertEquals(SquadRole.FLANK_LEFT, roles.get(2));
-		assertEquals(SquadRole.FLANK_RIGHT, roles.get(5));
-		assertEquals(SquadRole.CUTOFF, roles.get(4));
+		assertEquals(SquadRole.BAIT, roles.get(5));
+		assertEquals(SquadRole.FLANK_RIGHT, roles.get(4));
 	}
 
 	@Test

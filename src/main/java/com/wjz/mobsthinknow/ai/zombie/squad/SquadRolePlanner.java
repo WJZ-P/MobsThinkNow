@@ -30,6 +30,16 @@ public final class SquadRolePlanner {
 		final int leaderIntelligence,
 		final Map<Integer, WeaponClass> weapons
 	) {
+		return plan(orderedMemberIds, leaderId, leaderIntelligence, weapons, true);
+	}
+
+	public static Map<Integer, SquadRole> plan(
+		final List<Integer> orderedMemberIds,
+		final int leaderId,
+		final int leaderIntelligence,
+		final Map<Integer, WeaponClass> weapons,
+		final boolean allowBait
+	) {
 		Map<Integer, SquadRole> roles = new LinkedHashMap<>();
 		roles.put(leaderId, SquadRole.LEADER);
 
@@ -43,7 +53,7 @@ public final class SquadRolePlanner {
 		// 职位槽仍完全由首领智力决定；兵种只影响"谁去补哪个槽"。
 		boolean[] assigned = new boolean[followers.size()];
 		for (int slotIndex = 0; slotIndex < followers.size(); slotIndex++) {
-			SquadRole slot = roleFor(slotIndex, leaderIntelligence);
+			SquadRole slot = roleFor(slotIndex, leaderIntelligence, allowBait);
 			int chosen = -1;
 			int chosenScore = Integer.MIN_VALUE;
 			for (int i = 0; i < followers.size(); i++) {
@@ -63,18 +73,34 @@ public final class SquadRolePlanner {
 		return roles;
 	}
 
-	private static SquadRole roleFor(final int index, final int intelligence) {
+	/**
+	 * 智力到职位槽的映射：1~3 全员正面；4~5 解锁左翼；6 解锁诱饵勾引；
+	 * 7~8 解锁右翼；9~10 解锁截断退路。禁用诱饵战术时退回不含诱饵的旧职位表。
+	 */
+	private static SquadRole roleFor(final int index, final int intelligence, final boolean allowBait) {
 		if (intelligence <= 3 || index == 0) {
 			return SquadRole.PRESSURER;
 		}
 		if (index == 1 && intelligence >= 4) {
 			return SquadRole.FLANK_LEFT;
 		}
-		if (index == 2 && intelligence >= 7) {
-			return SquadRole.FLANK_RIGHT;
-		}
-		if (index == 3 && intelligence >= 9) {
-			return SquadRole.CUTOFF;
+		if (allowBait) {
+			if (index == 2) {
+				return intelligence >= 6 ? SquadRole.BAIT : SquadRole.PRESSURER;
+			}
+			if (index == 3 && intelligence >= 7) {
+				return SquadRole.FLANK_RIGHT;
+			}
+			if (index == 4 && intelligence >= 9) {
+				return SquadRole.CUTOFF;
+			}
+		} else {
+			if (index == 2 && intelligence >= 7) {
+				return SquadRole.FLANK_RIGHT;
+			}
+			if (index == 3 && intelligence >= 9) {
+				return SquadRole.CUTOFF;
+			}
 		}
 
 		if (intelligence >= 7) {
@@ -100,6 +126,12 @@ public final class SquadRolePlanner {
 				case SPEAR -> 3;
 				case SWORD -> 2;
 				case NONE -> 1;
+				case AXE -> 0;
+			};
+			// 诱饵是消耗性职位，优先派空手成员上，别浪费武器输出。
+			case BAIT -> switch (weapon) {
+				case NONE -> 3;
+				case SWORD, SPEAR -> 1;
 				case AXE -> 0;
 			};
 			case LEADER -> 0;

@@ -119,11 +119,16 @@ stateDiagram-v2
 | 首领智力 | 可用方案 |
 |---:|---|
 | `1～3` | 首领与施压者正面突进 |
-| `4～6` | 增加左翼包抄 |
-| `7～8` | 增加左右双翼包抄 |
+| `4～5` | 增加左翼包抄 |
+| `6` | 增加诱饵勾引位 |
+| `7～8` | 增加右翼形成双侧包抄 |
 | `9～10` | 增加截断退路位 |
 
-职位包括 `LEADER`、`PRESSURER`、`FLANK_LEFT`、`FLANK_RIGHT` 和 `CUTOFF`。
+职位包括 `LEADER`、`PRESSURER`、`BAIT`、`FLANK_LEFT`、`FLANK_RIGHT` 和
+`CUTOFF`。诱饵在目标正面 3 格左右按 tick 横向游走并持续叫嚣；交战中两翼与
+截断位实时判断目标水平视线（约 60° 锥角）——被盯住时沿协调器给的绕后弧线
+点机动，视线离开的瞬间改为直线突袭目标当前位置。诱饵被目标贴近时向后拉开
+保持勾引距离，仅在贴身时自卫反击。
 部署结束后，首领和施压者继续使用原版追击攻击；侧翼只有到达合理攻击角度后才重新
 进入原版挥击逻辑。
 
@@ -182,6 +187,8 @@ stateDiagram-v2
 | `deploymentQuorum` | `0.6` | 部署完成比例 |
 | `squadVisualEffects` | `true` | 会议叫声、粒子、光环与怒吼 |
 | `squadRoleNameTags` | `true` | 组队期间的职业名牌 |
+| `baitTactics` | `true` | 诱饵勾引与视线突袭 |
+| `squadSpeedBonus` | `0.10` | 组队期间全员移速加成，范围 `0～0.5`，`0` 关闭 |
 | `armedSquads` | `false` | 武装小队总开关 |
 | `armedChanceEasy` | `0.10` | 简单难度持械概率，范围 `0～1` |
 | `armedChanceNormal` | `0.25` | 普通难度持械概率，范围 `0～1` |
