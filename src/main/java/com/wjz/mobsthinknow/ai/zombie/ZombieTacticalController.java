@@ -1,16 +1,25 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadState;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
-import java.util.Comparator;
-import java.util.List;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
+/**
+ * 单只僵尸的执行器：负责感知、执行协调器命令，以及没有小队时的轻量单体战术。
+ *
+ * <p>它不会再查询附近的全部僵尸。小队发现、选举和任务分配统一交给
+ * {@link ZombieSquadCoordinator}，从结构上消除原先的逐僵尸范围扫描。</p>
+ */
 final class ZombieTacticalController {
 	private static final double MIN_HORIZONTAL_VECTOR_LENGTH_SQUARED = 1.0E-6;
 	private static final double FRONT_ARC_DOT_PRODUCT = 0.2;
@@ -21,12 +30,12 @@ final class ZombieTacticalController {
 	private @Nullable Vec3 lastSeenPosition;
 	private long lastSeenAt = Long.MIN_VALUE;
 	private @Nullable Vec3 destination;
+	private @Nullable SquadDirective squadDirective;
+	private int observedTargetId = Integer.MIN_VALUE;
 	private long nextDecisionAt;
 	private long nextPathUpdateAt;
 	private long nextProgressCheckAt;
 	private Vec3 lastProgressPosition;
-	private int packSize = 1;
-	private int packIndex;
 	private boolean alternateFlank;
 	private boolean hasLineOfSight;
 
@@ -35,24 +44,67 @@ final class ZombieTacticalController {
 		this.lastProgressPosition = zombie.position();
 	}
 
+	/**
+	 * 记录这只僵尸亲眼看到的信息，再把“有限感知”作为心跳提交给小队黑板。
+	 * 协调器共享的是最后目击位置，而不是无条件读取墙后目标的实时坐标。
+	 */
 	void observe(final LivingEntity target) {
+		if (this.observedTargetId != target.getId()) {
+			// 换目标时不能把上一名玩家的最后目击位置错误地套到新目标身上。
+			this.observedTargetId = target.getId();
+			this.lastSeenPosition = null;
+			this.lastSeenAt = Long.MIN_VALUE;
+		}
 		this.hasLineOfSight = this.zombie.getSensing().hasLineOfSight(target);
 		if (this.hasLineOfSight) {
 			this.lastSeenPosition = target.position();
 			this.lastSeenAt = this.zombie.level().getGameTime();
 		}
+
+		if (this.zombie.level() instanceof ServerLevel serverLevel && ConfigManager.get().packSurrounding) {
+			ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(serverLevel);
+			coordinator.heartbeat(
+				this.zombie,
+				target,
+				this.hasLineOfSight,
+				this.lastSeenPosition,
+				this.lastSeenAt
+			);
+			this.squadDirective = coordinator.directiveFor(this.zombie);
+		} else {
+			this.squadDirective = null;
+		}
 	}
 
 	boolean hasTrackableTarget() {
 		MobsThinkNowConfig config = ConfigManager.get();
-		return this.hasLineOfSight || this.hasRecentLastSeenPosition(config);
+		return this.hasLineOfSight
+			|| this.hasRecentLastSeenPosition(config)
+			|| (this.squadDirective != null && this.squadDirective.hasSharedTargetMemory());
 	}
 
 	boolean hasTacticalIntent() {
-		return this.tactic != ZombieTactic.PRESSURE && this.destination != null;
+		return this.squadDirective != null || (this.tactic != ZombieTactic.PRESSURE && this.destination != null);
 	}
 
 	boolean shouldRunVanillaCombat(final LivingEntity target) {
+		if (this.squadDirective != null) {
+			SquadState state = this.squadDirective.state();
+			if (state == SquadState.ENGAGING) {
+				SquadRole role = this.squadDirective.role();
+				return role == SquadRole.LEADER
+					|| role == SquadRole.PRESSURER
+					|| (this.hasLineOfSight
+						&& this.zombie.isWithinMeleeAttackRange(target)
+						&& !this.shouldHoldFrontalAttack(target));
+			}
+
+			// 集结和部署时仍允许贴身自卫；协调器会在本 tick 末尾切到紧急交战状态。
+			return this.hasLineOfSight
+				&& this.zombie.isWithinMeleeAttackRange(target)
+				&& !this.shouldHoldFrontalAttack(target);
+		}
+
 		return this.tactic == ZombieTactic.PRESSURE
 			|| (this.hasLineOfSight && this.zombie.isWithinMeleeAttackRange(target) && !this.shouldHoldFrontalAttack(target));
 	}
@@ -72,21 +124,64 @@ final class ZombieTacticalController {
 		if (!config.enabled || !config.zombieAiEnabled) {
 			this.tactic = ZombieTactic.PRESSURE;
 			this.destination = null;
+			this.squadDirective = null;
 			return;
 		}
 
 		long now = this.zombie.level().getGameTime();
-		if (now >= this.nextDecisionAt) {
-			this.decide(target, config, now);
+		if (this.squadDirective != null) {
+			this.executeSquadDirective(target, config, now);
+			return;
 		}
 
-		if (this.tactic == ZombieTactic.PRESSURE || this.destination == null) {
+		if (now >= this.nextDecisionAt) {
+			this.decideSolo(target, config, now);
+		}
+		this.executeDestination(target, config, now);
+	}
+
+	void stop() {
+		this.tactic = ZombieTactic.PRESSURE;
+		this.destination = null;
+		this.squadDirective = null;
+
+		LivingEntity target = this.zombie.getTarget();
+		if ((target == null || !target.isAlive()) && this.zombie.level() instanceof ServerLevel serverLevel) {
+			ZombieSquadCoordinator.forLevel(serverLevel).unregister(this.zombie);
+		}
+	}
+
+	private void executeSquadDirective(
+		final LivingEntity target,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		SquadDirective directive = this.squadDirective;
+		if (directive == null) {
+			return;
+		}
+
+		this.tactic = tacticFor(directive.role());
+		this.destination = directive.destination();
+
+		if (directive.isMeetingPhase() && directive.focusPosition() != null && directive.role() != SquadRole.LEADER) {
+			// 非首领在会议阶段面向首领，让玩家能从动作上读懂“它们正在交流”。
+			this.zombie.getLookControl().setLookAt(directive.focusPosition());
+		} else if (this.hasLineOfSight) {
+			this.zombie.getLookControl().setLookAt(target, 30.0F, 30.0F);
+		}
+
+		this.executeDestination(target, config, now);
+	}
+
+	private void executeDestination(final LivingEntity target, final MobsThinkNowConfig config, final long now) {
+		if (this.destination == null || (this.squadDirective == null && this.tactic == ZombieTactic.PRESSURE)) {
 			return;
 		}
 
 		if (this.tactic == ZombieTactic.SEARCH_LAST_SEEN) {
 			this.zombie.getLookControl().setLookAt(this.destination.add(0.0, 1.0, 0.0));
-		} else if (this.hasLineOfSight) {
+		} else if (this.hasLineOfSight && (this.squadDirective == null || !this.squadDirective.isMeetingPhase())) {
 			this.zombie.getLookControl().setLookAt(target, 30.0F, 30.0F);
 		}
 
@@ -110,76 +205,40 @@ final class ZombieTacticalController {
 				.moveTo(this.destination.x, this.destination.y, this.destination.z, config.tacticalSpeedModifier);
 			this.nextPathUpdateAt = now + config.decisionIntervalTicks;
 			if (!foundPath) {
-				this.alternateFlank = !this.alternateFlank;
-				this.nextDecisionAt = now + 2L;
+				if (this.squadDirective == null) {
+					this.alternateFlank = !this.alternateFlank;
+					this.nextDecisionAt = now + 2L;
+				}
 				SmartZombieMetrics.failedPath();
 			}
 		}
 	}
 
-	void stop() {
-		this.tactic = ZombieTactic.PRESSURE;
-		this.destination = null;
-		this.packSize = 1;
-		this.packIndex = 0;
-	}
-
-	private void decide(final LivingEntity target, final MobsThinkNowConfig config, final long now) {
-		this.updatePack(target, config);
+	private void decideSolo(final LivingEntity target, final MobsThinkNowConfig config, final long now) {
 		boolean prefersLeft = ((this.zombie.getId() & 1) == 0) != this.alternateFlank;
 		ZombieDecisionContext context = new ZombieDecisionContext(
 			this.hasLineOfSight,
 			this.hasRecentLastSeenPosition(config),
 			target.isBlocking(),
 			this.isInFrontArc(target),
-			this.packSize,
-			this.packIndex,
+			1,
+			0,
 			prefersLeft
 		);
 
 		this.tactic = ZombieTacticEvaluator.select(context, this.tactic);
-		this.destination = this.calculateDestination(target, config);
+		this.destination = this.calculateSoloDestination(target, config);
 		this.nextDecisionAt = now + config.decisionIntervalTicks + Math.floorMod(this.zombie.getId(), 3);
 		SmartZombieMetrics.decision(this.tactic);
 	}
 
-	private void updatePack(final LivingEntity target, final MobsThinkNowConfig config) {
-		if (!config.packSurrounding || !this.hasLineOfSight) {
-			this.packSize = 1;
-			this.packIndex = 0;
-			return;
-		}
-
-		List<Zombie> nearby = this.zombie
-			.level()
-			.getEntitiesOfClass(
-				Zombie.class,
-				this.zombie.getBoundingBox().inflate(config.coordinationRadius),
-				candidate -> candidate.isAlive() && candidate.getTarget() == target
-			);
-		nearby.sort(Comparator.comparingInt(Zombie::getId));
-		if (nearby.size() > config.maximumCoordinatedZombies) {
-			nearby = nearby.subList(0, config.maximumCoordinatedZombies);
-		}
-
-		int index = nearby.indexOf(this.zombie);
-		if (index < 0) {
-			this.packSize = 1;
-			this.packIndex = 0;
-			return;
-		}
-
-		this.packSize = nearby.size();
-		this.packIndex = index;
-	}
-
-	private @Nullable Vec3 calculateDestination(final LivingEntity target, final MobsThinkNowConfig config) {
+	private @Nullable Vec3 calculateSoloDestination(final LivingEntity target, final MobsThinkNowConfig config) {
 		return switch (this.tactic) {
 			case PRESSURE -> null;
 			case SEARCH_LAST_SEEN -> this.lastSeenPosition;
 			case FLANK_LEFT -> this.calculateShieldFlank(target, config, 1.0);
 			case FLANK_RIGHT -> this.calculateShieldFlank(target, config, -1.0);
-			case SURROUND -> this.calculateFormationSlot(target, config);
+			case SURROUND -> this.calculateFallbackFormationSlot(target, config);
 		};
 	}
 
@@ -191,8 +250,8 @@ final class ZombieTacticalController {
 			.add(lateral.scale(config.flankSideDistance * side));
 	}
 
-	private Vec3 calculateFormationSlot(final LivingEntity target, final MobsThinkNowConfig config) {
-		double angle = Math.toRadians(target.getYRot()) + (Math.PI * 2.0 * this.packIndex) / Math.max(1, this.packSize);
+	private Vec3 calculateFallbackFormationSlot(final LivingEntity target, final MobsThinkNowConfig config) {
+		double angle = Math.toRadians(target.getYRot()) + Math.PI * 2.0 * Math.floorMod(this.zombie.getId(), 8) / 8.0;
 		return target.position().add(Math.cos(angle) * config.formationRadius, 0.0, Math.sin(angle) * config.formationRadius);
 	}
 
@@ -232,12 +291,26 @@ final class ZombieTacticalController {
 
 		Vec3 currentPosition = this.zombie.position();
 		if (currentPosition.distanceToSqr(this.lastProgressPosition) < 0.04 && !this.zombie.getNavigation().isDone()) {
-			this.alternateFlank = !this.alternateFlank;
-			this.nextDecisionAt = now + 1L;
+			// 先停止旧路径，下一次更新才会真的重新寻路，而不是继续复用一个已经卡住的 Path。
+			this.zombie.getNavigation().stop();
+			this.nextPathUpdateAt = now;
+			if (this.squadDirective == null) {
+				this.alternateFlank = !this.alternateFlank;
+				this.nextDecisionAt = now + 1L;
+			}
 		}
 
 		this.lastProgressPosition = currentPosition;
 		this.nextProgressCheckAt = now + 20L;
+	}
+
+	private static ZombieTactic tacticFor(final SquadRole role) {
+		return switch (role) {
+			case LEADER, PRESSURER -> ZombieTactic.PRESSURE;
+			case FLANK_LEFT -> ZombieTactic.FLANK_LEFT;
+			case FLANK_RIGHT -> ZombieTactic.FLANK_RIGHT;
+			case CUTOFF -> ZombieTactic.SURROUND;
+		};
 	}
 
 	private static Vec3 horizontalUnit(final Vec3 preferred, final Vec3 fallback) {

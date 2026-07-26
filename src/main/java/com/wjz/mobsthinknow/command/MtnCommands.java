@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.command;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.context.CommandContext;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -31,7 +32,7 @@ public final class MtnCommands {
 	private static int status(final CommandContext<CommandSourceStack> context) {
 		MobsThinkNowConfig config = ConfigManager.get();
 		SmartZombieMetrics.Snapshot metrics = SmartZombieMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d"
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -39,7 +40,11 @@ public final class MtnCommands {
 				metrics.decisions(),
 				metrics.flankDecisions(),
 				metrics.searchDecisions(),
-				metrics.failedPaths()
+				metrics.failedPaths(),
+				ZombieSquadCoordinator.activeSquadCount(),
+				metrics.leaderElections(),
+				metrics.leaderReelections(),
+				metrics.squadCandidateChecks()
 			);
 		context.getSource().sendSuccess(() -> Component.literal(message), false);
 		return Command.SINGLE_SUCCESS;
