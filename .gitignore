@@ -1,4 +1,5 @@
 .gradle/
+.fabric/
 build/
 run/
 mods/

@@ -146,9 +146,9 @@ stateDiagram-v2
    O(N log N) 的确定性种子排序；
 4. 每个未组队种子只访问九宫格，并把原始候选检查硬限制为
    `maximumCoordinatedZombies * 16`；
-5. 默认单队最多 8 只，因此组队阶段上界为 O(N log N + N × 128)，不随总僵尸数
-   平方增长；
-6. 已有小队只遍历自己的成员，默认最多 8 只；
+5. 默认单队最多 20 只，因此组队阶段上界为 O(N log N + N × 320)；即使把配置
+   调到硬上限 100，每个种子的原始候选检查也最多 1600 次，不随总僵尸数平方增长；
+6. 已有小队只遍历自己的成员，默认最多 20 只、配置硬上限为 100 只；
 7. 路径按决策间隔更新，目的地未明显变化时复用现有 Path。
 
 `/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
@@ -166,7 +166,7 @@ stateDiagram-v2
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
 | `minimumSquadSize` | `3` | 正式组队最少成员 |
-| `maximumCoordinatedZombies` | `8` | 单队成员上限 |
+| `maximumCoordinatedZombies` | `20` | 单队成员上限，可配置范围 `4～100` |
 | `coordinationRadius` | `12.0` | 同伴协调半径 |
 | `squadFormationIntervalTicks` | `10` | 尝试组队间隔 |
 | `squadFormationTicks` | `12` | 组队确认窗口 |

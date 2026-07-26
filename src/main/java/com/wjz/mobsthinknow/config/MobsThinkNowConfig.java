@@ -1,13 +1,17 @@
 package com.wjz.mobsthinknow.config;
 
 public final class MobsThinkNowConfig {
+	public static final int DEFAULT_MAXIMUM_COORDINATED_ZOMBIES = 20;
+	public static final int MINIMUM_MAXIMUM_COORDINATED_ZOMBIES = 4;
+	public static final int MAXIMUM_MAXIMUM_COORDINATED_ZOMBIES = 100;
+
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public int decisionIntervalTicks = 8;
 	public int targetMemoryTicks = 60;
-	public int maximumCoordinatedZombies = 8;
+	public int maximumCoordinatedZombies = DEFAULT_MAXIMUM_COORDINATED_ZOMBIES;
 	public double coordinationRadius = 12.0;
 	public int minimumSquadSize = 3;
 	public int squadFormationIntervalTicks = 10;
@@ -30,7 +34,11 @@ public final class MobsThinkNowConfig {
 	public void validate() {
 		this.decisionIntervalTicks = clamp(this.decisionIntervalTicks, 4, 40);
 		this.targetMemoryTicks = clamp(this.targetMemoryTicks, 20, 200);
-		this.maximumCoordinatedZombies = clamp(this.maximumCoordinatedZombies, 2, 16);
+		this.maximumCoordinatedZombies = clamp(
+			this.maximumCoordinatedZombies,
+			MINIMUM_MAXIMUM_COORDINATED_ZOMBIES,
+			MAXIMUM_MAXIMUM_COORDINATED_ZOMBIES
+		);
 		this.coordinationRadius = clamp(this.coordinationRadius, 4.0, 24.0);
 		this.minimumSquadSize = clamp(this.minimumSquadSize, 2, this.maximumCoordinatedZombies);
 		this.squadFormationIntervalTicks = clamp(this.squadFormationIntervalTicks, 4, 40);

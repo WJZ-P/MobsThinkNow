@@ -1,0 +1,7 @@
+{
+	"mobsthinknow.config.title": "怪物不再愚蠢配置",
+	"mobsthinknow.config.category.squad": "僵尸小队",
+	"mobsthinknow.config.maximum_coordinated_zombies": "单支小队最大僵尸数",
+	"mobsthinknow.config.maximum_coordinated_zombies.tooltip": "允许范围 4～100。数值越高，单次协调和原版寻路的开销也会越大。",
+	"mobsthinknow.config.server_authority_note": "此页面只直接影响单人游戏和本地服务器。专用服务器请修改服务端配置并执行 /mtn reload。"
+}

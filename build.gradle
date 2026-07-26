@@ -12,6 +12,21 @@ base {
 
 repositories {
 	mavenCentral()
+	maven {
+		name = "Terraformers"
+		url = "https://maven.terraformersmc.com/releases/"
+	}
+	maven {
+		name = "Shedaniel"
+		url = "https://maven.shedaniel.me/"
+	}
+	maven {
+		name = "Modrinth"
+		url = "https://api.modrinth.com/maven"
+		content {
+			includeGroup "maven.modrinth"
+		}
+	}
 }
 
 loom {
@@ -36,6 +51,16 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// 26.x 依赖已经使用 Mojang 映射发布，开发环境直接使用 implementation。
+	// 两者不会被打进本 Mod JAR；生产环境中只在需要客户端配置页面时安装。
+	implementation "com.terraformersmc:modmenu:${project.modmenu_version}"
+	implementation "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
+
+	// 只放进开发客户端的运行环境，用于调试光影；不会成为本 Mod 的发布依赖或打进成品 JAR。
+	// Iris 的 Fabric 版本要求 Sodium，因此两者必须使用同一 Minecraft 版本的配套构建。
+	localRuntime "maven.modrinth:iris:${project.iris_version}"
+	localRuntime "maven.modrinth:sodium:${project.sodium_version}"
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 }

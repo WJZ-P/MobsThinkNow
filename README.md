@@ -9,6 +9,8 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 - Minecraft：`26.1.2`
 - Fabric Loader：`0.19.3` 或更高的兼容版本
 - Fabric API：`0.155.2+26.1.2`
+- 可选客户端配置界面：Mod Menu `18.0.0` + Cloth Config `26.1.154`
+- 开发客户端光影环境：Iris `1.11.2` + Sodium `0.9.1`（仅 `localRuntime`）
 - 构建所需 Java：`25`
 - 当前支持的怪物：原版普通僵尸
 
@@ -31,7 +33,8 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 
 1. 安装 Minecraft Java 26.1.2 对应的 Fabric Loader。
 2. 把 Fabric API 和本模组 JAR 放进实例的 `mods` 目录。
-3. 单人游戏安装在客户端；专用服务器可只安装在服务端。
+3. 如需图形化配置，再在客户端安装 Mod Menu 和 Cloth Config；不使用配置页时无需安装。
+4. 单人游戏安装在客户端；专用服务器可只安装本模组和 Fabric API，无需安装上述两个客户端配置依赖。
 
 首次启动后会生成：
 
@@ -39,7 +42,9 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 config/mobsthinknow.json
 ```
 
-修改配置后执行 `/mtn reload`。使用 `/mtn status` 可查看是否启用、已安装
+单人游戏或本地服务器可从 Mod Menu 打开配置页，把单支僵尸小队上限设为
+`4～100`，默认值为 `20`。专用服务器请直接修改配置文件，随后执行
+`/mtn reload`。使用 `/mtn status` 可查看是否启用、已安装
 Goal 数、战术决策数、活跃小队、首领选举/换届、候选检查和寻路失败数；重载命令
 需要管理员权限。
 
