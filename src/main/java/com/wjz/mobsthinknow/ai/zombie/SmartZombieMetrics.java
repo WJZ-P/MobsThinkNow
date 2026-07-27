@@ -19,7 +19,6 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong TERRAIN_BLOCKS_HARVESTED = new AtomicLong();
 	private static final AtomicLong TERRAIN_BLOCKS_PLACED = new AtomicLong();
 	private static final AtomicLong PERCHED_ATTACKS = new AtomicLong();
-	private static final AtomicLong PURSUIT_BARRIERS = new AtomicLong();
 	private static final AtomicLong WATER_DEPLOYMENTS = new AtomicLong();
 	private static final AtomicLong LAVA_DEPLOYMENTS = new AtomicLong();
 	private static final AtomicLong FLUID_RECOVERIES = new AtomicLong();
@@ -84,10 +83,6 @@ public final class SmartZombieMetrics {
 		PERCHED_ATTACKS.incrementAndGet();
 	}
 
-	public static void pursuitBarrierPlaced() {
-		PURSUIT_BARRIERS.incrementAndGet();
-	}
-
 	public static void fluidDeployed(final UtilityClass utility) {
 		if (utility == UtilityClass.WATER) {
 			WATER_DEPLOYMENTS.incrementAndGet();
@@ -121,7 +116,6 @@ public final class SmartZombieMetrics {
 			TERRAIN_BLOCKS_HARVESTED.get(),
 			TERRAIN_BLOCKS_PLACED.get(),
 			PERCHED_ATTACKS.get(),
-			PURSUIT_BARRIERS.get(),
 			WATER_DEPLOYMENTS.get(),
 			LAVA_DEPLOYMENTS.get(),
 			FLUID_RECOVERIES.get(),
@@ -145,7 +139,6 @@ public final class SmartZombieMetrics {
 		long terrainBlocksHarvested,
 		long terrainBlocksPlaced,
 		long perchedAttacks,
-		long pursuitBarriers,
 		long waterDeployments,
 		long lavaDeployments,
 		long fluidRecoveries,

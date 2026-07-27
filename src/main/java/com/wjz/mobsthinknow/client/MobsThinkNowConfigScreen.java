@@ -162,15 +162,6 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.terrain_block_inventory_limit.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.terrainBlockInventoryLimit = value))
 			.build());
-		terrainCategory.addEntry(entries.startBooleanToggle(
-			Component.translatable("mobsthinknow.config.pursuit_barriers"),
-			config.pursuitBarriers
-		)
-			.setDefaultValue(true)
-			.setTooltip(Component.translatable("mobsthinknow.config.pursuit_barriers.tooltip"))
-			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.pursuitBarriers = value))
-			.build());
-
 		ConfigCategory armedCategory = builder.getOrCreateCategory(
 			Component.translatable("mobsthinknow.config.category.armed")
 		);

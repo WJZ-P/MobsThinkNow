@@ -4,7 +4,6 @@ import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.EnumSet;
-import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -12,8 +11,6 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.util.LandRandomPos;
 import net.minecraft.world.entity.monster.zombie.Zombie;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
@@ -37,9 +34,6 @@ public final class ReactiveRetreatGoal extends Goal {
 	private @Nullable Vec3 retreatDestination;
 	private long retreatDeadline;
 	private long nextPathUpdateAt;
-	private long nextBarrierAttemptAt;
-	private int barrierBlocksPlaced;
-	private boolean barrierIntent;
 
 	public ReactiveRetreatGoal(final Zombie zombie) {
 		this.zombie = zombie;
@@ -94,13 +88,6 @@ public final class ReactiveRetreatGoal extends Goal {
 		this.retreatDeadline = now + config.retreatMaximumTicks;
 		this.retreatDestination = null;
 		this.nextPathUpdateAt = now;
-		this.nextBarrierAttemptAt = now;
-		this.barrierBlocksPlaced = 0;
-		this.barrierIntent = shouldAttemptBarrier(
-			ZombieIntelligence.get(this.zombie),
-			config.terrainMinimumIntelligence,
-			this.zombie.getRandom().nextFloat()
-		);
 		this.zombie.getNavigation().stop();
 		this.zombie.stopUsingItem();
 		SmartZombieMetrics.retreatTriggered();
@@ -144,7 +131,6 @@ public final class ReactiveRetreatGoal extends Goal {
 		}
 
 		this.maintainSquadHeartbeat(config, now);
-		this.tryPlacePursuitBarrier(config, currentAttacker, now);
 		this.updateEscapePath(config, now);
 	}
 
@@ -155,8 +141,6 @@ public final class ReactiveRetreatGoal extends Goal {
 		this.attacker = null;
 		this.retreatDestination = null;
 		this.retreatDeadline = 0L;
-		this.barrierBlocksPlaced = 0;
-		this.barrierIntent = false;
 	}
 
 	@Override
@@ -237,59 +221,6 @@ public final class ReactiveRetreatGoal extends Goal {
 		}
 	}
 
-	/**
-	 * 玩家确实朝僵尸追来时才消耗隐藏库存，在二者之间尝试放一到两块墙；扫描范围为固定两个候选格，
-	 * 不查询附近全部实体。放置成功后立即重算逃跑路径，让导航绕开自己刚建的障碍。
-	 */
-	private void tryPlacePursuitBarrier(
-		final MobsThinkNowConfig config,
-		final LivingEntity currentAttacker,
-		final long now
-	) {
-		if (!this.barrierIntent
-			|| !config.terrainTactics
-			|| !config.pursuitBarriers
-			|| this.barrierBlocksPlaced >= ZombieTerrainTacticsGoal.PLAYER_BARRIER_RESERVE
-			|| now < this.nextBarrierAttemptAt
-			|| ZombieBuilderInventory.count(this.zombie) <= 0
-			|| !(currentAttacker instanceof Player player)
-			|| player.isCreative()
-			|| player.isSpectator()
-			|| !(this.zombie.level() instanceof ServerLevel level)
-			|| !level.getGameRules().get(GameRules.MOB_GRIEFING)
-			|| !isPursuing(player.position(), player.getDeltaMovement(), player.getLookAngle(), this.zombie.position())) {
-			return;
-		}
-
-		Vec3 towardPlayer = horizontalUnit(player.position().subtract(this.zombie.position()), player.getLookAngle());
-		for (double distance : new double[] {1.35, 1.85}) {
-			BlockPos bottom = BlockPos.containing(
-				this.zombie.getX() + towardPlayer.x * distance,
-				this.zombie.getY(),
-				this.zombie.getZ() + towardPlayer.z * distance
-			);
-			if (bottom.equals(this.zombie.blockPosition())
-				|| !ZombieBlockActions.tryPlaceStoredBlock(this.zombie, level, bottom)) {
-				continue;
-			}
-
-			this.barrierBlocksPlaced++;
-			SmartZombieMetrics.pursuitBarrierPlaced();
-			if (this.barrierBlocksPlaced < ZombieTerrainTacticsGoal.PLAYER_BARRIER_RESERVE
-				&& ZombieBuilderInventory.count(this.zombie) > 0
-				&& ZombieBlockActions.tryPlaceStoredBlock(this.zombie, level, bottom.above())) {
-				this.barrierBlocksPlaced++;
-				SmartZombieMetrics.pursuitBarrierPlaced();
-			}
-			this.zombie.getNavigation().stop();
-			this.retreatDestination = null;
-			this.nextPathUpdateAt = now + 1L;
-			this.nextBarrierAttemptAt = now + 20L;
-			return;
-		}
-		this.nextBarrierAttemptAt = now + 8L;
-	}
-
 	/** 撤退期间攻击 Goal 暂停，但小队成员仍要保活，避免 40 tick 后被协调器误判离队。 */
 	private void maintainSquadHeartbeat(final MobsThinkNowConfig config, final long now) {
 		if (!config.packSurrounding || !(this.zombie.level() instanceof ServerLevel serverLevel)) {
@@ -346,39 +277,6 @@ public final class ReactiveRetreatGoal extends Goal {
 		double x = zombiePosition.x - attackerPosition.x;
 		double z = zombiePosition.z - attackerPosition.z;
 		return x * x + z * z >= safeDistance * safeDistance;
-	}
-
-	static boolean shouldAttemptBarrier(final int intelligence, final int minimumIntelligence, final double roll) {
-		if (intelligence < minimumIntelligence) {
-			return false;
-		}
-		double chance = Math.min(0.75, 0.35 + (intelligence - minimumIntelligence) * 0.15);
-		return roll < chance;
-	}
-
-	static boolean isPursuing(
-		final Vec3 playerPosition,
-		final Vec3 playerMovement,
-		final Vec3 playerLook,
-		final Vec3 zombiePosition
-	) {
-		Vec3 toZombie = new Vec3(
-			zombiePosition.x - playerPosition.x,
-			0.0,
-			zombiePosition.z - playerPosition.z
-		);
-		double distanceSquared = toZombie.horizontalDistanceSqr();
-		if (distanceSquared < 1.5 * 1.5 || distanceSquared > 5.75 * 5.75) {
-			return false;
-		}
-		Vec3 direction = toZombie.normalize();
-		Vec3 movement = new Vec3(playerMovement.x, 0.0, playerMovement.z);
-		Vec3 look = new Vec3(playerLook.x, 0.0, playerLook.z);
-		boolean movingToward = movement.horizontalDistanceSqr() > 1.0E-4
-			&& movement.normalize().dot(direction) > 0.45;
-		boolean lookingToward = look.horizontalDistanceSqr() > 1.0E-6
-			&& look.normalize().dot(direction) > 0.72;
-		return movingToward || lookingToward;
 	}
 
 	private static Vec3 horizontalUnit(final Vec3 preferred, final Vec3 fallback) {

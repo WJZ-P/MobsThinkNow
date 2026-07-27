@@ -11,6 +11,7 @@ import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
@@ -178,6 +179,88 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 						+ ", health=" + zombie.getHealth()
 						+ ", zombie=" + zombie.position()
 						+ ", golem=" + golem.position()
+						+ ", stored=" + ZombieBuilderInventory.count(zombie)
+				);
+			}
+		});
+	}
+
+	@GameTest(maxTicks = 200)
+	public void smartZombieMinesAndPillarsTowardThreeBlockHighTarget(final GameTestHelper helper) {
+		for (int x = 0; x <= 9; x++) {
+			for (int z = 0; z <= 6; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+				for (int y = 2; y <= 9; y++) {
+					helper.setBlock(new BlockPos(x, y, z), Blocks.AIR);
+				}
+			}
+		}
+
+		BlockPos zombiePillarBase = new BlockPos(3, 2, 3);
+		BlockPos targetPillarBase = new BlockPos(5, 2, 3);
+		BlockPos[] harvestBlocks = {
+			new BlockPos(2, 2, 1),
+			new BlockPos(3, 2, 1),
+			new BlockPos(4, 2, 1)
+		};
+		for (BlockPos harvestBlock : harvestBlocks) {
+			helper.setBlock(harvestBlock, Blocks.DIRT);
+		}
+		for (int dy = 0; dy < 3; dy++) {
+			helper.setBlock(targetPillarBase.above(dy), Blocks.STONE);
+		}
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, zombiePillarBase);
+		Villager target = helper.spawn(EntityType.VILLAGER, targetPillarBase.above(3));
+		ZombieIntelligence.set(zombie, 10);
+		target.setNoAi(true);
+		target.setNoGravity(true);
+		zombie.setTarget(target);
+
+		ZombieTerrainTacticsGoal probe = new ZombieTerrainTacticsGoal(zombie);
+		helper.assertTrue(
+			probe.canUse(),
+			"A three-block-high non-golem target did not produce an elevation pillar plan: zombie="
+				+ zombie.position()
+				+ ", target=" + target.position()
+				+ ", required=" + ZombieTerrainTacticsGoal.requiredElevationPillarHeight(
+					zombie.getY(), target.getBoundingBox().minY, ZombieTerrainTacticsGoal.MAX_ELEVATION_PILLAR_HEIGHT
+				)
+				+ ", stored=" + ZombieBuilderInventory.count(zombie)
+		);
+		int[] previousPlaced = {0};
+		helper.onEachTick(() -> {
+			zombie.clearFire();
+			zombie.setTarget(target);
+			int placed = 0;
+			for (int dy = 0; dy < 3; dy++) {
+				if (helper.getBlockState(zombiePillarBase.above(dy)).is(Blocks.DIRT)) {
+					placed++;
+				}
+			}
+			helper.assertTrue(
+				placed - previousPlaced[0] <= 1,
+				"The zombie placed multiple elevation blocks in one tick instead of visibly jump-pillaring."
+			);
+			previousPlaced[0] = placed;
+
+			if (placed == 3 && Math.abs(zombie.getY() - target.getY()) < 0.35) {
+				helper.assertTrue(
+					ZombieBuilderInventory.count(zombie) == 0,
+					"The three elevation blocks were not consumed from the hidden inventory."
+				);
+				for (BlockPos harvestBlock : harvestBlocks) {
+					helper.assertTrue(
+						helper.getBlockState(harvestBlock).isAir(),
+						"The elevation tactic did not visibly mine all three planned building blocks."
+					);
+				}
+				helper.succeed();
+			}
+			if (zombie.tickCount == 180) {
+				helper.fail(
+					"Elevation pillar stalled: placed=" + placed
+						+ ", zombie=" + zombie.position()
+						+ ", target=" + target.position()
 						+ ", stored=" + ZombieBuilderInventory.count(zombie)
 				);
 			}

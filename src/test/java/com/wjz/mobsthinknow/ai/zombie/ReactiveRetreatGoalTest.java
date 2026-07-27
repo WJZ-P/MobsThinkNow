@@ -47,22 +47,4 @@ class ReactiveRetreatGoalTest {
 		assertTrue(ReactiveRetreatGoal.hasReachedSafeDistance(new Vec3(3.0, 20.0, 4.0), attacker, 5.0));
 	}
 
-	@Test
-	void onlyHighIntelligenceZombiesRollForPursuitBarriers() {
-		assertFalse(ReactiveRetreatGoal.shouldAttemptBarrier(7, 8, 0.0));
-		assertTrue(ReactiveRetreatGoal.shouldAttemptBarrier(8, 8, 0.34));
-		assertFalse(ReactiveRetreatGoal.shouldAttemptBarrier(8, 8, 0.35));
-		assertTrue(ReactiveRetreatGoal.shouldAttemptBarrier(10, 8, 0.64));
-	}
-
-	@Test
-	void pursuitDetectionAcceptsMovementOrViewTowardZombie() {
-		Vec3 player = Vec3.ZERO;
-		Vec3 zombie = new Vec3(0.0, 0.0, 4.0);
-
-		assertTrue(ReactiveRetreatGoal.isPursuing(player, new Vec3(0.0, 0.0, 0.2), Vec3.ZERO, zombie));
-		assertTrue(ReactiveRetreatGoal.isPursuing(player, Vec3.ZERO, new Vec3(0.0, 0.0, 1.0), zombie));
-		assertFalse(ReactiveRetreatGoal.isPursuing(player, new Vec3(0.0, 0.0, -0.2), new Vec3(0.0, 0.0, -1.0), zombie));
-		assertFalse(ReactiveRetreatGoal.isPursuing(player, new Vec3(0.0, 0.0, 0.2), Vec3.ZERO, new Vec3(0.0, 0.0, 8.0)));
-	}
 }

@@ -48,14 +48,12 @@ public final class MobsThinkNowConfig {
 	public boolean foodScavenging = true;
 	/** 具备觅食能力所需的最低智力；默认 6，属于中高智力区间。 */
 	public int foodMinimumIntelligence = DEFAULT_FOOD_MINIMUM_INTELLIGENCE;
-	/** 高智力僵尸是否可按需采集软方块，并针对铁傀儡搭建战斗立柱。 */
+	/** 高智力僵尸是否可按需采集软方块，并针对铁傀儡或高处目标搭建立柱。 */
 	public boolean terrainTactics = true;
 	/** 掌握采集和建造战术所需的最低智力；默认 8。 */
 	public int terrainMinimumIntelligence = DEFAULT_TERRAIN_MINIMUM_INTELLIGENCE;
 	/** 隐藏建筑材料槽的容量；每次只采集一块，死亡时会完整掉出。 */
 	public int terrainBlockInventoryLimit = DEFAULT_TERRAIN_BLOCK_INVENTORY_LIMIT;
-	/** 高智力僵尸撤退且玩家正在追击时，是否允许消耗已采集材料搭建至多两格高的阻挡。 */
-	public boolean pursuitBarriers = true;
 	/** 组队期间的全员移速加成（ADD_MULTIPLIED_TOTAL），离队自动移除，0 关闭。 */
 	public double squadSpeedBonus = 0.10;
 	/** 武装小队总开关。默认关闭：持械概率、兵种职位、破盾和包抄加速全部由它统一控制。 */

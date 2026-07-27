@@ -32,7 +32,7 @@ public final class MtnCommands {
 	private static int status(final CommandContext<CommandSourceStack> context) {
 		MobsThinkNowConfig config = ConfigManager.get();
 		SmartZombieMetrics.Snapshot metrics = SmartZombieMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, barriers=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d"
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -49,7 +49,6 @@ public final class MtnCommands {
 				metrics.terrainBlocksHarvested(),
 				metrics.terrainBlocksPlaced(),
 				metrics.perchedAttacks(),
-				metrics.pursuitBarriers(),
 				metrics.waterDeployments(),
 				metrics.lavaDeployments(),
 				metrics.fluidRecoveries(),

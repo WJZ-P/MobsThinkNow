@@ -36,7 +36,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * 高智力僵尸的受限地形战术状态机。
  *
- * <p>只在当前锁定铁傀儡或生存玩家时启动，避免僵尸为了普通巡逻无目的地改造地形。
+ * <p>只在当前锁定铁傀儡，或任意存活目标占据高处且原版地面路径确实不可达时启动，
+ * 避免僵尸为了普通巡逻、平地追击或可正常绕行的山坡无目的地改造地形。
  * 铁傀儡分支的完整流程为：</p>
  * <ol>
  *     <li>若内部材料不足三块，在五格内按近到远搜索泥土、沙、泥、沙砾或黏土；</li>
@@ -45,15 +46,15 @@ import org.jspecify.annotations.Nullable;
  *     <li>像玩家垫脚一样逐次起跳，仅在碰撞箱已经高于待放方块时放置；</li>
  *     <li>站上三格立柱后保持位置，以受冷却约束的俯身攻击打击下方目标。</li>
  * </ol>
- * 玩家分支只把材料补到两块，真正的追击挡墙由优先级 1 的 {@link ReactiveRetreatGoal}
- * 在确认玩家正在追赶时消费。
+ * 高处目标分支会选择目标附近的一格紧凑落点，按真实高差只采集所需材料，再像玩家一样
+ * 一次跳起、向脚下放置一格，直到与目标同高。撤退行为不会再放置任何方块。
  *
  * <p>所有扫描、寻路、方块修改和攻击都由服务器主线程执行。搜索只发生在启动或完成一次采集后，
  * 带实体 ID 错峰冷却，并限制原始方块检查和寻路候选数量；不存在邻近僵尸两两扫描。</p>
  */
 public final class ZombieTerrainTacticsGoal extends Goal {
 	static final int PILLAR_HEIGHT = 3;
-	static final int PLAYER_BARRIER_RESERVE = 2;
+	static final int MAX_ELEVATION_PILLAR_HEIGHT = 4;
 	private static final int MINIMUM_RETRY_DELAY_TICKS = 30;
 	private static final int RETRY_DELAY_VARIANCE_TICKS = 20;
 	private static final int ACTIVE_SETUP_TIMEOUT_TICKS = 500;
@@ -71,6 +72,10 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 	private static final double PERCHED_MAXIMUM_HORIZONTAL_DISTANCE_SQUARED = 6.0 * 6.0;
 	private static final double DOWNWARD_ATTACK_HORIZONTAL_DISTANCE_SQUARED = 3.25 * 3.25;
 	private static final double DOWNWARD_ATTACK_MAXIMUM_VERTICAL_DISTANCE = 4.5;
+	private static final double MINIMUM_ELEVATION_ADVANTAGE = 2.0;
+	private static final double ELEVATED_TARGET_TRIGGER_HORIZONTAL_DISTANCE_SQUARED = 6.0 * 6.0;
+	private static final double ELEVATION_PILLAR_MINIMUM_HORIZONTAL_DISTANCE_SQUARED = 1.15 * 1.15;
+	private static final double ELEVATION_PILLAR_MAXIMUM_HORIZONTAL_DISTANCE_SQUARED = 3.25 * 3.25;
 	private static final int[][] PILLAR_OFFSETS = {
 		{3, 0}, {-3, 0}, {0, 3}, {0, -3},
 		{2, 2}, {2, -2}, {-2, 2}, {-2, -2}
@@ -85,6 +90,8 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 	private @Nullable BlockPos pillarBase;
 	private @Nullable Path preparedPath;
 	private @Nullable BlockState pillarMaterial;
+	private PillarPurpose pillarPurpose = PillarPurpose.NONE;
+	private int pillarHeight;
 	private long nextAttemptAt;
 	private long setupDeadline;
 	private long nextPathRefreshAt;
@@ -122,29 +129,29 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 			+ this.zombie.getRandom().nextInt(RETRY_DELAY_VARIANCE_TICKS + 1);
 
 		LivingEntity currentTarget = this.zombie.getTarget();
-		boolean validGolem = currentTarget instanceof IronGolem;
-		boolean validPlayer = currentTarget instanceof Player player && !player.isCreative() && !player.isSpectator();
-		if ((!validGolem && !validPlayer)
-			|| currentTarget == null
-			|| !currentTarget.isAlive()
+		if (!isEligibleTarget(currentTarget)
 			|| this.zombie.distanceToSqr(currentTarget) > TARGET_MAXIMUM_DISTANCE_SQUARED) {
 			return false;
 		}
 		this.target = currentTarget;
 		this.clearPreparedAction();
 
-		int requiredMaterials = currentTarget instanceof IronGolem ? PILLAR_HEIGHT : PLAYER_BARRIER_RESERVE;
-		if (ZombieBuilderInventory.count(this.zombie) >= requiredMaterials) {
-			if (!(currentTarget instanceof IronGolem golem)) {
-				// 玩家战只预先储备两块，真正放置由更高优先级的撤退 Goal 在确认追击后触发。
+		PillarPlan plan = this.selectPillarPlan(level, currentTarget, config);
+		if (plan == null) {
+			// 保留原有“铁傀儡战先备料、材料齐后再找最终柱位”的容错；高处目标则必须先有紧凑柱位。
+			if (!(currentTarget instanceof IronGolem)
+				|| ZombieBuilderInventory.count(this.zombie) >= PILLAR_HEIGHT) {
 				return false;
 			}
-			PillarPlan plan = this.findReachablePillarBase(level, golem);
-			if (plan == null) {
-				return false;
+			this.pillarPurpose = PillarPurpose.GOLEM_PERCH;
+			this.pillarHeight = PILLAR_HEIGHT;
+		} else {
+			this.pillarPurpose = plan.purpose();
+			this.pillarHeight = plan.height();
+			if (ZombieBuilderInventory.count(this.zombie) >= plan.height()) {
+				this.preparePillar(plan);
+				return true;
 			}
-			this.preparePillar(plan);
-			return true;
 		}
 
 		HarvestPlan harvest = this.findReachableHarvest(level, config);
@@ -171,9 +178,25 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 			return false;
 		}
 		if (this.phase == Phase.PERCHED) {
-			return combatTarget instanceof IronGolem
+			return this.pillarPurpose == PillarPurpose.GOLEM_PERCH
+				&& combatTarget instanceof IronGolem
 				&& horizontalDistanceSquared(this.zombie.position(), combatTarget.position())
 				<= PERCHED_MAXIMUM_HORIZONTAL_DISTANCE_SQUARED;
+		}
+		if (this.pillarPurpose == PillarPurpose.ELEVATED_TARGET && this.pillarBase != null) {
+			boolean heightStillUseful = requiredElevationPillarHeight(
+				this.pillarBase.getY(),
+				combatTarget.getBoundingBox().minY,
+				MAX_ELEVATION_PILLAR_HEIGHT
+			) > 0;
+			boolean targetStillNearby = horizontalDistanceSquared(
+				Vec3.atBottomCenterOf(this.pillarBase),
+				combatTarget.position()
+			) <= ELEVATED_TARGET_TRIGGER_HORIZONTAL_DISTANCE_SQUARED;
+			if (!heightStillUseful || !targetStillNearby) {
+				// 目标主动跳下、被击落或远离柱位时，立即让 stop() 回收未完成立柱。
+				return false;
+			}
 		}
 		return level.getGameTime() < this.setupDeadline
 			&& this.zombie.distanceToSqr(combatTarget) <= TARGET_MAXIMUM_DISTANCE_SQUARED;
@@ -222,7 +245,7 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		this.zombie.setAggressive(false);
 
 		// 垫脚中途被更高优先级撤退打断时，立即回收自己刚放的半成品，避免地面留下大量一两格残柱。
-		if (this.placedBlocks > 0 && this.placedBlocks < PILLAR_HEIGHT) {
+		if (this.placedBlocks > 0 && this.placedBlocks < this.pillarHeight) {
 			this.reclaimPartialPillar();
 		}
 
@@ -232,6 +255,8 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		this.harvestStandPos = null;
 		this.preparedPath = null;
 		this.pillarMaterial = null;
+		this.pillarPurpose = PillarPurpose.NONE;
+		this.pillarHeight = 0;
 		this.placedBlocks = 0;
 		this.jumpRequested = false;
 		this.nextAttemptAt = Math.max(this.nextAttemptAt, this.zombie.level().getGameTime() + MINIMUM_RETRY_DELAY_TICKS);
@@ -332,16 +357,7 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 			this.lastBreakStage = stage;
 		}
 		if (this.breakTicks == 1 || this.breakTicks % 5 == 0) {
-			this.zombie.swing(InteractionHand.MAIN_HAND);
-			SoundType sound = state.getSoundType();
-			level.playSound(
-				null,
-				block,
-				sound.getHitSound(),
-				SoundSource.BLOCKS,
-				sound.getVolume() * 0.35F,
-				sound.getPitch() * 0.75F
-			);
+			this.playMiningFeedback(level, block, state);
 		}
 		if (this.breakTicks < this.breakDurationTicks) {
 			return;
@@ -350,6 +366,7 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		ItemStack result = ZombieBuilderInventory.harvestResult(state);
 		this.clearBreakProgress();
 		// 先验证槽位再破坏；服务器主线程内两步之间没有并发写入，因此不会出现方块消失而材料丢失。
+		// Level.destroyBlock 会广播 2001 原版破坏事件与 BLOCK_DESTROY，因此结束瞬间还有碎屑和破坏声。
 		if (ZombieBuilderInventory.canAccept(this.zombie, result, config.terrainBlockInventoryLimit)
 			&& level.destroyBlock(block, false, this.zombie, 512)) {
 			ZombieBuilderInventory.addOne(this.zombie, result, config.terrainBlockInventoryLimit);
@@ -360,21 +377,28 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 
 	private void selectNextAction(final ServerLevel level, final MobsThinkNowConfig config) {
 		LivingEntity combatTarget = this.target;
-		int requiredMaterials = combatTarget instanceof IronGolem ? PILLAR_HEIGHT : PLAYER_BARRIER_RESERVE;
-		if (ZombieBuilderInventory.count(this.zombie) >= requiredMaterials) {
-			if (!(combatTarget instanceof IronGolem golem)) {
-				this.phase = Phase.DONE;
-				return;
-			}
-			PillarPlan plan = this.findReachablePillarBase(level, golem);
-			if (plan == null) {
-				this.phase = Phase.DONE;
-				return;
-			}
-			this.preparePillar(plan);
-			this.phase = this.preparedPhase;
-			this.beginPreparedNavigation();
+		if (combatTarget == null) {
+			this.phase = Phase.DONE;
 			return;
+		}
+		PillarPlan plan = this.selectPillarPlan(level, combatTarget, config);
+		if (plan == null) {
+			if (!(combatTarget instanceof IronGolem)
+				|| ZombieBuilderInventory.count(this.zombie) >= PILLAR_HEIGHT) {
+				this.phase = Phase.DONE;
+				return;
+			}
+			this.pillarPurpose = PillarPurpose.GOLEM_PERCH;
+			this.pillarHeight = PILLAR_HEIGHT;
+		} else {
+			this.pillarPurpose = plan.purpose();
+			this.pillarHeight = plan.height();
+			if (ZombieBuilderInventory.count(this.zombie) >= plan.height()) {
+				this.preparePillar(plan);
+				this.phase = this.preparedPhase;
+				this.beginPreparedNavigation();
+				return;
+			}
 		}
 
 		HarvestPlan next = this.findReachableHarvest(level, config);
@@ -393,7 +417,7 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 	private void tickMovingToPillar() {
 		ServerLevel level = (ServerLevel)this.zombie.level();
 		BlockPos base = this.pillarBase;
-		if (base == null || !this.isClearPillarColumn(level, base)) {
+		if (base == null || this.pillarHeight <= 0 || !this.isClearPillarColumn(level, base, this.pillarHeight)) {
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -432,7 +456,7 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		ServerLevel level = (ServerLevel)this.zombie.level();
 		BlockPos base = this.pillarBase;
 		BlockState material = this.pillarMaterial;
-		if (base == null || material == null || material.isAir()) {
+		if (base == null || material == null || material.isAir() || this.pillarHeight <= 0) {
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -442,11 +466,16 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		}
 		this.centerOverPillar(base);
 
-		if (this.placedBlocks >= PILLAR_HEIGHT) {
-			if (this.zombie.onGround() && this.zombie.getY() >= base.getY() + PILLAR_HEIGHT - 0.15) {
-				this.phase = Phase.PERCHED;
-				this.nextPerchedAttackAt = level.getGameTime();
-				this.perchedTargetWaitDeadline = level.getGameTime() + PERCHED_TARGET_WAIT_TICKS;
+		if (this.placedBlocks >= this.pillarHeight) {
+			if (this.zombie.onGround() && this.zombie.getY() >= base.getY() + this.pillarHeight - 0.15) {
+				if (this.pillarPurpose == PillarPurpose.GOLEM_PERCH) {
+					this.phase = Phase.PERCHED;
+					this.nextPerchedAttackAt = level.getGameTime();
+					this.perchedTargetWaitDeadline = level.getGameTime() + PERCHED_TARGET_WAIT_TICKS;
+				} else {
+					// 已和高处目标站到同一战斗层；下一 tick 交还 MOVE/LOOK，让普通武器战斗接管。
+					this.phase = Phase.DONE;
+				}
 				this.jumpRequested = false;
 			}
 			return;
@@ -621,7 +650,107 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		return null;
 	}
 
-	private @Nullable PillarPlan findReachablePillarBase(final ServerLevel level, final IronGolem golem) {
+	/**
+	 * 先判断高差：只要目标在两格以上、水平距离足够近且原版路径真的到不了，就采用按实际高差
+	 * 计算的追高立柱；否则仅保留原有的铁傀儡三格俯击策略。这样自然山坡仍走导航，只有玩家
+	 * 垫柱等垂直障碍才触发方块改造。
+	 */
+	private @Nullable PillarPlan selectPillarPlan(
+		final ServerLevel level,
+		final LivingEntity combatTarget,
+		final MobsThinkNowConfig config
+	) {
+		int maximumElevationHeight = Math.min(MAX_ELEVATION_PILLAR_HEIGHT, config.terrainBlockInventoryLimit);
+		int elevationHeight = requiredElevationPillarHeight(
+			this.zombie.getY(),
+			combatTarget.getBoundingBox().minY,
+			maximumElevationHeight
+		);
+		if (elevationHeight > 0
+			&& horizontalDistanceSquared(this.zombie.position(), combatTarget.position())
+				<= ELEVATED_TARGET_TRIGGER_HORIZONTAL_DISTANCE_SQUARED
+			&& !this.hasReachableGroundPath(combatTarget)) {
+			PillarPlan elevationPlan = this.findReachableElevationPillarBase(
+				level,
+				combatTarget,
+				maximumElevationHeight
+			);
+			if (elevationPlan != null) {
+				return elevationPlan;
+			}
+		}
+
+		return combatTarget instanceof IronGolem golem
+			? this.findReachableGolemPillarBase(level, golem)
+			: null;
+	}
+
+	private boolean hasReachableGroundPath(final LivingEntity combatTarget) {
+		Path path = this.zombie.getNavigation().createPath(combatTarget, 0);
+		if (path == null || !path.canReach() || path.getEndNode() == null) {
+			return false;
+		}
+		// 高处实体的路径可能只“到达”柱脚附近；终点还需进入目标脚底下一格，才算真实的战斗层可达。
+		return path.getEndNode().y >= Math.floor(combatTarget.getBoundingBox().minY) - 1.0;
+	}
+
+	/**
+	 * 候选只覆盖僵尸脚边三格的固定 7x7 区域，并最多做八次寻路；这不是实体扫描，数量也不随
+	 * 附近僵尸数量增长。优先使用当前位置，只有当前位置离目标太远或柱体受阻时才走到邻格。
+	 */
+	private @Nullable PillarPlan findReachableElevationPillarBase(
+		final ServerLevel level,
+		final LivingEntity combatTarget,
+		final int maximumHeight
+	) {
+		List<BlockPos> candidates = new ArrayList<>();
+		BlockPos zombieFeet = this.zombie.blockPosition();
+		for (int radius = 0; radius <= 3; radius++) {
+			for (int dz = -radius; dz <= radius; dz++) {
+				for (int dx = -radius; dx <= radius; dx++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
+						continue;
+					}
+					for (int yOffset : new int[] {0, -1, 1}) {
+						candidates.add(zombieFeet.offset(dx, yOffset, dz).immutable());
+					}
+				}
+			}
+		}
+		candidates.sort(
+			Comparator.comparingDouble((BlockPos pos) -> Vec3.atBottomCenterOf(pos).distanceToSqr(this.zombie.position()))
+				.thenComparingLong(BlockPos::asLong)
+		);
+
+		int pathChecks = 0;
+		for (BlockPos base : candidates) {
+			int height = requiredElevationPillarHeight(
+				base.getY(),
+				combatTarget.getBoundingBox().minY,
+				maximumHeight
+			);
+			if (height == 0
+				|| !isElevationPillarDistanceUseful(base, combatTarget)
+				|| !this.isClearPillarColumn(level, base, height)) {
+				continue;
+			}
+			if (horizontalDistanceSquared(this.zombie.position(), Vec3.atBottomCenterOf(base))
+				<= PILLAR_CENTER_REACHED_SQUARED
+				&& Math.abs(this.zombie.getY() - base.getY()) <= 0.35) {
+				return new PillarPlan(base, null, height, PillarPurpose.ELEVATED_TARGET);
+			}
+			if (pathChecks++ >= MAXIMUM_PILLAR_PATH_CHECKS) {
+				break;
+			}
+			Path path = this.zombie.getNavigation().createPath(base, 0);
+			if (path != null && path.canReach()) {
+				return new PillarPlan(base, path, height, PillarPurpose.ELEVATED_TARGET);
+			}
+		}
+		return null;
+	}
+
+	private @Nullable PillarPlan findReachableGolemPillarBase(final ServerLevel level, final IronGolem golem) {
 		List<BlockPos> candidates = new ArrayList<>();
 		BlockPos zombieFeet = this.zombie.blockPosition();
 		if (isPillarDistanceUseful(zombieFeet, golem)) {
@@ -643,31 +772,31 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		for (BlockPos base : candidates) {
 			if (!isPillarDistanceUseful(base, golem)
 				|| !isPillarHeightSafe(base, golem)
-				|| !this.isClearPillarColumn(level, base)) {
+				|| !this.isClearPillarColumn(level, base, PILLAR_HEIGHT)) {
 				continue;
 			}
 			if (horizontalDistanceSquared(this.zombie.position(), Vec3.atBottomCenterOf(base))
 				<= PILLAR_CENTER_REACHED_SQUARED
 				&& Math.abs(this.zombie.getY() - base.getY()) <= 0.35) {
-				return new PillarPlan(base, null);
+				return new PillarPlan(base, null, PILLAR_HEIGHT, PillarPurpose.GOLEM_PERCH);
 			}
 			if (pathChecks++ >= MAXIMUM_PILLAR_PATH_CHECKS) {
 				break;
 			}
 			Path path = this.zombie.getNavigation().createPath(base, 0);
 			if (path != null && path.canReach()) {
-				return new PillarPlan(base, path);
+				return new PillarPlan(base, path, PILLAR_HEIGHT, PillarPurpose.GOLEM_PERCH);
 			}
 		}
 		return null;
 	}
 
-	private boolean isClearPillarColumn(final ServerLevel level, final BlockPos base) {
+	private boolean isClearPillarColumn(final ServerLevel level, final BlockPos base, final int height) {
 		BlockState foundation = level.getBlockState(base.below());
 		if (!foundation.isCollisionShapeFullBlock(level, base.below())) {
 			return false;
 		}
-		for (int dy = 0; dy <= PILLAR_HEIGHT + 2; dy++) {
+		for (int dy = 0; dy <= height + 2; dy++) {
 			if (!canReplaceForPillar(level, base.above(dy))) {
 				return false;
 			}
@@ -678,7 +807,7 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 			base.getY(),
 			base.getZ(),
 			base.getX() + 1.0,
-			base.getY() + PILLAR_HEIGHT + 2.0,
+			base.getY() + height + 2.0,
 			base.getZ() + 1.0
 		).deflate(0.02);
 		return level.getEntitiesOfClass(
@@ -738,6 +867,8 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 	private void preparePillar(final PillarPlan plan) {
 		this.pillarBase = plan.base();
 		this.preparedPath = plan.path();
+		this.pillarHeight = plan.height();
+		this.pillarPurpose = plan.purpose();
 		this.preparedPhase = plan.path() == null ? Phase.PILLARING : Phase.MOVING_TO_PILLAR;
 		this.pillarMaterial = ZombieBuilderInventory.placementState(this.zombie);
 	}
@@ -756,6 +887,8 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		this.pillarBase = null;
 		this.preparedPath = null;
 		this.pillarMaterial = null;
+		this.pillarPurpose = PillarPurpose.NONE;
+		this.pillarHeight = 0;
 	}
 
 	private void clearBreakProgress() {
@@ -779,6 +912,21 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		);
 	}
 
+	/** 每五 tick 同步一次挥臂、方块命中声和裂纹进度，让采集过程而非只有结果可被玩家读懂。 */
+	private void playMiningFeedback(final ServerLevel level, final BlockPos pos, final BlockState state) {
+		this.zombie.swing(InteractionHand.MAIN_HAND);
+		SoundType sound = state.getSoundType();
+		level.playSound(
+			null,
+			pos,
+			sound.getHitSound(),
+			SoundSource.BLOCKS,
+			sound.getVolume() * 0.35F,
+			sound.getPitch() * 0.75F
+		);
+	}
+
+	/** 一格只播放一次挥臂、材质放置声和方块事件；服务器会把三种反馈同步给附近客户端。 */
 	private void playPlacementFeedback(final ServerLevel level, final BlockPos pos, final BlockState state) {
 		SoundType sound = state.getSoundType();
 		level.playSound(
@@ -794,10 +942,12 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 	}
 
 	private boolean isStandingOnCompletePillar(final ServerLevel level, final BlockPos base) {
-		if (!this.zombie.onGround() || this.zombie.getY() < base.getY() + PILLAR_HEIGHT - 0.20) {
+		if (this.pillarHeight <= 0
+			|| !this.zombie.onGround()
+			|| this.zombie.getY() < base.getY() + this.pillarHeight - 0.20) {
 			return false;
 		}
-		for (int dy = 0; dy < PILLAR_HEIGHT; dy++) {
+		for (int dy = 0; dy < this.pillarHeight; dy++) {
 			if (!level.getBlockState(base.above(dy)).isCollisionShapeFullBlock(level, base.above(dy))) {
 				return false;
 			}
@@ -842,6 +992,37 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 			&& ZombieIntelligence.get(zombie) >= config.terrainMinimumIntelligence;
 	}
 
+	static boolean isEligibleTarget(final @Nullable LivingEntity target) {
+		return target != null
+			&& target.isAlive()
+			&& (!(target instanceof Player player) || (!player.isCreative() && !player.isSpectator()));
+	}
+
+	/**
+	 * 目标脚底高出柱基至少两格才值得建造；高度按整格向上取整，且超过受控上限时整项放弃，
+	 * 避免用连续短柱追逐极端高空目标。
+	 */
+	static int requiredElevationPillarHeight(
+		final double baseY,
+		final double targetFeetY,
+		final int maximumHeight
+	) {
+		double elevation = targetFeetY - baseY;
+		if (maximumHeight <= 0 || elevation + 1.0E-3 < MINIMUM_ELEVATION_ADVANTAGE) {
+			return 0;
+		}
+		int required = (int)Math.ceil(elevation - 1.0E-3);
+		return required <= maximumHeight ? required : 0;
+	}
+
+	static boolean isElevationPillarDistanceUseful(final BlockPos base, final LivingEntity target) {
+		double x = base.getX() + 0.5 - target.getX();
+		double z = base.getZ() + 0.5 - target.getZ();
+		double squared = x * x + z * z;
+		return squared >= ELEVATION_PILLAR_MINIMUM_HORIZONTAL_DISTANCE_SQUARED
+			&& squared <= ELEVATION_PILLAR_MAXIMUM_HORIZONTAL_DISTANCE_SQUARED;
+	}
+
 	static boolean isPillarDistanceUseful(final BlockPos base, final LivingEntity target) {
 		double x = base.getX() + 0.5 - target.getX();
 		double z = base.getZ() + 0.5 - target.getZ();
@@ -883,9 +1064,15 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		DONE
 	}
 
+	private enum PillarPurpose {
+		NONE,
+		GOLEM_PERCH,
+		ELEVATED_TARGET
+	}
+
 	private record HarvestPlan(BlockPos block, BlockPos stand, @Nullable Path path) {
 	}
 
-	private record PillarPlan(BlockPos base, @Nullable Path path) {
+	private record PillarPlan(BlockPos base, @Nullable Path path, int height, PillarPurpose purpose) {
 	}
 }

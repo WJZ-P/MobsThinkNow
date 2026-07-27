@@ -69,7 +69,6 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.terrainTactics);
 		assertEquals(8, config.terrainMinimumIntelligence);
 		assertEquals(8, config.terrainBlockInventoryLimit);
-		assertEquals(true, config.pursuitBarriers);
 		assertEquals(0.10, config.squadSpeedBonus);
 		assertEquals(0.85, config.armedChanceHard);
 		assertEquals(0.25, config.armedShieldChance);
