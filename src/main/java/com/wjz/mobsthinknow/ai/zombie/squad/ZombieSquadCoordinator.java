@@ -122,9 +122,10 @@ public final class ZombieSquadCoordinator {
 	 * 真实受击事件触发的有界求援广播。只遍历受害者所在小队（默认最多 20），且只给水桶辅助兵写信号；
 	 * 不在每 tick 做邻居查询，因此不会形成“每只僵尸扫描每只僵尸”的 N² 热点。
 	 */
-	public static void onSquadMemberAttacked(final Zombie victim, final Player attacker) {
+	public static void onSquadMemberAttacked(final Zombie victim, final LivingEntity attacker) {
 		if (!(victim.level() instanceof ServerLevel serverLevel)
-			|| !attacker.isAlive() || attacker.isCreative() || attacker.isSpectator()) {
+			|| !attacker.isAlive()
+			|| (attacker instanceof Player player && (player.isCreative() || player.isSpectator()))) {
 			return;
 		}
 

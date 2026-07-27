@@ -20,6 +20,7 @@ public final class ZombieSpecialEquipment {
 	private static final String SOURCE_TAG = "MobsThinkNowFluidSource";
 	private static final String RETRIEVE_AT_TAG = "MobsThinkNowFluidRetrieveAt";
 	private static final String COOLDOWN_UNTIL_TAG = "MobsThinkNowFluidCooldownUntil";
+	private static final String PURPOSE_TAG = "MobsThinkNowFluidPurpose";
 
 	private ZombieSpecialEquipment() {
 	}
@@ -90,7 +91,31 @@ public final class ZombieSpecialEquipment {
 	) {
 		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BUCKET));
 		stateAccess(zombie).mobsthinknow$setFluidCarrierState(
-			new ZombieFluidCarrierState(utility, source.immutable(), retrieveAt, 0L)
+			new ZombieFluidCarrierState(
+				utility,
+				source.immutable(),
+				retrieveAt,
+				0L,
+				FluidDeploymentPurpose.COMBAT
+			)
+		);
+	}
+
+	/** 日光自救水会保留来源标记，避免随后把回收任务误当作战斗支援。 */
+	public static void markSunProtectionDeployed(
+		final Zombie zombie,
+		final BlockPos source,
+		final long retrieveAt
+	) {
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BUCKET));
+		stateAccess(zombie).mobsthinknow$setFluidCarrierState(
+			new ZombieFluidCarrierState(
+				UtilityClass.WATER,
+				source.immutable(),
+				retrieveAt,
+				0L,
+				FluidDeploymentPurpose.SUN_PROTECTION
+			)
 		);
 	}
 
@@ -122,6 +147,7 @@ public final class ZombieSpecialEquipment {
 		}
 		output.putLong(RETRIEVE_AT_TAG, state.retrieveAt());
 		output.putLong(COOLDOWN_UNTIL_TAG, state.cooldownUntil());
+		output.putByte(PURPOSE_TAG, (byte)state.purpose().ordinal());
 	}
 
 	public static void load(final Zombie zombie, final ValueInput input) {
@@ -131,7 +157,8 @@ public final class ZombieSpecialEquipment {
 			savedUtility,
 			source,
 			input.getLongOr(RETRIEVE_AT_TAG, 0L),
-			input.getLongOr(COOLDOWN_UNTIL_TAG, 0L)
+			input.getLongOr(COOLDOWN_UNTIL_TAG, 0L),
+			FluidDeploymentPurpose.fromId(input.getByteOr(PURPOSE_TAG, (byte)0))
 		);
 
 		ItemStack hand = zombie.getMainHandItem();

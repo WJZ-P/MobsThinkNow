@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
@@ -21,8 +22,8 @@ public final class ZombieFluidThreatMemory {
 	private ZombieFluidThreatMemory() {
 	}
 
-	public static void record(final Zombie helper, final Player attacker, final Vec3 defendedPosition) {
-		if (!helper.isAlive() || !attacker.isAlive() || attacker.isCreative() || attacker.isSpectator()) {
+	public static void record(final Zombie helper, final LivingEntity attacker, final Vec3 defendedPosition) {
+		if (!helper.isAlive() || !isUsableThreat(attacker)) {
 			return;
 		}
 		ALERTS.put(helper, new Alert(
@@ -37,9 +38,7 @@ public final class ZombieFluidThreatMemory {
 		Alert alert = ALERTS.remove(helper);
 		if (alert == null
 			|| helper.level().getGameTime() > alert.expiresAt()
-			|| !alert.attacker().isAlive()
-			|| alert.attacker().isCreative()
-			|| alert.attacker().isSpectator()) {
+			|| !isUsableThreat(alert.attacker())) {
 			return null;
 		}
 		return alert;
@@ -57,6 +56,11 @@ public final class ZombieFluidThreatMemory {
 		ALERTS.keySet().removeIf(zombie -> zombie.level() == level);
 	}
 
-	public record Alert(Player attacker, Vec3 defendedPosition, long expiresAt) {
+	private static boolean isUsableThreat(final LivingEntity attacker) {
+		return attacker.isAlive()
+			&& (!(attacker instanceof Player player) || (!player.isCreative() && !player.isSpectator()));
+	}
+
+	public record Alert(LivingEntity attacker, Vec3 defendedPosition, long expiresAt) {
 	}
 }

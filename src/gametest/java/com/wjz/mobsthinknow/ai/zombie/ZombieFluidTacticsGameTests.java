@@ -7,19 +7,150 @@ import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.tags.FluidTags;
-import net.minecraft.world.level.GameType;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 /** 真实流体源、BucketPickup 与实体持久状态共同参与的集成测试。 */
 public final class ZombieFluidTacticsGameTests implements CustomTestMethodInvoker {
+	@GameTest(maxTicks = 80)
+	public void installedGoalDeploysLavaAgainstIronGolemTarget(final GameTestHelper helper) {
+		BlockPos targetFeet = new BlockPos(4, 1, 2);
+		helper.setBlock(targetFeet.below(), Blocks.STONE);
+		helper.setBlock(targetFeet, Blocks.AIR);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		IronGolem target = helper.spawn(EntityType.IRON_GOLEM, targetFeet);
+		zombie.clearFire();
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.LAVA_BUCKET));
+		((ZombieFluidCarrierAccess)zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.LAVA, null, 0L, 0L
+		));
+		target.setNoAi(true);
+		zombie.setTarget(target);
+		ZombieFluidTacticsGoal probe = new ZombieFluidTacticsGoal(zombie);
+		helper.assertTrue(
+			probe.canUse(),
+			"A full lava carrier did not recognize its iron-golem target before GoalSelector scheduling."
+		);
+
+		helper.onEachTick(() -> {
+			zombie.clearFire();
+			zombie.setTarget(target);
+			ZombieFluidCarrierState state = ZombieSpecialEquipment.state(zombie);
+			if (!state.isDeployed()) {
+				return;
+			}
+			helper.assertTrue(
+				helper.getLevel().getFluidState(state.source()).is(FluidTags.LAVA),
+				"The installed GoalSelector did not place lava against an iron-golem target."
+			);
+			helper.assertTrue(
+				zombie.swinging && zombie.swingingArm == InteractionHand.MAIN_HAND,
+				"The lava carrier placed fluid without its visible bucket-use animation."
+			);
+			helper.succeed();
+		});
+	}
+
+	@GameTest(maxTicks = 80)
+	public void lavaCarrierSkipsOccupiedFeetAndUsesAdjacentCandidate(final GameTestHelper helper) {
+		BlockPos targetFeet = new BlockPos(4, 1, 2);
+		helper.setBlock(targetFeet.below(), Blocks.STONE);
+		helper.setBlock(targetFeet, Blocks.AIR);
+		Zombie carrier = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		Zombie friendly = helper.spawn(EntityType.ZOMBIE, targetFeet);
+		Villager target = helper.spawn(EntityType.VILLAGER, targetFeet);
+		carrier.clearFire();
+		carrier.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
+		carrier.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.LAVA_BUCKET));
+		((ZombieFluidCarrierAccess)carrier).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.LAVA, null, 0L, 0L
+		));
+		friendly.setNoAi(true);
+		friendly.clearFire();
+		target.setNoAi(true);
+		carrier.setTarget(target);
+
+		helper.onEachTick(() -> {
+			carrier.clearFire();
+			friendly.clearFire();
+			carrier.setTarget(target);
+			ZombieFluidCarrierState state = ZombieSpecialEquipment.state(carrier);
+			if (!state.isDeployed()) {
+				return;
+			}
+			helper.assertTrue(
+				!targetFeet.equals(helper.relativePos(state.source())),
+				"The lava carrier poured directly into a friendly zombie instead of trying an adjacent cell."
+			);
+			helper.assertTrue(
+				helper.getLevel().getFluidState(state.source()).is(FluidTags.LAVA),
+				"The adjacent fallback did not create a lava source."
+			);
+			helper.succeed();
+		});
+	}
+
+	@GameTest(maxTicks = 80)
+	public void nonPlayerAttackEventOrdersWaterSupportToDeploy(final GameTestHelper helper) {
+		BlockPos attackerFeet = new BlockPos(4, 1, 2);
+		helper.setBlock(attackerFeet.below(), Blocks.STONE);
+		helper.setBlock(attackerFeet, Blocks.AIR);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		Villager attacker = helper.spawn(EntityType.VILLAGER, attackerFeet);
+		boolean[] damageApplied = {false};
+		zombie.clearFire();
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.WATER_BUCKET));
+		((ZombieFluidCarrierAccess)zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.WATER, null, 0L, 0L
+		));
+		attacker.setNoAi(true);
+		attacker.setInvulnerable(true);
+		zombie.setTarget(attacker);
+
+		helper.onEachTick(() -> {
+			zombie.clearFire();
+			zombie.setTarget(attacker);
+			if (!damageApplied[0] && zombie.tickCount >= 2) {
+				zombie.invulnerableTime = 0;
+				boolean hurt = zombie.hurtServer(
+					helper.getLevel(),
+					zombie.damageSources().mobAttack(attacker),
+					1.0F
+				);
+				helper.assertTrue(hurt, "The non-player fluid-support test attack was not applied.");
+				damageApplied[0] = true;
+			}
+
+			ZombieFluidCarrierState state = ZombieSpecialEquipment.state(zombie);
+			if (!state.isDeployed()) {
+				return;
+			}
+			helper.assertTrue(damageApplied[0], "Water deployed before the teammate/self attack alert.");
+			helper.assertTrue(
+				helper.getLevel().getFluidState(state.source()).is(FluidTags.WATER),
+				"The water support alert did not produce a real water source."
+			);
+			helper.assertTrue(
+				zombie.swinging && zombie.swingingArm == InteractionHand.MAIN_HAND,
+				"The water carrier placed fluid without its visible bucket-use animation."
+			);
+			helper.succeed();
+		});
+	}
+
 	@GameTest
 	public void lavaCarrierDeploysAtPlayerFeetThenRecoversAndDisengages(final GameTestHelper helper) {
 		BlockPos playerFeet = new BlockPos(4, 1, 2);

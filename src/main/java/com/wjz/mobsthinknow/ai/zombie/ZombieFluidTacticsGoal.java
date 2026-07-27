@@ -30,8 +30,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * 水桶辅助兵与岩浆骚扰兵的完整“投放—拉开—回收—冷却”状态机。
  *
- * <p>水桶兵在没有求援时保持支援距离；自己或队友被玩家攻击后才把水放到追击路径上。岩浆兵则主动
- * 接近到合法交互距离，把岩浆放到玩家脚下，短暂拉开后回收。源方块由实体 NBT 记录：保存/重载不会
+ * <p>水桶兵在没有求援时保持支援距离；自己或队友被合法战斗目标攻击后才把水放到追击路径上。岩浆兵则主动
+ * 接近到合法交互距离，把岩浆放到当前目标脚下或相邻安全格，短暂拉开后回收。源方块由实体 NBT 记录：保存/重载不会
  * 遗忘；若玩家提前收走或堵掉流体，僵尸真实保留空桶并立即降级成普通近战。</p>
  */
 public final class ZombieFluidTacticsGoal extends Goal {
@@ -50,7 +50,7 @@ public final class ZombieFluidTacticsGoal extends Goal {
 	private final Zombie zombie;
 	private Phase phase = Phase.IDLE;
 	private UtilityClass utility = UtilityClass.NONE;
-	private @Nullable Player threat;
+	private @Nullable LivingEntity threat;
 	private @Nullable Vec3 defendedPosition;
 	private long nextPathAt;
 	private long disengageUntil;
@@ -68,6 +68,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 
 		ZombieFluidCarrierState state = ZombieSpecialEquipment.state(this.zombie);
 		if (state.isDeployed()) {
+			if (!this.shouldResumeDeployedTransaction(level, state)) {
+				return false;
+			}
 			// 配置被热关闭时仍完成已经开始的回收事务，避免世界中遗留无限流体源。
 			this.utility = state.utility();
 			this.captureThreat();
@@ -94,11 +97,11 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		}
 		ZombieFluidCarrierState state = ZombieSpecialEquipment.state(this.zombie);
 		if (state.isDeployed()) {
-			return true;
+			return this.shouldResumeDeployedTransaction((ServerLevel)this.zombie.level(), state);
 		}
 		return isEnabled(ConfigManager.get())
 			&& ZombieSpecialEquipment.hasFullBucket(this.zombie, this.utility)
-			&& (this.threat != null || this.currentPlayerTarget() != null)
+			&& (this.threat != null || this.currentCombatTarget() != null)
 			&& this.phase != Phase.DONE;
 	}
 
@@ -139,12 +142,12 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		}
 		this.phase = Phase.STAGING;
 
-		Player player = this.resolveThreat();
-		if (player == null) {
+		LivingEntity target = this.resolveThreat();
+		if (target == null) {
 			this.phase = Phase.DONE;
 			return;
 		}
-		this.zombie.getLookControl().setLookAt(player, 30.0F, 30.0F);
+		this.zombie.getLookControl().setLookAt(target, 30.0F, 30.0F);
 
 		boolean hasAttackAlert = this.defendedPosition != null;
 		boolean shouldDeploy = this.utility == UtilityClass.LAVA || hasAttackAlert;
@@ -152,7 +155,7 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			.getGameRules()
 			.get(GameRules.MOB_GRIEFING);
 		if (shouldDeploy && mayModifyTerrain && now >= state.cooldownUntil()) {
-			BlockPos placement = this.findPlacement(player);
+			BlockPos placement = this.findPlacement(target);
 			if (placement != null) {
 				if (Vec3.atCenterOf(placement).distanceToSqr(this.zombie.getEyePosition()) <= BUCKET_REACH_SQUARED) {
 					if (this.tryDeploy((ServerLevel)this.zombie.level(), placement, now)) {
@@ -166,7 +169,7 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		}
 
 		// 满桶但尚无投放窗口：水桶兵不贴脸，岩浆兵在冷却期也保持骚扰距离。
-		this.maintainSupportDistance(player, now);
+		this.maintainSupportDistance(target, now);
 	}
 
 	@Override
@@ -193,7 +196,7 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			return;
 		}
 		if (this.threat == null || !isUsableTarget(this.threat)) {
-			this.threat = this.currentPlayerTarget();
+			this.threat = this.currentCombatTarget();
 			this.defendedPosition = null;
 		}
 	}
@@ -222,18 +225,18 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		);
 	}
 
-	private @Nullable Player resolveThreat() {
+	private @Nullable LivingEntity resolveThreat() {
 		if (isUsableTarget(this.threat)) {
 			return this.threat;
 		}
-		this.threat = this.currentPlayerTarget();
+		this.threat = this.currentCombatTarget();
 		this.defendedPosition = null;
 		return this.threat;
 	}
 
-	private @Nullable Player currentPlayerTarget() {
+	private @Nullable LivingEntity currentCombatTarget() {
 		LivingEntity target = this.zombie.getTarget();
-		return target instanceof Player player && isUsableTarget(player) ? player : null;
+		return isUsableTarget(target) ? target : null;
 	}
 
 	private void tickDeployed(final ZombieFluidCarrierState state) {
@@ -297,7 +300,7 @@ public final class ZombieFluidTacticsGoal extends Goal {
 	}
 
 	private boolean tryDeploy(final ServerLevel level, final BlockPos placement, final long now) {
-		if (this.utility == UtilityClass.LAVA && hasFriendlyAt(level, placement, this.zombie)) {
+		if (this.utility == UtilityClass.LAVA && hasFriendlyOccupying(level, placement, this.zombie)) {
 			return false;
 		}
 		ItemStack held = this.zombie.getMainHandItem();
@@ -305,6 +308,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			|| !bucketItem.emptyContents(this.zombie, level, placement, null)) {
 			return false;
 		}
+		// BucketItem.emptyContents 负责播放与内容对应的原版声效：水桶为 BUCKET_EMPTY，岩浆桶为
+		// BUCKET_EMPTY_LAVA，同时广播 FLUID_PLACE。这里再同步主手挥动，让玩家能读出使用动作。
+		this.zombie.swing(InteractionHand.MAIN_HAND);
 
 		int holdTicks = this.utility == UtilityClass.WATER
 			? WATER_HOLD_TICKS + Math.floorMod(this.zombie.getId(), 16)
@@ -319,21 +325,36 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		return true;
 	}
 
-	private @Nullable BlockPos findPlacement(final Player player) {
+	private @Nullable BlockPos findPlacement(final LivingEntity target) {
 		ServerLevel level = (ServerLevel)this.zombie.level();
-		BlockPos feet = player.blockPosition();
+		BlockPos feet = target.blockPosition();
 		BlockPos towardDefender = feet;
 		if (this.utility == UtilityClass.WATER && this.defendedPosition != null) {
-			Vec3 direction = horizontalUnit(this.defendedPosition.subtract(player.position()), this.zombie.position().subtract(player.position()));
-			towardDefender = BlockPos.containing(player.position().add(direction.scale(1.15)));
+			Vec3 direction = horizontalUnit(
+				this.defendedPosition.subtract(target.position()),
+				this.zombie.position().subtract(target.position())
+			);
+			towardDefender = BlockPos.containing(target.position().add(direction.scale(1.15)));
 		}
 
+		Direction towardCarrier = horizontalDirection(target, this.zombie.position());
 		BlockPos[] candidates = this.utility == UtilityClass.WATER
-			? new BlockPos[] {towardDefender, feet, feet.relative(horizontalDirection(player, this.zombie.position()))}
-			: new BlockPos[] {feet, feet.relative(horizontalDirection(player, this.zombie.position()))};
+			? new BlockPos[] {towardDefender, feet, feet.relative(towardCarrier)}
+			: new BlockPos[] {
+				feet,
+				feet.relative(towardCarrier),
+				feet.relative(towardCarrier.getClockWise()),
+				feet.relative(towardCarrier.getCounterClockWise()),
+				feet.relative(towardCarrier.getOpposite())
+			};
 		for (BlockPos candidate : candidates) {
 			BlockState state = level.getBlockState(candidate);
-			if ((state.isAir() || state.canBeReplaced()) && state.getFluidState().isEmpty() && !state.hasBlockEntity()) {
+			boolean safeForSquad = this.utility != UtilityClass.LAVA
+				|| !hasFriendlyOccupying(level, candidate, this.zombie);
+			if (safeForSquad
+				&& (state.isAir() || state.canBeReplaced())
+				&& state.getFluidState().isEmpty()
+				&& !state.hasBlockEntity()) {
 				return candidate.immutable();
 			}
 		}
@@ -354,14 +375,14 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		this.nextPathAt = now + PATH_REFRESH_TICKS;
 	}
 
-	private void maintainSupportDistance(final Player player, final long now) {
-		double distance = horizontalDistanceSquared(this.zombie.position(), player.position());
+	private void maintainSupportDistance(final LivingEntity target, final long now) {
+		double distance = horizontalDistanceSquared(this.zombie.position(), target.position());
 		if (distance < SUPPORT_MINIMUM_DISTANCE_SQUARED) {
-			this.moveAwayFrom(player.position(), SUPPORT_SPEED);
+			this.moveAwayFrom(target.position(), SUPPORT_SPEED);
 			return;
 		}
 		if (distance > SUPPORT_MAXIMUM_DISTANCE_SQUARED && now >= this.nextPathAt) {
-			this.zombie.getNavigation().moveTo(player, SUPPORT_SPEED);
+			this.zombie.getNavigation().moveTo(target, SUPPORT_SPEED);
 			this.nextPathAt = now + PATH_REFRESH_TICKS;
 			return;
 		}
@@ -371,8 +392,8 @@ public final class ZombieFluidTacticsGoal extends Goal {
 	}
 
 	private void moveAwayFromThreat(final double speed) {
-		Player player = this.resolveThreat();
-		Vec3 danger = player == null ? this.defendedPosition : player.position();
+		LivingEntity target = this.resolveThreat();
+		Vec3 danger = target == null ? this.defendedPosition : target.position();
 		if (danger != null) {
 			this.moveAwayFrom(danger, speed);
 		}
@@ -408,8 +429,33 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			: utility == UtilityClass.LAVA && stack.is(Items.LAVA_BUCKET);
 	}
 
-	private static boolean hasFriendlyAt(final ServerLevel level, final BlockPos pos, final Zombie source) {
-		AABB danger = new AABB(pos).inflate(1.25, 0.75, 1.25);
+	/**
+	 * 日光自救水不能在正午立刻把已经躲进阴影的僵尸重新拖回露天水源；等待夜晚、下雨或水源被
+	 * 遮住后再回收。若刚受生物攻击，同样立即让出 MOVE/LOOK，让战斗或撤退 Goal 接管。
+	 */
+	private boolean shouldResumeDeployedTransaction(
+		final ServerLevel level,
+		final ZombieFluidCarrierState state
+	) {
+		if (!state.isSunProtection()) {
+			return true;
+		}
+		// 日光自救的所有后续事务都服从“近期受击时战斗优先”，包括源被玩家拿走后的清理。
+		if (ZombieCombatUrgency.wasRecentlyAttacked(this.zombie)) {
+			return false;
+		}
+		BlockPos source = state.source();
+		if (source == null || !isMatchingSource(level, source, state.utility())) {
+			// 丢失的源仍要启动一拍完成状态清理，不能留下永久空桶事务。
+			return true;
+		}
+		return !ZombieSunlightRules.isDangerousSource(this.zombie, level, source);
+	}
+
+	private static boolean hasFriendlyOccupying(final ServerLevel level, final BlockPos pos, final Zombie source) {
+		// 只阻止把岩浆直接倒进队友碰撞箱。旧版把半径扩大到 1.25 格，尸群一旦贴近目标便没有
+		// 任何合法落点，并且 findPlacement 总会在第一个候选处重复失败，表现为永远不用桶。
+		AABB danger = new AABB(pos).inflate(0.15, 0.25, 0.15);
 		return !level.getEntitiesOfClass(
 			Zombie.class,
 			danger,
@@ -417,16 +463,19 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		).isEmpty();
 	}
 
-	private static Direction horizontalDirection(final Player player, final Vec3 destination) {
-		double x = destination.x - player.getX();
-		double z = destination.z - player.getZ();
+	private static Direction horizontalDirection(final LivingEntity target, final Vec3 destination) {
+		double x = destination.x - target.getX();
+		double z = destination.z - target.getZ();
 		return Math.abs(x) >= Math.abs(z)
 			? (x >= 0.0 ? Direction.EAST : Direction.WEST)
 			: (z >= 0.0 ? Direction.SOUTH : Direction.NORTH);
 	}
 
-	private static boolean isUsableTarget(final @Nullable Player player) {
-		return player != null && player.isAlive() && !player.isCreative() && !player.isSpectator();
+	private static boolean isUsableTarget(final @Nullable LivingEntity target) {
+		return target != null
+			&& target.isAlive()
+			&& (!(target instanceof Player player)
+				|| (!player.isCreative() && !player.isSpectator()));
 	}
 
 	private static boolean isEnabled(final MobsThinkNowConfig config) {

@@ -22,6 +22,11 @@ public final class MtnCommands {
 				.executes(MtnCommands::status)
 				.then(Commands.literal("status").executes(MtnCommands::status))
 				.then(
+					Commands.literal("spawnall")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(MtnCommands::spawnAll)
+				)
+				.then(
 					Commands.literal("reload")
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::reload)
@@ -67,5 +72,46 @@ public final class MtnCommands {
 
 		context.getSource().sendFailure(Component.literal("Mobs Think Now configuration could not be reloaded. Check the server log."));
 		return 0;
+	}
+
+	private static int spawnAll(final CommandContext<CommandSourceStack> context) {
+		ZombieShowcaseSpawner.SpawnResult result = ZombieShowcaseSpawner.spawnAll(context.getSource());
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_all.success",
+					"Spawned %s tactical zombie archetypes in a 3x3 formation; behavior still follows the current configuration.",
+					count
+				),
+				true
+			);
+			return count;
+		}
+
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.no_space",
+				"No nearby ground has enough safe space for the complete 3x3 zombie formation."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.create_failed",
+				"Zombie entity creation failed; no showcase formation was added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.add_failed",
+				"Adding the formation to the world failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful spawn result reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private record ErrorMessage(String key, String fallback) {
 	}
 }

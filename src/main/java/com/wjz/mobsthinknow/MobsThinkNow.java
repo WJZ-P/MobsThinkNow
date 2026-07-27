@@ -16,8 +16,8 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
-import net.minecraft.world.entity.player.Player;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,8 +78,8 @@ public final class MobsThinkNow implements ModInitializer {
 				ZombieShieldMemory.recordAttack(zombie, damageSource, config);
 				ZombieArmory.onZombieAttacked(zombie, damageSource, config);
 				// 事件驱动地通知至多一支小队；水桶兵因此无需逐 tick 扫描“谁正在挨打”。
-				if (damageSource.getEntity() instanceof Player player) {
-					ZombieSquadCoordinator.onSquadMemberAttacked(zombie, player);
+				if (damageSource.getEntity() instanceof LivingEntity attacker) {
+					ZombieSquadCoordinator.onSquadMemberAttacked(zombie, attacker);
 				}
 			}
 			return true;
