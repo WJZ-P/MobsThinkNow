@@ -196,8 +196,10 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 			}
 		}
 
-		BlockPos zombiePillarBase = new BlockPos(3, 2, 3);
+		BlockPos zombieSpawn = new BlockPos(3, 2, 3);
 		BlockPos targetPillarBase = new BlockPos(5, 2, 3);
+		// 目标西侧正交邻格：完成后中心距恰好一格，能直接进入原版近战范围。
+		BlockPos attackPillarBase = new BlockPos(4, 2, 3);
 		BlockPos[] harvestBlocks = {
 			new BlockPos(2, 2, 1),
 			new BlockPos(3, 2, 1),
@@ -209,7 +211,7 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 		for (int dy = 0; dy < 3; dy++) {
 			helper.setBlock(targetPillarBase.above(dy), Blocks.STONE);
 		}
-		Zombie zombie = helper.spawn(EntityType.ZOMBIE, zombiePillarBase);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, zombieSpawn);
 		Villager target = helper.spawn(EntityType.VILLAGER, targetPillarBase.above(3));
 		ZombieIntelligence.set(zombie, 10);
 		target.setNoAi(true);
@@ -233,7 +235,7 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 			zombie.setTarget(target);
 			int placed = 0;
 			for (int dy = 0; dy < 3; dy++) {
-				if (helper.getBlockState(zombiePillarBase.above(dy)).is(Blocks.DIRT)) {
+				if (helper.getBlockState(attackPillarBase.above(dy)).is(Blocks.DIRT)) {
 					placed++;
 				}
 			}
@@ -244,6 +246,10 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 			previousPlaced[0] = placed;
 
 			if (placed == 3 && Math.abs(zombie.getY() - target.getY()) < 0.35) {
+				helper.assertTrue(
+					zombie.isWithinMeleeAttackRange(target),
+					"The adjacent elevation pillar still did not put the target inside vanilla melee reach."
+				);
 				helper.assertTrue(
 					ZombieBuilderInventory.count(zombie) == 0,
 					"The three elevation blocks were not consumed from the hidden inventory."
@@ -262,6 +268,76 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 						+ ", zombie=" + zombie.position()
 						+ ", target=" + target.position()
 						+ ", stored=" + ZombieBuilderInventory.count(zombie)
+				);
+			}
+		});
+	}
+
+	@GameTest(maxTicks = 100)
+	public void smartZombieCanMineSoftBlockUnderElevatedTarget(final GameTestHelper helper) {
+		for (int x = 0; x <= 8; x++) {
+			for (int z = 0; z <= 6; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+				for (int y = 2; y <= 8; y++) {
+					helper.setBlock(new BlockPos(x, y, z), Blocks.AIR);
+				}
+			}
+		}
+
+		BlockPos targetPillarBase = new BlockPos(5, 2, 3);
+		for (int dy = 0; dy < 3; dy++) {
+			helper.setBlock(targetPillarBase.above(dy), Blocks.DIRT);
+		}
+		BlockPos support = targetPillarBase.above(2);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 4, 2, 3);
+		Villager target = helper.spawn(EntityType.VILLAGER, targetPillarBase.above(3));
+		zombie.setNoAi(true);
+		zombie.setNoGravity(true);
+		target.setNoAi(true);
+		target.setNoGravity(true);
+		ZombieIntelligence.set(zombie, 10);
+		zombie.setTarget(target);
+		double originalTargetY = target.getY();
+
+		ZombieTerrainTacticsGoal goal = new ZombieTerrainTacticsGoal(
+			zombie,
+			(candidate, intelligence, minimum) -> true
+		);
+		helper.assertTrue(goal.canUse(), "A reachable soft support block did not produce an undermine plan.");
+		goal.start();
+		int[] drivenTicks = {0};
+		boolean[] goalStopped = {false};
+		helper.onEachTick(() -> {
+			zombie.clearFire();
+			zombie.setTarget(target);
+			if (!goalStopped[0] && goal.canContinueToUse()) {
+				goal.tick();
+				drivenTicks[0]++;
+			} else if (!goalStopped[0]) {
+				goal.stop();
+				goalStopped[0] = true;
+			}
+
+			if (helper.getBlockState(support).isAir()) {
+				target.setNoAi(false);
+				target.setNoGravity(false);
+				helper.assertTrue(drivenTicks[0] >= 5, "The support block vanished without visible mining time.");
+				helper.assertTrue(
+					helper.getBlockState(targetPillarBase).is(Blocks.DIRT)
+						&& helper.getBlockState(targetPillarBase.above()).is(Blocks.DIRT),
+					"Undermining removed more than the single block directly under the target."
+				);
+				if (target.getY() <= originalTargetY - 0.75) {
+					helper.succeed();
+				}
+			}
+			if (target.tickCount >= 80) {
+				helper.fail(
+					"Soft-column undermine stalled: support=" + helper.getBlockState(support)
+						+ ", targetY=" + target.getY()
+						+ ", originalY=" + originalTargetY
+						+ ", drivenTicks=" + drivenTicks[0]
+						+ ", goalStopped=" + goalStopped[0]
 				);
 			}
 		});

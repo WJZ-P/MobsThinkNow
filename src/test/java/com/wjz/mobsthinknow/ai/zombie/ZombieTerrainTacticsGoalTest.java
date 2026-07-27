@@ -18,4 +18,12 @@ class ZombieTerrainTacticsGoalTest {
 		assertEquals(0, ZombieTerrainTacticsGoal.requiredElevationPillarHeight(64.0, 68.01, 4));
 		assertEquals(0, ZombieTerrainTacticsGoal.requiredElevationPillarHeight(64.0, 67.0, 0));
 	}
+
+	@Test
+	void higherIntelligenceMoreOftenChoosesToUndermineSoftPillars() {
+		assertEquals(0.0, ZombieTerrainTacticsGoal.undermineChance(7, 8), 1.0E-9);
+		assertEquals(0.35, ZombieTerrainTacticsGoal.undermineChance(8, 8), 1.0E-9);
+		assertEquals(0.50, ZombieTerrainTacticsGoal.undermineChance(9, 8), 1.0E-9);
+		assertEquals(0.65, ZombieTerrainTacticsGoal.undermineChance(10, 8), 1.0E-9);
+	}
 }

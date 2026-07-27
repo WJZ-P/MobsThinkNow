@@ -22,10 +22,12 @@ flowchart TD
     Mixin --> Traits["固定声线 + 难度化永久属性"]
     Mixin --> AttackGoal["SmartZombieAttackGoal / priority 3"]
     Mixin --> RetreatGoal["ReactiveRetreatGoal / priority 1"]
+    Mixin --> WeaponPickupGoal["ZombieWeaponPickupGoal / priority 2"]
     Mixin --> FluidGoal["ZombieFluidTacticsGoal / priority 2"]
     Mixin --> FoodGoal["ZombieFoodSearchGoal / priority 2"]
     Mixin --> TerrainGoal["ZombieTerrainTacticsGoal / priority 2"]
     GroundFood["12 格内地面食物"] --> FoodGoal
+    GroundWeapon["12 格内地面近战武器"] --> WeaponPickupGoal
     DamageEvents["ALLOW_DAMAGE + AFTER_DAMAGE"] --> RetreatMemory["最终实伤与攻击者快照"]
     RetreatMemory --> RetreatGoal
     DamageEvents --> ShieldMemory["举盾期间的敌方攻击信号"]
@@ -56,8 +58,9 @@ flowchart TD
     ShieldUse --> ShieldPose["client Mixin: ArmPose.BLOCK"]
     RetreatGoal -->|"MOVE / LOOK 抢占"| Navigation
     RetreatGoal -.->|"结束后释放控制权"| AttackGoal
-    RetreatGoal --> Barrier["确认玩家追击后消耗材料搭墙"]
-    TerrainGoal --> BuilderInventory["持久材料槽 / 铁傀儡立柱 / 玩家储备"]
+    WeaponPickupGoal --> WeaponSwap["强度排序 / 杂物换下 / 旧物掉回"]
+    TerrainGoal --> BuilderInventory["持久材料槽 / 铁傀儡立柱 / 相邻追高"]
+    TerrainGoal --> Undermine["概率拆除目标脚下软柱"]
     FluidGoal --> FluidTransaction["投放 / 拉开 / 源方块回收 / 丢失降级"]
     FoodGoal -->|"仅可达食物存在时"| Navigation
     FoodGoal --> FoodUse["单份拾取 + 原版 useItem"]
@@ -79,8 +82,9 @@ com.wjz.mobsthinknow
 │  ├─ ZombieFoodEquipment               临时换手、打断/死亡/存档装备恢复
 │  ├─ ZombieVoiceProfile                固定个体声线的生成、持久化和显式叫声换算
 │  ├─ ZombieIndividualTraits            随难度变化的永久个体属性修饰符
-│  ├─ ZombieTerrainTacticsGoal           软方块采集、铁傀儡立柱与玩家材料储备
+│  ├─ ZombieTerrainTacticsGoal           软方块采集、铁傀儡立柱、相邻追高与软柱拆除
 │  ├─ ZombieBuilderInventory             不占双手的持久化建筑材料槽
+│  ├─ ZombieWeaponPickupGoal             地面武器排序、寻路、杂物替换与旧物掉回
 │  ├─ ZombieFluidTacticsGoal             水/岩浆投放、拉扯、回收与失效降级
 │  ├─ ZombieSpecialEquipment             特殊桶生成率、掉落率与流体事务存档
 │  ├─ ZombieFluidThreatMemory            事件驱动的队友受击求援信号
@@ -212,9 +216,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 6. 已有小队只遍历自己的成员，默认最多 20 只、配置硬上限为 100 只；
 7. 路径按决策间隔更新，目的地未明显变化时复用现有 Path。
 8. 地形采集不做逐 tick 体素扫描：只在 Goal 启动和完成一块采集后检查，单次最多
-   读取 320 个五格内方块，整个搜索最多创建 4 条采集路径；立柱候选最多创建 8 条路径。
+   读取 320 个五格内方块，整个搜索最多创建 4 条采集路径；追高只检查目标周围固定
+   8 个邻格，立柱或拆柱落点最多创建 8 条路径。
    该流程只访问方块和当前铁傀儡/玩家目标，不查询其他僵尸，因此不会引入 N²。
-9. 水桶求援只在真实伤害事件发生时遍历受害者所在小队（默认至多 20、硬上限 100）；
+9. 武器搜索按 20～47 tick 错峰，只查询 12 格局部 `ItemEntity` 索引并最多为 4 个
+   已排序候选创建路径；没有严格升级时不接管移动。
+10. 水桶求援只在真实伤害事件发生时遍历受害者所在小队（默认至多 20、硬上限 100）；
    流体 Goal 每 tick 只读取自己的目标、一个源坐标和常数个落点。岩浆友军检查仅在尝试
    投放时查询落点附近 1.25 格 AABB，不参与常规 AI tick。
 
@@ -310,11 +317,24 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   统一进入单份消费事务。客户端把使用手映射为 `ArmPose.ITEM`，再在模型层将手抬到
   嘴边并按 `ticksUsingItem` 加入轻微咀嚼摆动；原版消费声音和颗粒仍完整播放。
 
+地面武器换装（`ZombieWeaponPickupGoal`，优先级 2）：
+
+- 在同级战术中最先注册，地面永久战力升级优先于流体、觅食、采集和普通攻击；优先级 1
+  的受击撤退仍可随时抢占。每 20～47 tick 查询 12×4×12 格局部物品索引，最多为前
+  4 个候选创建路径；
+- 仅接受剑、斧、矛标签或标准 `MELEE_WEAPON_ENCHANTABLE` 物品。候选先按主手
+  `ATTACK_DAMAGE`、附魔数量、耐久排序，再按距离和实体 ID 稳定排序。空手/杂物直接
+  换装，已有武器只接受严格升级；水桶、岩浆桶及战术空桶受保护；
+- `ZombieMixin.wantsToPickUp` 同时阻止原版随机 looting 抢先装备受管武器。Goal 抵达后
+  只从物品堆 `split(1)`，发送原版拾取动画，把旧主手完整掉回脚边，并为新武器设置原版
+  拾取装备同款的必掉落和实体持久化标记。
+
 地形战术（`ZombieTerrainTacticsGoal`，优先级 2）：
 
-- 与觅食同级但后注册，低血且存在可达食物时先觅食；优先级 1 的受击撤退仍可抢占。
-  只有普通僵尸、智力不低于 `terrainMinimumIntelligence`、当前目标为 18 格内铁傀儡
-  或生存玩家且 `mobGriefing=true` 时参与，因此不会为了普通巡逻持续破坏地形；
+- 在武器、流体和觅食之后注册；低血且存在可达食物时先觅食，地面存在严格武器升级时
+  先换装；优先级 1 的受击撤退仍可抢占。
+  只有普通僵尸、智力不低于 `terrainMinimumIntelligence`、当前存在 18 格内合法存活目标
+  且 `mobGriefing=true` 时参与，因此不会为了普通巡逻持续破坏地形；
 - `ZombieBuilderInventory` 通过 `ZombieBuilderInventoryAccess` 提供不占双手的持久化
   单槽。容量默认 8，但一次立柱任务只主动收集到三块；槽中只能堆叠同类方块。存档用
   `ItemStack.OPTIONAL_CODEC`，加载时再次检查方块物品、流体和方块实体；死亡时掉出，
@@ -346,8 +366,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 
 - 当前目标脚底至少高出僵尸两格、水平距离不超过 6 格，并且原版路径不存在或路径终点
   没有进入目标脚底下一格的战斗层时才触发；可正常上坡或绕行时仍使用原版导航；
-- 候选柱位限定在僵尸脚边半径 3 的固定 7×7 区域，目标水平距离需处于 1.15～3.25 格，
-  最多建立 8 条路径。高度按目标脚底与柱基的真实高差向上取整，超过 4 格直接放弃；
+- 候选柱位限定为目标柱四个正交邻格和四个对角邻格，正交距离优先、再按僵尸行走距离
+  排序，最多建立 8 条路径。完成柱必在目标的一格邻域并由 GameTest 验证进入原版近战
+  范围；高度按目标脚底与柱基的真实高差向上取整，超过 4 格直接放弃；
+- 若目标正站在空手可破坏白名单的柱顶，先寻找满足 3.1 格距离与真实射线的相邻挖掘位。
+  默认 IQ 8/9/10 分别以 35%/50%/65% 选择拆柱；挖掘复用裂纹、挥臂与敲击反馈，只
+  破坏脚下当前一格并保留正常掉落。其余概率或石头/工具方块等不满足白名单时走相邻垫高；
 - 材料不足时只采集计划所需数量。每层调用 `JumpControl`，碰撞箱底越过方块顶面后才
   向脚下放置一格；三格高目标因此产生三次独立的起跳、放置声、挥臂和方块事件；
 - 目标跳下或高差越界会退出并回收未完成柱。站到目标战斗层后立即释放 `MOVE/LOOK`
@@ -432,7 +456,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 ## 9. 验证体系
 
 - JUnit：效用选择、配置边界、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
-  四格上限、
+  四格上限、IQ 8～10 拆柱概率、
   觅食半血边界、个体声线映射、难度属性均值、特殊桶概率分区与原版掉落率、智力
   概率和换手选择、智力名字结构、盾卫随机观察与反击窗口边界、首领选举优先级、
   低/高智力职位规划、武器攻速冷却换算与圆弧目的地、空手软方块破坏时长以及
@@ -444,8 +468,9 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   nutrition 回血以及主副手装备恢复、宝藏食物优先选择、软方块真实破坏与材料持久化、三次真实跳垫、
   三格高度下铁傀儡原版攻击范围失效、受武器冷却约束的俯击，以及主动铁傀儡接敌时
   预装材料僵尸能在第二次重击前完成立柱、流体源真实回收到同类桶、源丢失降级，
-  高处非铁傀儡目标触发三次逐格跳垫并到达同一战斗层，以及岩浆桶在生存玩家脚下
-  真实投放后回收；当前共 20 项服务端 GameTest；
+  高处非铁傀儡目标在目标邻格触发三次逐格跳垫、到达同一战斗层并进入原版近战范围，
+  软柱顶经过完整挖掘反馈后只破坏一格并使目标下落、地面武器按强度优先拾取且主手杂物
+  完整掉回，以及岩浆桶在生存玩家脚下真实投放后回收；当前共 21 项服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
 

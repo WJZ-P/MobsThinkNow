@@ -68,6 +68,20 @@ public final class ZombieBuilderInventory {
 		final Zombie zombie,
 		final int capacity
 	) {
+		return isEmptyHandBreakableBasicBlock(level, pos, state)
+			&& canAccept(zombie, harvestResult(state), capacity);
+	}
+
+	/**
+	 * 只判断方块本身是否属于“空手可破坏的基础软方块”，不要求建筑材料槽仍有空间。
+	 * 追高战术会复用这条白名单判断玩家脚下的柱顶：它可以被挖落，但不会因此把箱子、矿石、
+	 * 木材或其他功能方块误判成可拆除目标。
+	 */
+	public static boolean isEmptyHandBreakableBasicBlock(
+		final ServerLevel level,
+		final BlockPos pos,
+		final BlockState state
+	) {
 		if (state.isAir()
 			|| state.hasBlockEntity()
 			|| !state.getFluidState().isEmpty()
@@ -76,12 +90,9 @@ public final class ZombieBuilderInventory {
 		}
 
 		float destroySpeed = state.getDestroySpeed(level, pos);
-		if (destroySpeed < 0.0F || destroySpeed > 1.0F) {
-			return false;
-		}
-
-		ItemStack result = harvestResult(state);
-		return !result.isEmpty() && canAccept(zombie, result, capacity);
+		return destroySpeed >= 0.0F
+			&& destroySpeed <= 1.0F
+			&& !harvestResult(state).isEmpty();
 	}
 
 	public static boolean canAccept(final Zombie zombie, final ItemStack incoming, final int capacity) {

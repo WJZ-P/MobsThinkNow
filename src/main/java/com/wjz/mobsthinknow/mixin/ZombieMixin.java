@@ -20,6 +20,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieTerrainTacticsGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
+import com.wjz.mobsthinknow.ai.zombie.ZombieWeaponPickupGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import net.minecraft.server.level.ServerLevel;
@@ -87,6 +88,8 @@ public abstract class ZombieMixin extends Monster implements
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == ZombieAttackGoal.class);
 		// 独立的高优先级撤退 Goal 不依赖近战追击能否启动；MOVE/LOOK 冲突会自然暂停攻击与小队机动。
 		this.goalSelector.addGoal(1, new ReactiveRetreatGoal(zombie));
+		// 地面武器是永久战力升级，优先于同级的流体、觅食、采集与战斗；没有可达升级时立即让出 MOVE/LOOK。
+		this.goalSelector.addGoal(2, new ZombieWeaponPickupGoal(zombie));
 		// 特殊桶兵优先承担支援/骚扰；已放出的源方块即使热关配置也会先完成回收事务。
 		this.goalSelector.addGoal(2, new ZombieFluidTacticsGoal(zombie));
 		// 低血觅食位于撤退与攻击之间：有可达食物才接管移动，受击撤退仍可立即抢占。
@@ -172,13 +175,15 @@ public abstract class ZombieMixin extends Monster implements
 	}
 
 	@Inject(method = "wantsToPickUp", at = @At("HEAD"), cancellable = true)
-	private void mobsthinknow$leaveFoodForScavengingGoal(
+	private void mobsthinknow$leaveManagedLootForTacticalGoals(
 		final ServerLevel level,
 		final ItemStack itemStack,
 		final CallbackInfoReturnable<Boolean> callbackInfo
 	) {
 		Zombie zombie = (Zombie)(Object)this;
-		if (ZombieFoodSearchGoal.managesFood(zombie, itemStack, ConfigManager.get())) {
+		var config = ConfigManager.get();
+		if (ZombieFoodSearchGoal.managesFood(zombie, itemStack, config)
+			|| ZombieWeaponPickupGoal.managesWeapon(zombie, itemStack, config)) {
 			callbackInfo.setReturnValue(false);
 		}
 	}

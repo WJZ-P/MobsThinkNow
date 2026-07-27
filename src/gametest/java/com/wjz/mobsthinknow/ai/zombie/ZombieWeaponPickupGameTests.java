@@ -1,0 +1,70 @@
+package com.wjz.mobsthinknow.ai.zombie;
+
+import java.lang.reflect.Method;
+import java.util.List;
+import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
+import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+
+/** 地面实体、拾取动画链、装备槽和旧物掉落共同参与的武器换装集成测试。 */
+public final class ZombieWeaponPickupGameTests implements CustomTestMethodInvoker {
+	@GameTest
+	public void zombiePrioritizesBestGroundWeaponAndDropsMainHandJunk(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 0, 2);
+		zombie.setNoAi(true);
+		zombie.clearFire();
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.ROTTEN_FLESH, 3));
+		helper.assertTrue(
+			ZombieWeaponPickupGoal.canReplaceMainHand(new ItemStack(Items.ROTTEN_FLESH), new ItemStack(Items.IRON_SWORD)),
+			"Main-hand junk was not considered replaceable."
+		);
+		helper.assertTrue(
+			!ZombieWeaponPickupGoal.canReplaceMainHand(new ItemStack(Items.IRON_SWORD), new ItemStack(Items.WOODEN_SWORD)),
+			"A weaker weapon was incorrectly considered an upgrade."
+		);
+		helper.assertTrue(
+			!ZombieWeaponPickupGoal.canReplaceMainHand(new ItemStack(Items.WATER_BUCKET), new ItemStack(Items.IRON_SWORD)),
+			"A tactical water bucket was incorrectly treated as junk."
+		);
+
+		ItemEntity woodenSword = new ItemEntity(
+			helper.getLevel(), zombie.getX(), zombie.getY(), zombie.getZ(), new ItemStack(Items.WOODEN_SWORD)
+		);
+		ItemEntity ironSword = new ItemEntity(
+			helper.getLevel(), zombie.getX(), zombie.getY(), zombie.getZ(), new ItemStack(Items.IRON_SWORD)
+		);
+		helper.getLevel().addFreshEntity(woodenSword);
+		helper.getLevel().addFreshEntity(ironSword);
+
+		ZombieWeaponPickupGoal goal = new ZombieWeaponPickupGoal(zombie);
+		helper.assertTrue(goal.canUse(), "The zombie did not detect either reachable ground weapon.");
+		goal.start();
+		goal.tick();
+
+		helper.assertTrue(zombie.getMainHandItem().is(Items.IRON_SWORD), "The wooden sword outranked the iron sword.");
+		helper.assertTrue(ironSword.isRemoved(), "The equipped iron sword remained duplicated on the ground.");
+		helper.assertTrue(woodenSword.isAlive(), "Picking the best weapon also consumed the rejected wooden sword.");
+		List<ItemEntity> nearbyItems = helper.getLevel().getEntitiesOfClass(
+			ItemEntity.class,
+			zombie.getBoundingBox().inflate(2.0),
+			entity -> entity.getItem().is(Items.ROTTEN_FLESH)
+		);
+		helper.assertTrue(
+			nearbyItems.stream().anyMatch(entity -> entity.getItem().getCount() == 3),
+			"The replaced main-hand junk was deleted instead of being dropped intact."
+		);
+		goal.stop();
+		helper.succeed();
+	}
+
+	@Override
+	public void invokeTestMethod(final GameTestHelper helper, final Method method) throws ReflectiveOperationException {
+		method.invoke(this, helper);
+	}
+}
