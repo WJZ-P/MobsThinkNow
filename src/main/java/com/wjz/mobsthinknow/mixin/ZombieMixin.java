@@ -2,6 +2,8 @@ package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.zombie.ReactiveRetreatGoal;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieAttackGoal;
+import com.wjz.mobsthinknow.ai.zombie.SmartZombieGapJumpGoal;
+import com.wjz.mobsthinknow.ai.zombie.SmartZombieGroundNavigation;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.SquadHurtByTargetGoal;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieSpearUseGoal;
@@ -22,6 +24,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpearAirAssaultGoal;
+import com.wjz.mobsthinknow.ai.zombie.ZombieSunlightSurvivalGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieTerrainTacticsGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
@@ -37,6 +40,7 @@ import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.ai.goal.SpearUseGoal;
 import net.minecraft.world.entity.ai.goal.ZombieAttackGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.ItemStack;
@@ -86,6 +90,12 @@ public abstract class ZombieMixin extends Monster implements
 		super(type, level);
 	}
 
+	/** 只替换僵尸的节点分类器，导航、A* 与 MoveControl 仍沿用原版实现。 */
+	@Override
+	protected PathNavigation createNavigation(final Level level) {
+		return new SmartZombieGroundNavigation((Zombie)(Object)this, level);
+	}
+
 	@Inject(method = "addBehaviourGoals", at = @At("TAIL"))
 	private void mobsthinknow$replaceZombieAttackGoal(final CallbackInfo callbackInfo) {
 		Zombie zombie = (Zombie)(Object)this;
@@ -107,6 +117,10 @@ public abstract class ZombieMixin extends Monster implements
 		this.goalSelector.addGoal(0, new ZombieSpearAirAssaultGoal(zombie));
 		// 独立的高优先级撤退 Goal 不依赖近战追击能否启动；MOVE/LOOK 冲突会自然暂停攻击与小队机动。
 		this.goalSelector.addGoal(1, new ReactiveRetreatGoal(zombie));
+		// 日晒生存仅在未受近期攻击时接管；一旦受击，战斗/撤退会在下一拍重新竞争控制权。
+		this.goalSelector.addGoal(1, new ZombieSunlightSurvivalGoal(zombie));
+		// 对目标方向存在严格的一格宽安全落点时，以真实跳跃越沟；失败后仍回到普通寻路。
+		this.goalSelector.addGoal(2, new SmartZombieGapJumpGoal(zombie));
 		// 地面武器是永久战力升级，优先于同级的流体、觅食、采集与战斗；没有可达升级时立即让出 MOVE/LOOK。
 		this.goalSelector.addGoal(2, new ZombieWeaponPickupGoal(zombie));
 		// 特殊桶兵优先承担支援/骚扰；已放出的源方块即使热关配置也会先完成回收事务。

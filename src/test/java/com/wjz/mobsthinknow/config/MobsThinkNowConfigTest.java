@@ -69,6 +69,8 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.foodScavenging);
 		assertEquals(6, config.foodMinimumIntelligence);
 		assertEquals(true, config.terrainTactics);
+		assertEquals(true, config.sunlightSurvival);
+		assertEquals(true, config.smartTraversal);
 		assertEquals(8, config.terrainMinimumIntelligence);
 		assertEquals(8, config.terrainBlockInventoryLimit);
 		assertEquals(0.10, config.squadSpeedBonus);

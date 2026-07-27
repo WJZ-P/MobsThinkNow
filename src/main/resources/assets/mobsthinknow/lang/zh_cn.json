@@ -3,6 +3,10 @@
 	"mobsthinknow.config.category.squad": "僵尸小队",
 	"mobsthinknow.config.category.armed": "武装与武器战术",
 	"mobsthinknow.config.category.terrain": "采集与地形战术",
+	"mobsthinknow.config.sunlight_survival": "日光生存战术",
+	"mobsthinknow.config.sunlight_survival.tooltip": "露天受晒时主动寻找可达阴影；持水桶者先在脚下放水灭火。近期被生物攻击时立即让战斗系统接管。",
+	"mobsthinknow.config.smart_traversal": "智能地形通行",
+	"mobsthinknow.config.smart_traversal.tooltip": "不把开放且已经失去承重面的门、栅栏门或活板门当作落脚点；目标在一格宽沟槽对面时尝试真实跳跃越过。",
 	"mobsthinknow.config.maximum_coordinated_zombies": "单支小队最大僵尸数",
 	"mobsthinknow.config.maximum_coordinated_zombies.tooltip": "允许范围 4～100。数值越高，单次协调和原版寻路的开销也会越大。",
 	"mobsthinknow.config.squad_visual_effects": "小队声音与粒子",
@@ -54,8 +58,6 @@
 	"mobsthinknow.role.flank_right": "[右翼]",
 	"mobsthinknow.role.cutoff": "[截断手]",
 	"mobsthinknow.role.support": "[辅助兵]",
-	"mobsthinknow.config.spear_rocket_efficiency": "僵尸烟花推进效率（%）",
-	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% 与原版附着烟花一致，默认 50%。稳定推进速度约为原版的一半，也会降低长矛动能伤害；每枚发射物都会把服务端设定同步给客户端。",
 	"mobsthinknow.command.spawn_all.success": "已生成 %s 种战术僵尸，按 3×3 阵型排列；其行为仍遵循当前配置。",
 	"mobsthinknow.command.spawn_all.peaceful": "和平难度会移除敌对生物，请先切换难度再使用此指令。",
 	"mobsthinknow.command.spawn_all.no_space": "附近没有足够安全的地面容纳完整的 3×3 僵尸阵型。",
@@ -69,5 +71,7 @@
 	"mobsthinknow.showcase.builder": "工程僵尸",
 	"mobsthinknow.showcase.water_support": "水桶辅助兵",
 	"mobsthinknow.showcase.lava_harasser": "岩浆骚扰兵",
-	"mobsthinknow.showcase.air_assault": "持矛空袭兵"
+	"mobsthinknow.showcase.air_assault": "持矛空袭兵",
+	"mobsthinknow.config.spear_rocket_efficiency": "僵尸烟花推进效率（%）",
+	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% 与原版附着烟花一致，默认 50%。稳定推进速度约为原版的一半，也会降低长矛动能伤害；每枚发射物都会把服务端设定同步给客户端。"
 }

@@ -135,6 +135,22 @@ public final class MobsThinkNowConfigScreen {
 			Component.translatable("mobsthinknow.config.category.terrain")
 		);
 		terrainCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.sunlight_survival"),
+			config.sunlightSurvival
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.sunlight_survival.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.sunlightSurvival = value))
+			.build());
+		terrainCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.smart_traversal"),
+			config.smartTraversal
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.smart_traversal.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.smartTraversal = value))
+			.build());
+		terrainCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.terrain_tactics"),
 			config.terrainTactics
 		)

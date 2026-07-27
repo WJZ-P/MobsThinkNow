@@ -53,6 +53,10 @@ public final class MobsThinkNowConfig {
 	public int foodMinimumIntelligence = DEFAULT_FOOD_MINIMUM_INTELLIGENCE;
 	/** 高智力僵尸是否可按需采集软方块，并针对铁傀儡或高处目标搭建立柱。 */
 	public boolean terrainTactics = true;
+	/** 白天露天受晒时主动寻阴影；持水桶者先在脚下放水自救，近期受击则立即让出控制。 */
+	public boolean sunlightSurvival = true;
+	/** 使用真实承重面规避开放机关陷阱，并允许对目标方向的一格宽沟槽执行物理跳跃。 */
+	public boolean smartTraversal = true;
 	/** 掌握采集和建造战术所需的最低智力；默认 8。 */
 	public int terrainMinimumIntelligence = DEFAULT_TERRAIN_MINIMUM_INTELLIGENCE;
 	/** 隐藏建筑材料槽的容量；每次只采集一块，死亡时会完整掉出。 */

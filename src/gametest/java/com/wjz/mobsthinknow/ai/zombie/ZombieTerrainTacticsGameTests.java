@@ -8,10 +8,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
@@ -80,6 +82,7 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 		}
 		BlockPos pillarBase = new BlockPos(2, 2, 3);
 		Zombie zombie = helper.spawn(EntityType.ZOMBIE, pillarBase);
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
 		IronGolem golem = helper.spawn(EntityType.IRON_GOLEM, 5, 2, 3);
 		AtomicBoolean completePillarObserved = new AtomicBoolean();
 
@@ -154,6 +157,7 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 		}
 		BlockPos pillarBase = new BlockPos(2, 2, 3);
 		Zombie zombie = helper.spawn(EntityType.ZOMBIE, pillarBase);
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
 		IronGolem golem = helper.spawn(EntityType.IRON_GOLEM, 6, 2, 3);
 		ZombieIntelligence.set(zombie, 10);
 		for (int i = 0; i < ZombieTerrainTacticsGoal.PILLAR_HEIGHT; i++) {
@@ -212,6 +216,7 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 			helper.setBlock(targetPillarBase.above(dy), Blocks.STONE);
 		}
 		Zombie zombie = helper.spawn(EntityType.ZOMBIE, zombieSpawn);
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
 		Villager target = helper.spawn(EntityType.VILLAGER, targetPillarBase.above(3));
 		ZombieIntelligence.set(zombie, 10);
 		target.setNoAi(true);

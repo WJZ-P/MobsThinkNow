@@ -242,6 +242,8 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 		target.getAttribute(Attributes.KNOCKBACK_RESISTANCE).setBaseValue(1.0);
 		target.setHealth(100.0F);
 		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.WOODEN_AXE));
+		// 隔离武器时序：头盔避免日光生存 Goal 抢占本测试。
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
 		zombie.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
 		zombie.setTarget(target);
 
@@ -288,6 +290,8 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 		target.getAttribute(Attributes.KNOCKBACK_RESISTANCE).setBaseValue(1.0);
 		target.setHealth(100.0F);
 		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
+		// 隔离武器时序：头盔避免日光生存 Goal 抢占本测试。
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
 		zombie.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
 		zombie.setTarget(target);
 

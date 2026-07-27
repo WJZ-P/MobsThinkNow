@@ -3,6 +3,10 @@
 	"mobsthinknow.config.category.squad": "Zombie Squads",
 	"mobsthinknow.config.category.armed": "Armament & Weapon Tactics",
 	"mobsthinknow.config.category.terrain": "Gathering & Terrain Tactics",
+	"mobsthinknow.config.sunlight_survival": "Sunlight Survival",
+	"mobsthinknow.config.sunlight_survival.tooltip": "Seek reachable shade when exposed to daylight; water carriers first deploy water underfoot. A recent attack immediately returns control to combat.",
+	"mobsthinknow.config.smart_traversal": "Smart Traversal",
+	"mobsthinknow.config.smart_traversal.tooltip": "Reject open doors, gates, and trapdoors whose real collision no longer supports footing, and physically jump a one-block gap toward a target when the landing is safe.",
 	"mobsthinknow.config.maximum_coordinated_zombies": "Maximum Zombies per Squad",
 	"mobsthinknow.config.maximum_coordinated_zombies.tooltip": "Allowed range: 4-100. Higher values increase coordination and vanilla pathfinding costs.",
 	"mobsthinknow.config.squad_visual_effects": "Squad Sounds & Particles",
@@ -54,8 +58,6 @@
 	"mobsthinknow.role.flank_right": "[Right Flank]",
 	"mobsthinknow.role.cutoff": "[Cutoff]",
 	"mobsthinknow.role.support": "[Support]",
-	"mobsthinknow.config.spear_rocket_efficiency": "Zombie Rocket Thrust Efficiency (%)",
-	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% matches vanilla attached fireworks; default 50%. Stable boost speed is about half vanilla, which also lowers kinetic spear damage. Each launched rocket synchronizes this value to clients.",
 	"mobsthinknow.command.spawn_all.success": "Spawned %s tactical zombie archetypes in a 3x3 formation; behavior still follows the current configuration.",
 	"mobsthinknow.command.spawn_all.peaceful": "Peaceful difficulty removes hostile mobs; switch difficulty before using this command.",
 	"mobsthinknow.command.spawn_all.no_space": "No nearby ground has enough safe space for the complete 3x3 zombie formation.",
@@ -69,5 +71,7 @@
 	"mobsthinknow.showcase.builder": "Zombie Engineer",
 	"mobsthinknow.showcase.water_support": "Water Support Zombie",
 	"mobsthinknow.showcase.lava_harasser": "Lava Harasser Zombie",
-	"mobsthinknow.showcase.air_assault": "Spear Air-Assault Zombie"
+	"mobsthinknow.showcase.air_assault": "Spear Air-Assault Zombie",
+	"mobsthinknow.config.spear_rocket_efficiency": "Zombie Rocket Thrust Efficiency (%)",
+	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% matches vanilla attached fireworks; default 50%. Stable boost speed is about half vanilla, which also lowers kinetic spear damage. Each launched rocket synchronizes this value to clients."
 }
