@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
@@ -41,15 +42,29 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 	private static final int LAUNCH_SEARCH_INTERVAL_TICKS = 20;
 	private static final int PATH_REFRESH_TICKS = 16;
 	private static final int CLIMB_TIMEOUT_TICKS = 100;
-	private static final int STAGING_TIMEOUT_TICKS = 120;
+	static final int MINIMUM_ORBIT_TICKS = 60;
+	static final int MAXIMUM_ORBIT_TICKS = 120;
+	static final int MINIMUM_ORBIT_ROCKETS = 1;
+	static final int MAXIMUM_ORBIT_ROCKETS = 2;
+	static final int MINIMUM_ORBIT_FIRST_ROCKET_DELAY_TICKS = 12;
+	static final int MAXIMUM_ORBIT_FIRST_ROCKET_DELAY_TICKS = 24;
+	static final int MINIMUM_ORBIT_ROCKET_GAP_TICKS = 48;
+	static final int MAXIMUM_ORBIT_ROCKET_GAP_TICKS = 68;
+	private static final int ORBIT_LINE_OF_SIGHT_GRACE_TICKS = 80;
+	private static final int MINIMUM_ROCKET_COOLDOWN_TICKS = 40;
+	private static final int MAXIMUM_ROCKET_COOLDOWN_TICKS = 60;
 	private static final int DIVE_TIMEOUT_TICKS = 80;
 	private static final int RECOVERY_TIMEOUT_TICKS = 100;
 	private static final double LAUNCH_MOVE_SPEED = 1.10;
 	private static final double LAUNCH_REACHED_SQUARED = 0.85 * 0.85;
 	private static final double DESIRED_ALTITUDE = 6.5;
-	private static final double STAGING_DISTANCE = 10.0;
-	private static final double STAGING_REACHED_SQUARED = 3.0 * 3.0;
-	private static final double DIVE_BOOST_DISTANCE_SQUARED = 8.0 * 8.0;
+	private static final double ORBIT_RADIUS = 10.0;
+	private static final double ORBIT_ANGULAR_SPEED = 0.045;
+	private static final double ORBIT_LOOK_AHEAD = 0.42;
+	private static final double ATTACK_STAGING_DISTANCE = 10.0;
+	private static final double MINIMUM_ATTACK_DISTANCE_SQUARED = 6.0 * 6.0;
+	private static final double POST_ATTACK_CLEAR_DISTANCE_SQUARED = 6.0 * 6.0;
+	private static final double RECOVERY_EMERGENCY_SPEED_SQUARED = 0.55 * 0.55;
 
 	private final Zombie zombie;
 	private Phase phase = Phase.IDLE;
@@ -60,8 +75,18 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 	private long nextLaunchSearchAt;
 	private long nextPathRefreshAt;
 	private long nextRocketAt;
+	private long nextOrbitRocketAt;
+	private long attackAllowedAt;
+	private long orbitDeadline;
 	private long spearReadyAt;
+	private int orbitRocketBudget;
+	private int orbitRocketsLaunched;
+	private double orbitAngle;
+	private double orbitDirection;
 	private double closestDiveDistanceSquared = Double.MAX_VALUE;
+	private boolean diveHitConfirmed;
+	private boolean climbEmergencyRocketUsed;
+	private boolean recoveryEmergencyRocketUsed;
 
 	public ZombieSpearAirAssaultGoal(final Zombie zombie) {
 		this.zombie = zombie;
@@ -80,8 +105,9 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 			this.target = currentTarget;
 			return true;
 		}
-		// 读档恰好发生在空中、最后一枚火箭已消耗或目标刚死亡时，仍接管到安全落地。
-		return !this.zombie.onGround() && (this.zombie.isFallFlying() || ZombieAirAssault.hasUsableGlider(this.zombie));
+		// 只接管已经真实进入滑翔的无目标实体。持鞘翅僵尸走台阶或普通跳跃时也会短暂
+		// onGround=false；旧判断把这种一个 tick 的离地误认成飞行，导致客户端姿态反复横置/站立。
+		return this.zombie.isFallFlying();
 	}
 
 	@Override
@@ -141,7 +167,7 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 			case SEEKING_LAUNCH -> this.tickSeekingLaunch();
 			case LAUNCHING -> this.tickLaunching();
 			case CLIMBING -> this.tickClimbing();
-			case STAGING -> this.tickStaging();
+			case ORBITING -> this.tickOrbiting();
 			case ARMING -> this.tickArming();
 			case DIVING -> this.tickDiving();
 			case RECOVERING -> this.tickRecovering();
@@ -168,6 +194,14 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		this.target = null;
 		this.launchSite = null;
 		this.approachDirection = null;
+		this.attackAllowedAt = 0L;
+		this.orbitDeadline = 0L;
+		this.nextOrbitRocketAt = 0L;
+		this.orbitRocketBudget = 0;
+		this.orbitRocketsLaunched = 0;
+		this.diveHitConfirmed = false;
+		this.climbEmergencyRocketUsed = false;
+		this.recoveryEmergencyRocketUsed = false;
 	}
 
 	@Override
@@ -263,6 +297,7 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		this.ensureGliding();
 		this.aimAt(this.climbPoint());
 		this.launchRocket();
+		this.climbEmergencyRocketUsed = false;
 		this.clearLaunchPlan();
 		this.enterPhase(Phase.CLIMBING);
 	}
@@ -286,33 +321,59 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		double altitude = this.zombie.getY() - this.target.getY();
 		double horizontal = horizontalDistanceSquared(this.zombie.position(), this.target.position());
 		if (altitude >= DESIRED_ALTITUDE - 1.0 && horizontal >= 4.0 * 4.0) {
-			this.beginStaging();
+			this.beginOrbiting();
 			return;
 		}
 		if (this.zombie.horizontalCollision) {
 			this.beginRecovery();
 			return;
 		}
-		if (ZombieAirAssault.hasRockets(this.zombie)
+		if (!this.climbEmergencyRocketUsed
+			&& ZombieAirAssault.hasRockets(this.zombie)
 			&& this.now() >= this.nextRocketAt
 			&& (altitude < DESIRED_ALTITUDE - 1.5 || this.zombie.getDeltaMovement().lengthSqr() < 0.70 * 0.70)) {
-			this.launchRocket();
+			this.climbEmergencyRocketUsed = this.launchRocket();
 		}
 		if (this.ticksInPhase() >= CLIMB_TIMEOUT_TICKS) {
 			if (!ZombieAirAssault.hasRockets(this.zombie) && altitude < 2.0) {
 				this.enterLanding();
 			} else {
-				this.beginStaging();
+				this.beginOrbiting();
 			}
 		}
 	}
 
-	private void beginStaging() {
-		this.approachDirection = horizontalUnitOrFallback(this.zombie.position().subtract(this.target.position()));
-		this.enterPhase(Phase.STAGING);
+	/**
+	 * 每轮攻击前先进入真正的环绕航线，重新抽取 3～6 秒等待时间，并制定只消耗 1～2 枚烟花的
+	 * 推进计划。烟花之间保留 2.4～3.4 秒的滑翔窗口，让鞘翅利用惯性而不是持续喷射。
+	 * 初次升空和每次穿越目标后的拉起都会经过这里，因此不会在恢复高度后立刻连续俯冲。
+	 */
+	private void beginOrbiting() {
+		this.stopUsingSpear();
+		this.zombie.setAggressive(false);
+		Vec3 radial = horizontalUnitOrFallback(this.zombie.position().subtract(this.target.position()));
+		this.orbitAngle = Mth.atan2(radial.z, radial.x);
+		this.orbitDirection = this.zombie.getRandom().nextBoolean() ? 1.0 : -1.0;
+		long now = this.now();
+		this.attackAllowedAt = now + orbitDurationTicks(this.zombie.getRandom().nextDouble());
+		this.orbitRocketBudget = Math.min(
+			orbitRocketCount(this.zombie.getRandom().nextDouble()),
+			this.availableRocketCount()
+		);
+		this.orbitRocketsLaunched = 0;
+		this.nextOrbitRocketAt = Math.max(
+			this.nextRocketAt,
+			now + orbitFirstRocketDelayTicks(this.zombie.getRandom().nextDouble())
+		);
+		long finalPlannedRocketAt = this.nextOrbitRocketAt
+			+ (long)Math.max(0, this.orbitRocketBudget - 1) * MAXIMUM_ORBIT_ROCKET_GAP_TICKS;
+		this.orbitDeadline = Math.max(this.attackAllowedAt, finalPlannedRocketAt)
+			+ ORBIT_LINE_OF_SIGHT_GRACE_TICKS;
+		this.approachDirection = radial;
+		this.enterPhase(Phase.ORBITING);
 	}
 
-	private void tickStaging() {
+	private void tickOrbiting() {
 		if (this.zombie.onGround()) {
 			this.stopUsingSpear();
 			this.stopGliding();
@@ -325,37 +386,36 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 			return;
 		}
 		this.ensureGliding();
-		Vec3 stagingPoint = this.stagingPoint();
-		this.aimAt(stagingPoint);
-		this.redirectVelocityToward(stagingPoint, 0.09);
+		this.orbitAngle += this.orbitDirection * ORBIT_ANGULAR_SPEED;
+		Vec3 orbitPoint = this.orbitPoint(this.orbitAngle + this.orbitDirection * ORBIT_LOOK_AHEAD);
+		this.aimAt(orbitPoint);
+		this.redirectVelocityToward(orbitPoint, 0.09);
 		if (this.zombie.horizontalCollision) {
-			this.approachDirection = rotateQuarterTurn(this.approachDirection);
-			this.enterPhase(Phase.RECOVERING);
+			this.orbitDirection = -this.orbitDirection;
+			this.beginRecovery();
 			return;
 		}
 
-		double distanceSquared = this.zombie.distanceToSqr(stagingPoint);
+		long now = this.now();
+		this.tickOrbitRocketPlan(now);
+		double horizontal = horizontalDistanceSquared(this.zombie.position(), this.target.position());
 		boolean hasLineOfSight = this.zombie.getSensing().hasLineOfSight(this.target);
-		if (hasLineOfSight
-			&& (distanceSquared <= STAGING_REACHED_SQUARED
-				|| this.ticksInPhase() >= 50
-					&& horizontalDistanceSquared(this.zombie.position(), this.target.position()) >= 6.0 * 6.0)) {
+		if (now >= this.attackAllowedAt
+			&& this.isOrbitRocketPlanComplete()
+			&& hasLineOfSight
+			&& horizontal >= MINIMUM_ATTACK_DISTANCE_SQUARED) {
 			this.beginArming();
 			return;
 		}
-		if (ZombieAirAssault.hasRockets(this.zombie)
-			&& this.now() >= this.nextRocketAt
-			&& this.zombie.getDeltaMovement().lengthSqr() < 0.80 * 0.80) {
-			this.launchRocket();
-		}
-		if (this.ticksInPhase() >= STAGING_TIMEOUT_TICKS) {
-			if (hasLineOfSight) {
-				this.beginArming();
-			} else if (ZombieAirAssault.hasRockets(this.zombie)) {
-				this.beginRecovery();
-			} else {
+		if (now >= this.orbitDeadline) {
+			if (!hasLineOfSight && !ZombieAirAssault.hasRockets(this.zombie)) {
 				this.enterLanding();
+				return;
 			}
+			// 被建筑长期遮挡时继续换向盘旋并重试，而不是在看不见目标时盲冲。
+			this.orbitDirection = -this.orbitDirection;
+			this.attackAllowedAt = now + 20L + this.zombie.getRandom().nextInt(41);
+			this.orbitDeadline = this.attackAllowedAt + ORBIT_LINE_OF_SIGHT_GRACE_TICKS;
 		}
 	}
 
@@ -369,6 +429,8 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 	private void beginArming() {
 		this.stopUsingSpear();
 		this.zombie.setAggressive(true);
+		// 冻结本次突击的进场方向；蓄力期间保持在目标外圈，不再沿盘旋点继续漂移。
+		this.approachDirection = horizontalUnitOrFallback(this.zombie.position().subtract(this.target.position()));
 		this.zombie.startUsingItem(InteractionHand.MAIN_HAND);
 		KineticWeapon kineticWeapon = this.zombie.getMainHandItem().get(DataComponents.KINETIC_WEAPON);
 		if (kineticWeapon != null) {
@@ -413,12 +475,9 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		this.zombie.setAggressive(true);
 		this.aimAt(this.predictedTargetPoint());
 		this.closestDiveDistanceSquared = this.zombie.distanceToSqr(this.target);
+		this.diveHitConfirmed = false;
 		statusAccess(this.zombie).mobsthinknow$recordDiveStart();
 		this.enterPhase(Phase.DIVING);
-		if (this.closestDiveDistanceSquared >= DIVE_BOOST_DISTANCE_SQUARED
-			&& this.now() >= this.nextRocketAt) {
-			this.launchRocket();
-		}
 	}
 
 	private void tickDiving() {
@@ -437,7 +496,8 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		Vec3 aimPoint = this.predictedTargetPoint();
 		this.aimAt(aimPoint);
 		this.redirectVelocityToward(aimPoint, 0.14);
-		if (!this.zombie.isUsingItem() || !this.zombie.getUseItem().has(DataComponents.KINETIC_WEAPON)) {
+		if (!this.diveHitConfirmed
+			&& (!this.zombie.isUsingItem() || !this.zombie.getUseItem().has(DataComponents.KINETIC_WEAPON))) {
 			// 使用状态若被其他逻辑打断，必须重新完成组件声明的蓄力时间，不能带着旧计时继续俯冲。
 			this.beginArming();
 			return;
@@ -447,19 +507,26 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		boolean hitTarget = this.zombie.wasRecentlyStabbed(this.target, 12)
 			|| this.zombie.getLastHurtMob() == this.target
 				&& this.zombie.tickCount - this.zombie.getLastHurtMobTimestamp() <= 3;
+		if (hitTarget && !this.diveHitConfirmed) {
+			this.diveHitConfirmed = true;
+			// 一次航线只允许一次刺击；随后保持当前速度穿越目标，但不在同一航线重新触发接触伤害。
+			this.stopUsingSpear();
+			this.zombie.setAggressive(false);
+		}
 		boolean passedTarget = this.closestDiveDistanceSquared < 4.0 * 4.0
 			&& distanceSquared > this.closestDiveDistanceSquared + 3.0 * 3.0;
 		this.closestDiveDistanceSquared = Math.min(this.closestDiveDistanceSquared, distanceSquared);
+		boolean clearedAfterHit = this.diveHitConfirmed
+			&& this.closestDiveDistanceSquared < 4.0 * 4.0
+			&& distanceSquared >= POST_ATTACK_CLEAR_DISTANCE_SQUARED;
 
-		if (hitTarget || passedTarget || this.zombie.horizontalCollision || this.ticksInPhase() >= DIVE_TIMEOUT_TICKS) {
+		// 命中并不立即掉头：继续沿原航线穿过目标，拉开六格后才进入恢复爬升。
+		if (clearedAfterHit
+			|| !this.diveHitConfirmed && passedTarget
+			|| this.zombie.horizontalCollision
+			|| this.ticksInPhase() >= DIVE_TIMEOUT_TICKS) {
 			this.beginRecovery();
 			return;
-		}
-		if (ZombieAirAssault.hasRockets(this.zombie)
-			&& distanceSquared >= DIVE_BOOST_DISTANCE_SQUARED
-			&& this.now() >= this.nextRocketAt
-			&& this.zombie.getDeltaMovement().lengthSqr() < 1.0) {
-			this.launchRocket();
 		}
 	}
 
@@ -468,12 +535,8 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		this.zombie.setAggressive(false);
 		this.approachDirection = horizontalUnitOrFallback(this.zombie.position().subtract(this.target.position()));
 		if (ZombieAirAssault.hasRockets(this.zombie)) {
+			this.recoveryEmergencyRocketUsed = false;
 			this.enterPhase(Phase.RECOVERING);
-			if (this.now() >= this.nextRocketAt) {
-				Vec3 recoveryPoint = this.stagingPoint();
-				this.aimAt(recoveryPoint);
-				this.launchRocket();
-			}
 		} else {
 			this.enterLanding();
 		}
@@ -498,15 +561,18 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		double altitude = this.zombie.getY() - this.target.getY();
 		double horizontal = horizontalDistanceSquared(this.zombie.position(), this.target.position());
 		if (altitude >= DESIRED_ALTITUDE - 1.0 && horizontal >= 7.0 * 7.0) {
-			this.enterPhase(Phase.STAGING);
+			this.beginOrbiting();
 			return;
 		}
-		if (this.now() >= this.nextRocketAt
-			&& (this.zombie.getDeltaMovement().lengthSqr() < 0.85 * 0.85 || altitude < DESIRED_ALTITUDE - 2.0)) {
-			this.launchRocket();
+		if (!this.recoveryEmergencyRocketUsed
+			&& this.now() >= this.nextRocketAt
+			&& altitude < DESIRED_ALTITUDE - 3.0
+			&& this.zombie.getDeltaMovement().lengthSqr() < RECOVERY_EMERGENCY_SPEED_SQUARED) {
+			// 俯冲后的恢复默认依靠已有动能；只有低空且接近失速时才允许一次救援推进。
+			this.recoveryEmergencyRocketUsed = this.launchRocket();
 		}
 		if (this.ticksInPhase() >= RECOVERY_TIMEOUT_TICKS) {
-			this.beginStaging();
+			this.beginOrbiting();
 		}
 	}
 
@@ -550,7 +616,15 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		Vec3 direction = this.approachDirection == null
 			? horizontalUnitOrFallback(this.zombie.position().subtract(this.target.position()))
 			: this.approachDirection;
-		return this.target.getEyePosition().add(direction.scale(STAGING_DISTANCE)).add(0.0, DESIRED_ALTITUDE, 0.0);
+		return this.target.getEyePosition().add(direction.scale(ATTACK_STAGING_DISTANCE)).add(0.0, DESIRED_ALTITUDE, 0.0);
+	}
+
+	private Vec3 orbitPoint(final double angle) {
+		return this.target.getEyePosition().add(
+			Math.cos(angle) * ORBIT_RADIUS,
+			DESIRED_ALTITUDE,
+			Math.sin(angle) * ORBIT_RADIUS
+		);
 	}
 
 	private Vec3 predictedTargetPoint() {
@@ -579,6 +653,47 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		}
 	}
 
+	/**
+	 * 执行当前盘旋阶段的限额推进计划。
+	 *
+	 * <p>这里不再根据“速度略低”每隔几十 tick 无上限补火箭，而是每轮先固定预算，再按较长间隔
+	 * 消耗预算。若烟花被其他装备逻辑移走，则把现有发射数视为本轮上限，避免状态机永久卡在盘旋。
+	 */
+	private void tickOrbitRocketPlan(final long now) {
+		if (this.isOrbitRocketPlanComplete()) {
+			return;
+		}
+		if (this.availableRocketCount() <= 0) {
+			this.orbitRocketBudget = this.orbitRocketsLaunched;
+			return;
+		}
+		if (now < this.nextOrbitRocketAt || now < this.nextRocketAt) {
+			return;
+		}
+
+		if (this.launchRocket()) {
+			this.orbitRocketsLaunched++;
+			this.nextOrbitRocketAt = now + orbitRocketGapTicks(this.zombie.getRandom().nextDouble());
+			// 第二枚烟花排到原截止线之后时同步延后截止线，保证预算有机会正常完成。
+			this.orbitDeadline = Math.max(
+				this.orbitDeadline,
+				this.nextOrbitRocketAt + ORBIT_LINE_OF_SIGHT_GRACE_TICKS
+			);
+		} else {
+			// 实体加入世界偶发失败时短暂重试；不扣库存，也不消耗本轮预算。
+			this.nextOrbitRocketAt = now + 10L;
+		}
+	}
+
+	private boolean isOrbitRocketPlanComplete() {
+		return this.orbitRocketsLaunched >= this.orbitRocketBudget;
+	}
+
+	private int availableRocketCount() {
+		ItemStack rockets = this.zombie.getOffhandItem();
+		return rockets.is(Items.FIREWORK_ROCKET) ? rockets.getCount() : 0;
+	}
+
 	private boolean launchRocket() {
 		if (!(this.zombie.level() instanceof ServerLevel level)
 			|| this.now() < this.nextRocketAt) {
@@ -590,6 +705,7 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		}
 
 		ItemStack fired = rockets.copyWithCount(1);
+		ZombieAirAssault.markRocketEfficiency(fired, ConfigManager.get().spearRocketEfficiency);
 		FireworkRocketEntity firework = new FireworkRocketEntity(level, fired, this.zombie);
 		if (!level.addFreshEntity(firework)) {
 			return false;
@@ -597,7 +713,7 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		rockets.shrink(1);
 		statusAccess(this.zombie).mobsthinknow$recordRocketLaunch();
 		this.zombie.swing(InteractionHand.OFF_HAND);
-		this.nextRocketAt = this.now() + 28L + this.zombie.getRandom().nextInt(13);
+		this.nextRocketAt = this.now() + rocketCooldownTicks(this.zombie.getRandom().nextDouble());
 		return true;
 	}
 
@@ -679,7 +795,10 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 	}
 
 	private boolean isLaunchSite(final ServerLevel level, final BlockPos feet) {
-		if (!level.hasChunkAt(feet)
+		if (!level.getChunkSource().hasChunk(
+			SectionPos.blockToSectionCoord(feet.getX()),
+			SectionPos.blockToSectionCoord(feet.getZ())
+		)
 			|| !level.canSeeSky(feet.above())
 			|| !level.getBlockState(feet.below()).isCollisionShapeFullBlock(level, feet.below())) {
 			return false;
@@ -751,14 +870,39 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		return horizontal.lengthSqr() < 1.0E-8 ? Vec3.ZERO : horizontal.normalize();
 	}
 
-	private static Vec3 rotateQuarterTurn(final @Nullable Vec3 direction) {
-		return direction == null ? Vec3.ZERO : new Vec3(-direction.z, 0.0, direction.x);
-	}
-
 	private static double horizontalDistanceSquared(final Vec3 first, final Vec3 second) {
 		double x = first.x - second.x;
 		double z = first.z - second.z;
 		return x * x + z * z;
+	}
+
+	static int orbitDurationTicks(final double roll) {
+		return rangedTicks(MINIMUM_ORBIT_TICKS, MAXIMUM_ORBIT_TICKS, roll);
+	}
+
+	static int orbitRocketCount(final double roll) {
+		return rangedTicks(MINIMUM_ORBIT_ROCKETS, MAXIMUM_ORBIT_ROCKETS, roll);
+	}
+
+	static int orbitFirstRocketDelayTicks(final double roll) {
+		return rangedTicks(
+			MINIMUM_ORBIT_FIRST_ROCKET_DELAY_TICKS,
+			MAXIMUM_ORBIT_FIRST_ROCKET_DELAY_TICKS,
+			roll
+		);
+	}
+
+	static int orbitRocketGapTicks(final double roll) {
+		return rangedTicks(MINIMUM_ORBIT_ROCKET_GAP_TICKS, MAXIMUM_ORBIT_ROCKET_GAP_TICKS, roll);
+	}
+
+	static int rocketCooldownTicks(final double roll) {
+		return rangedTicks(MINIMUM_ROCKET_COOLDOWN_TICKS, MAXIMUM_ROCKET_COOLDOWN_TICKS, roll);
+	}
+
+	private static int rangedTicks(final int minimum, final int maximum, final double roll) {
+		double bounded = Double.isFinite(roll) ? Math.clamp(roll, 0.0, 1.0) : 0.0;
+		return minimum + (int)Math.round((maximum - minimum) * bounded);
 	}
 
 	public enum Phase {
@@ -766,7 +910,7 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		SEEKING_LAUNCH,
 		LAUNCHING,
 		CLIMBING,
-		STAGING,
+		ORBITING,
 		ARMING,
 		DIVING,
 		RECOVERING,

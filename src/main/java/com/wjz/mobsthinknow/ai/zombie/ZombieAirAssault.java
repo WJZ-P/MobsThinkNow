@@ -12,11 +12,14 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.phys.Vec3;
 
 /** 持矛空袭僵尸的生成装备、身份识别和地面战斗边界。 */
 public final class ZombieAirAssault {
 	public static final int MINIMUM_ROCKETS = 16;
 	public static final int MAXIMUM_ROCKETS = 64;
+	private static final String ROCKET_EFFICIENCY_TAG = "MobsThinkNowRocketEfficiency";
 
 	private ZombieAirAssault() {
 	}
@@ -74,6 +77,53 @@ public final class ZombieAirAssault {
 			&& !zombie.getOffhandItem().isEmpty();
 	}
 
+	/**
+	 * 把本次推进效率写入发射出去的单枚烟花，而不是只读服务端全局配置。
+	 * DATA_ID_FIREWORKS_ITEM 会把该组件同步给客户端，因此专用服务器两端使用完全相同的推进值，
+	 * 不会因客户端本地配置不同产生飞行预测抖动；僵尸副手里的剩余整组烟花保持原样。
+	 */
+	public static void markRocketEfficiency(final ItemStack firedRocket, final double efficiency) {
+		double bounded = sanitizeRocketEfficiency(efficiency);
+		CustomData.update(
+			DataComponents.CUSTOM_DATA,
+			firedRocket,
+			tag -> tag.putDouble(ROCKET_EFFICIENCY_TAG, bounded)
+		);
+	}
+
+	/** 只有本 Mod 发射并带同步标记的烟花才改写推进；玩家与其他实体的原版烟花保持 1.0。 */
+	public static boolean hasMarkedRocketEfficiency(final ItemStack firedRocket) {
+		CustomData data = firedRocket.get(DataComponents.CUSTOM_DATA);
+		return data != null && data.copyTag().contains(ROCKET_EFFICIENCY_TAG);
+	}
+
+	public static double markedRocketEfficiency(final ItemStack firedRocket) {
+		CustomData data = firedRocket.get(DataComponents.CUSTOM_DATA);
+		return data == null
+			? 1.0
+			: sanitizeRocketEfficiency(data.copyTag().getDoubleOr(ROCKET_EFFICIENCY_TAG, 1.0));
+	}
+
+	/**
+	 * 原版单 tick 推进为 {@code v += look*0.1 + (look*1.5-v)*0.5}，稳定速度约为 1.7。
+	 * 这里同时按效率缩放吸引强度、目标速度和附加推力，使稳定速度严格线性缩放：
+	 * 效率 0.5 时约为 0.85，而效率 1.0 与原版公式逐项相同。
+	 */
+	public static Vec3 rocketBoostMovement(
+		final Vec3 currentMovement,
+		final Vec3 lookDirection,
+		final double efficiency
+	) {
+		double bounded = sanitizeRocketEfficiency(efficiency);
+		double attraction = 0.5 * bounded;
+		double targetSpeed = 1.5 * bounded;
+		double additiveThrust = 0.1 * bounded * bounded;
+		return currentMovement.add(
+			lookDirection.scale(additiveThrust)
+				.add(lookDirection.scale(targetSpeed).subtract(currentMovement).scale(attraction))
+		);
+	}
+
 	public static boolean hasUsableGlider(final Zombie zombie) {
 		return LivingEntity.canGlideUsing(zombie.getItemBySlot(EquipmentSlot.CHEST), EquipmentSlot.CHEST);
 	}
@@ -103,5 +153,16 @@ public final class ZombieAirAssault {
 
 	public static boolean isEnabled(final MobsThinkNowConfig config) {
 		return config.enabled && config.zombieAiEnabled && config.spearAirAssault;
+	}
+
+	private static double sanitizeRocketEfficiency(final double efficiency) {
+		if (!Double.isFinite(efficiency)) {
+			return MobsThinkNowConfig.DEFAULT_SPEAR_ROCKET_EFFICIENCY;
+		}
+		return Math.clamp(
+			efficiency,
+			MobsThinkNowConfig.MINIMUM_SPEAR_ROCKET_EFFICIENCY,
+			MobsThinkNowConfig.MAXIMUM_SPEAR_ROCKET_EFFICIENCY
+		);
 	}
 }

@@ -36,7 +36,7 @@
 	"mobsthinknow.config.weapon_combat_tactics": "Smart Weapon Combat",
 	"mobsthinknow.config.weapon_combat_tactics.tooltip": "All sword and axe zombies respect the item's attack-speed cooldown and circle their target while waiting. Axemen attempt falling leap attacks when space permits; swordsmen use normal strikes.",
 	"mobsthinknow.config.spear_air_assault": "Spear Zombie Air Assault",
-	"mobsthinknow.config.spear_air_assault.tooltip": "Naturally spawned spear zombies receive an elytra and 16-64 rockets. They launch, climb, line up, and dive with a raised spear; once empty, they land before returning to vanilla ground thrusts.",
+	"mobsthinknow.config.spear_air_assault.tooltip": "Naturally spawned spear zombies receive an elytra and 16-64 rockets. Each 3-6 second orbit uses only 1-2 rockets with a long glide interval before the next spear dive. They keep their normal ground pose without a target.",
 	"mobsthinknow.config.special_equipment": "Water & Lava Utility Zombies",
 	"mobsthinknow.config.special_equipment.tooltip": "Allows empty-handed adult zombies to spawn with fluid buckets. This is independent from the experimental Armed Squads toggle.",
 	"mobsthinknow.config.fluid_tactics": "Smart Fluid Deployment & Recovery",
@@ -53,5 +53,7 @@
 	"mobsthinknow.role.flank_left": "[Left Flank]",
 	"mobsthinknow.role.flank_right": "[Right Flank]",
 	"mobsthinknow.role.cutoff": "[Cutoff]",
-	"mobsthinknow.role.support": "[Support]"
+	"mobsthinknow.role.support": "[Support]",
+	"mobsthinknow.config.spear_rocket_efficiency": "Zombie Rocket Thrust Efficiency (%)",
+	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% matches vanilla attached fireworks; default 50%. Stable boost speed is about half vanilla, which also lowers kinetic spear damage. Each launched rocket synchronizes this value to clients."
 }

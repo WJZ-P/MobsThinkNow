@@ -23,6 +23,9 @@ public final class MobsThinkNowConfig {
 	public static final int MINIMUM_TERRAIN_BLOCK_INVENTORY_LIMIT = 3;
 	public static final int MAXIMUM_TERRAIN_BLOCK_INVENTORY_LIMIT = 16;
 	public static final double DEFAULT_SPECIAL_EQUIPMENT_DROP_CHANCE = 0.085;
+	public static final double DEFAULT_SPEAR_ROCKET_EFFICIENCY = 0.50;
+	public static final double MINIMUM_SPEAR_ROCKET_EFFICIENCY = 0.0;
+	public static final double MAXIMUM_SPEAR_ROCKET_EFFICIENCY = 1.0;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
@@ -62,6 +65,8 @@ public final class MobsThinkNowConfig {
 	public boolean weaponCombatTactics = true;
 	/** 原版自然生成的持矛僵尸是否自动装备鞘翅和 16～64 枚烟花，改用空中突刺。 */
 	public boolean spearAirAssault = true;
+	/** 僵尸专用烟花的推进效率；1.0 对齐原版，默认 0.5 将稳定推进速度限制为约一半。 */
+	public double spearRocketEfficiency = DEFAULT_SPEAR_ROCKET_EFFICIENCY;
 	public double armedChanceEasy = 0.10;
 	public double armedChanceNormal = 0.30;
 	/** 困难模式下"一般僵尸都持械"：基础 85%，再乘区域难度系数。 */
@@ -168,6 +173,11 @@ public final class MobsThinkNowConfig {
 		this.armedShieldChance = clamp(this.armedShieldChance, 0.0, 1.0);
 		this.armedShieldBreakSeconds = clamp(this.armedShieldBreakSeconds, 0.0, 10.0);
 		this.armedFlankSpeedBonus = clamp(this.armedFlankSpeedBonus, 0.0, 0.35);
+		this.spearRocketEfficiency = clamp(
+			this.spearRocketEfficiency,
+			MINIMUM_SPEAR_ROCKET_EFFICIENCY,
+			MAXIMUM_SPEAR_ROCKET_EFFICIENCY
+		);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);
 		this.specialEquipmentDropChance = clamp(this.specialEquipmentDropChance, 0.0, 1.0);

@@ -189,6 +189,16 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.spear_air_assault.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spearAirAssault = value))
 			.build());
+		armedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.spear_rocket_efficiency"),
+			(int)Math.round(config.spearRocketEfficiency * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MINIMUM_SPEAR_ROCKET_EFFICIENCY * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_SPEAR_ROCKET_EFFICIENCY * 100.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SPEAR_ROCKET_EFFICIENCY * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.spear_rocket_efficiency.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spearRocketEfficiency = value / 100.0))
+			.build());
 		armedCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.special_equipment"),
 			config.specialEquipment

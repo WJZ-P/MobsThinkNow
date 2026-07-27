@@ -55,6 +55,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(false, config.armedSquads);
 		assertEquals(true, config.weaponCombatTactics);
 		assertEquals(true, config.spearAirAssault);
+		assertEquals(0.50, config.spearRocketEfficiency);
 		assertEquals(true, config.squadVisualEffects);
 		assertEquals(true, config.squadRoleNameTags);
 		assertEquals(true, config.individualTraits);
@@ -131,6 +132,7 @@ class MobsThinkNowConfigTest {
 		config.armedShieldChance = 7.0;
 		config.armedShieldBreakSeconds = 99.0;
 		config.armedFlankSpeedBonus = 2.0;
+		config.spearRocketEfficiency = 4.0;
 
 		config.validate();
 
@@ -140,5 +142,10 @@ class MobsThinkNowConfigTest {
 		assertEquals(1.0, config.armedShieldChance);
 		assertEquals(10.0, config.armedShieldBreakSeconds);
 		assertEquals(0.35, config.armedFlankSpeedBonus);
+		assertEquals(1.0, config.spearRocketEfficiency);
+
+		config.spearRocketEfficiency = -2.0;
+		config.validate();
+		assertEquals(0.0, config.spearRocketEfficiency);
 	}
 }

@@ -36,7 +36,7 @@
 	"mobsthinknow.config.weapon_combat_tactics": "智能武器战斗",
 	"mobsthinknow.config.weapon_combat_tactics.tooltip": "所有持剑或斧的普通僵尸按物品攻击速度等待冷却，期间与目标周旋；斧手有空间时尝试下落跳劈，剑手保持普通挥击。",
 	"mobsthinknow.config.spear_air_assault": "持矛僵尸空袭",
-	"mobsthinknow.config.spear_air_assault.tooltip": "自然生成的持矛僵尸自动装备鞘翅与 16～64 枚烟花；先起飞、爬升和对准，再举矛俯冲。弹药耗尽后先落地，随后恢复原版地面突刺。",
+	"mobsthinknow.config.spear_air_assault.tooltip": "自然生成的持矛僵尸会获得鞘翅与 16～64 枚烟花。每轮盘旋 3～6 秒，只使用 1～2 枚烟花并保留较长滑翔间隔，随后举矛俯冲；无目标时保持普通地面姿态。",
 	"mobsthinknow.config.special_equipment": "水桶与岩浆桶辅助兵",
 	"mobsthinknow.config.special_equipment.tooltip": "允许空手成年僵尸随机携带流体桶；该系统独立于实验性武装小队开关。",
 	"mobsthinknow.config.fluid_tactics": "智能流体投放与回收",
@@ -53,5 +53,7 @@
 	"mobsthinknow.role.flank_left": "[左翼]",
 	"mobsthinknow.role.flank_right": "[右翼]",
 	"mobsthinknow.role.cutoff": "[截断手]",
-	"mobsthinknow.role.support": "[辅助兵]"
+	"mobsthinknow.role.support": "[辅助兵]",
+	"mobsthinknow.config.spear_rocket_efficiency": "僵尸烟花推进效率（%）",
+	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% 与原版附着烟花一致，默认 50%。稳定推进速度约为原版的一半，也会降低长矛动能伤害；每枚发射物都会把服务端设定同步给客户端。"
 }
