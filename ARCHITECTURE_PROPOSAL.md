@@ -26,6 +26,9 @@ flowchart TD
     Mixin --> FluidGoal["ZombieFluidTacticsGoal / priority 2"]
     Mixin --> FoodGoal["ZombieFoodSearchGoal / priority 2"]
     Mixin --> TerrainGoal["ZombieTerrainTacticsGoal / priority 2"]
+    Mixin --> SunGoal["ZombieSunlightSurvivalGoal / priority 1"]
+    Mixin --> GapGoal["SmartZombieGapJumpGoal / priority 2"]
+    Mixin --> SmartNavigation["SmartZombieGroundNavigation"]
     GroundFood["12 格内地面食物"] --> FoodGoal
     GroundWeapon["12 格内地面近战武器"] --> WeaponPickupGoal
     DamageEvents["ALLOW_DAMAGE + AFTER_DAMAGE"] --> RetreatMemory["最终实伤与攻击者快照"]
@@ -33,6 +36,9 @@ flowchart TD
     DamageEvents --> ShieldMemory["举盾期间的敌方攻击信号"]
     DamageEvents --> FluidAlert["队员受击的有界辅助广播"]
     FluidAlert --> FluidGoal
+    SunGoal --> SunWater["脚下真实水源 / 寻找可达阴影"]
+    SmartNavigation --> TrapFilter["开放机关真实承重过滤"]
+    GapGoal --> PhysicalJump["原版 jumpFromGround + 水平落点动量"]
 
     AttackGoal --> Observe["有限感知与个体最后目击"]
     AttackGoal --> WeaponCombat["剑/斧武器状态机"]
@@ -88,6 +94,12 @@ com.wjz.mobsthinknow
 │  ├─ ZombieFluidTacticsGoal             水/岩浆投放、拉扯、回收与失效降级
 │  ├─ ZombieSpecialEquipment             特殊桶生成率、掉落率与流体事务存档
 │  ├─ ZombieFluidThreatMemory            事件驱动的队友受击求援信号
+│  ├─ ZombieSunlightSurvivalGoal          日晒水桶自救、有限寻阴影与战斗抢占
+│  ├─ ZombieSunlightRules                 对齐环境属性的确定性日光判定
+│  ├─ SmartZombieGroundNavigation         复用原版导航并替换节点分类器
+│  ├─ SmartZombieWalkNodeEvaluator        开放且失去承重面的机关节点过滤
+│  ├─ SmartZombieGapJumpGoal              单格沟几何校验与真实物理跳跃
+│  ├─ ZombieTraversalRules                承重、净空和安全落点公共规则
 │  ├─ ZombieTacticalController          单只僵尸的感知与命令执行
 │  ├─ ZombieIntelligence                持久智力值访问
 │  ├─ ZombieIntelligenceName            名字末尾智力数字的应用与剥离
@@ -222,8 +234,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 9. 武器搜索按 20～47 tick 错峰，只查询 12 格局部 `ItemEntity` 索引并最多为 4 个
    已排序候选创建路径；没有严格升级时不接管移动。
 10. 水桶求援只在真实伤害事件发生时遍历受害者所在小队（默认至多 20、硬上限 100）；
-   流体 Goal 每 tick 只读取自己的目标、一个源坐标和常数个落点。岩浆友军检查仅在尝试
-   投放时查询落点附近 1.25 格 AABB，不参与常规 AI tick。
+   流体 Goal 每 tick 只读取自己的目标、一个源坐标和常数个落点。岩浆最多检查目标脚下
+   与四个相邻候选格，并仅用贴合源方块的小 AABB 排除实际占位的友军，不参与常规 AI tick。
 
 `/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
 50、100、200 只激活僵尸的 MSPT 实机基准；同时输出累计采集、放置和俯击次数，
@@ -264,11 +276,15 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `foodScavenging` | `true` | 半血以下的中高智力僵尸是否启用觅食回血 |
 | `foodMinimumIntelligence` | `6` | 掌握觅食所需最低智力，可配置范围 `4～10` |
 | `terrainTactics` | `true` | 高智力僵尸是否按需采集软方块并针对铁傀儡或高处目标垫高 |
+| `sunlightSurvival` | `true` | 露天受晒时寻阴影；水桶兵先在脚下放水，近期受击时战斗优先 |
+| `smartTraversal` | `true` | 避开开放机关的虚假落脚面，并在安全几何下跳过一格宽沟槽 |
 | `terrainMinimumIntelligence` | `8` | 掌握地形战术所需最低智力，可配置范围 `6～10` |
 | `terrainBlockInventoryLimit` | `8` | 隐藏建筑材料槽容量，可配置范围 `3～16` |
 | `squadSpeedBonus` | `0.10` | 组队期间全员移速加成，范围 `0～0.5`，`0` 关闭 |
 | `armedSquads` | `false` | 武装小队总开关 |
 | `weaponCombatTactics` | `true` | 所有普通持剑/斧僵尸启用武器 CD、周旋和斧手跳劈 |
+| `spearAirAssault` | `true` | 持矛僵尸是否装备鞘翅和烟花并执行空袭状态机 |
+| `spearRocketEfficiency` | `0.50` | 僵尸专用烟花推进效率，范围 `0～1`；`1` 等同原版，默认稳定速度约减半 |
 | `armedChanceEasy` | `0.10` | 简单难度持械概率，范围 `0～1` |
 | `armedChanceNormal` | `0.30` | 普通难度持械概率，范围 `0～1` |
 | `armedChanceHard` | `0.85` | 困难难度持械概率（一般僵尸都持械），范围 `0～1` |
@@ -382,11 +398,13 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 - 出生装备先于 `ZombieArmory` 执行，只占用原本空着的成年普通僵尸主手。水/岩浆
   概率共享一次随机数；有效总和超过 1 时按二者相对权重归一化，困难/区域难度只提高有效概率；主手掉落率默认
   `DropChances.DEFAULT_EQUIPMENT_DROP_CHANCE=0.085`；
-- `ALLOW_DAMAGE` 只在攻击者为生存玩家时调用协调器。协调器遍历受害者所在单队，
+- `ALLOW_DAMAGE` 在攻击者为合法存活生物时调用协调器（创造/旁观玩家排除）。协调器遍历受害者所在单队，
   仅向水桶成员写入 100 tick 求援快照；水桶兵平时保持 4.5～8 格支援距离，收到信号
-  才尝试在玩家脚下或玩家到被保护成员之间放水；
-- 岩浆兵以玩家脚下为第一候选，放置前用一次小 AABB 排除附近友军。两类投放均调用
-  真实 `BucketItem.emptyContents`，手中立即变成空桶；等待期间使用 `LandRandomPos`
+  才尝试在攻击者脚下或攻击者到被保护成员之间放水；
+- 岩浆兵读取僵尸的真实当前目标，因此除生存玩家外也能对铁傀儡、村民等原版合法目标生效。
+  目标脚下被友军占用时会继续检查四个相邻候选，而不是每 tick 卡在同一失败位置。两类投放均调用
+  真实 `BucketItem.emptyContents`，由原版播放 `BUCKET_EMPTY`/`BUCKET_EMPTY_LAVA` 和
+  `FLUID_PLACE`，并额外同步主手挥动；手中立即变成空桶。等待期间使用 `LandRandomPos`
   拉开，时限到后回到 4.25 格交互距离，通过方块自己的 `BucketPickup` 收源；
 - `ZombieFluidCarrierState` 保存工具类、源绝对坐标、回收时刻和冷却时刻。源不存在、
   不再是匹配类型的静止源，或玩家提前收走时，事务清空但空桶不被伪造回满，优先级 3
@@ -402,11 +420,21 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   正在滑翔的 `LivingEntity`，限制在玩家的是烟花物品的交互入口而非弹体本身。Goal
   每次从副手真实拆掉一枚，再生成附着弹体；生成失败时不扣弹。出生弹量始终为
   16～64，简单/普通/困难以指数 1.8/1.0/0.6 对同一随机数做分布偏置，保持上下限
-  一致而逐级提高均值；
-- 状态机为 `SEEKING_LAUNCH → LAUNCHING → CLIMBING → STAGING → ARMING → DIVING →
-  RECOVERING`，目标死亡、鞘翅失效或弹尽后的航次结束转 `LANDING`。最后一枚火箭
+  一致而逐级提高均值。发射出的单枚烟花通过 `CUSTOM_DATA` 携带服务端
+  `spearRocketEfficiency`；`FireworkRocketEntityMixin` 在原版设置附着实体速度的唯一
+  调用点重算推进，效率 `1` 与原式逐项相同，默认 `0.5` 的稳定速度约为 `0.85`，是原版
+  `1.7` 的一半。标记随弹体物品数据同步到客户端，普通玩家烟花没有标记，保持原版物理；
+- 状态机为 `SEEKING_LAUNCH → LAUNCHING → CLIMBING → ORBITING → ARMING → DIVING →
+  RECOVERING → ORBITING`。每次进入 `ORBITING` 独立抽取 60～120 tick，并预先固定
+  1～2 枚烟花的本轮预算；第一枚延迟 12～24 tick，后续烟花间隔 48～68 tick，只有计时
+  与预算都完成后才进入 `ARMING`。俯冲不再额外喷射，恢复阶段默认复用俯冲动能，仅在
+  低空且接近失速时至多使用一枚救援烟花。初次升空和每次穿越目标后的恢复阶段都必须完整等待，避免连续冲脸；命中后沿原航线拉开至少 6 格再
+  恢复爬升。目标死亡、鞘翅失效或弹尽后的航次结束转 `LANDING`。最后一枚火箭
   消耗后仍允许完成当前蓄矛/俯冲，不会在半空把 MOVE/LOOK 交还给地面 Goal；落地且
   副手为空后 `SmartZombieSpearUseGoal` 才恢复原版 `SpearUseGoal`；
+- 无目标接管只认可实体已经处于 `isFallFlying`。单纯持有鞘翅且因台阶、半砖或普通跳跃
+  出现短暂 `onGround=false` 时，优先级 0 Goal 保持休眠，客户端不会在站立与水平飞行
+  姿态之间逐 tick 切换；
 - 起飞搜索半径 7、每轮最多检查 672 个方块（完整覆盖七层方环与三个脚部高度）、最多创建
   4 条路径且每 20 tick 才重搜；
   候选要求完整地基、六格无碰撞/无流体净空并可见天空。飞行阶段只做 O(1) 的向量
@@ -482,6 +510,34 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   （保留对僵尸猪灵的警报豁免）。攻击者是同队僵尸时 `canUse` 直接返回
   false——既不反击也不向周围广播错误仇恨；队外来源照常反击。
 
+## 8.2 日光生存与智能通行
+
+- 原版 `Zombie#addBehaviourGoals` 没有注册 `RestrictSunGoal` 或 `FleeSunGoal`；燃烧仅由
+  `Mob#aiStep` 的日光检查驱动。因此 `ZombieSunlightSurvivalGoal` 作为独立优先级 1
+  的 `MOVE/LOOK` Goal 注入，只在世界环境属性允许怪物燃烧、白天、头部没有防护、
+  不在雨水中且眼部可见天空时启动；
+- Goal 会在 3/6/9/12 格四圈各错峰采样 16 个方向和 7 个垂直偏移，但只允许最多
+  6 次真实 `createPath`。有效路径每 20 tick 重评，失败每 10 tick 重试；候选点必须
+  位于已加载区块、眼部不可见天空、脚下真实承重且两格净空，所以不会为了躲太阳
+  强制加载新区块或进入新的机关陷阱；
+- 水桶自救调用 `BucketItem.emptyContents`，因此使用原版流体放置、声效和游戏事件，
+  随后挥主手并立刻清火。`ZombieFluidCarrierState` 新增 `purpose`，区分普通战斗投放
+  与 `SUN_PROTECTION`；来源、最早回收时刻和用途一起进入实体存档。日光水源仍危险时，
+  `ZombieFluidTacticsGoal` 暂停回收，夜晚、降雨或遮蔽后才恢复原有 BucketPickup 事务；
+- `ZombieCombatUrgency` 读取原版 `lastHurtByMob` 与时间戳。最近 40 tick 内有存活生物
+  攻击者时，日光 Goal 和危险水源回收都不参与竞争；同为优先级 1 且更早注册的重伤撤退
+  可立即接管，其余情况下普通武器、跨沟和攻击 Goal 在下一轮选择中恢复；
+- `ZombieMixin#createNavigation` 为普通僵尸安装 `SmartZombieGroundNavigation`，其余
+  `GroundPathNavigation`、A*、路径代价和 `MoveControl` 均保持原版。自定义
+  `SmartZombieWalkNodeEvaluator` 只增加一条节点规则：若脚下方块具有通用 `OPEN=true`
+  且真实顶面不再 `isFaceSturdy(UP)`，该节点返回 `BLOCKED`。因此原版门、栅栏门、
+  活板门以及遵循标准属性的 Mod 方块都会按实际碰撞判断，关闭状态仍委托原版；
+- `SmartZombieGapJumpGoal` 只处理当前脚下稳定、正前方一格无承重、第二格是同层稳定
+  落点、沟槽与落点均有三格净空的严格几何。目标还必须位于主轴方向、垂直差不超过
+  1.25 格；启动时停止导航，调用公开的 `LivingEntity#jumpFromGround()` 保留原版垂直
+  速度，再附加 `0.32` 水平速度朝落点飞行。20 tick 超时与 30 tick 冷却防止边缘地形
+  连续抽动；检查失败时完全释放控制，继续使用原版寻路。
+
 ## 9. 验证体系
 
 - JUnit：效用选择、配置边界、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
@@ -499,9 +555,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   预装材料僵尸能在第二次重击前完成立柱、流体源真实回收到同类桶、源丢失降级，
   高处非铁傀儡目标在目标邻格触发三次逐格跳垫、到达同一战斗层并进入原版近战范围，
   软柱顶经过完整挖掘反馈后只破坏一格并使目标下落、地面武器按强度优先拾取且主手杂物
-  完整掉回，以及岩浆桶在生存玩家脚下真实投放后回收；持矛套装及存档、地面/空中战斗
+  完整掉回，以及岩浆桶真实投放后回收、非玩家目标自动触发、水桶受击事件触发和友军占位
+  时改选相邻落点；持矛套装及存档、地面/空中战斗
   互斥、真实附着烟花消费、原版滑翔、蓄矛后的原版动能伤害和末发火箭着陆也有独立
-  端到端覆盖；当前共 27 项服务端 GameTest；
+  端到端覆盖；另外覆盖脚下日光水的原版放置/灭火/用途存档、受击抢占与危险水源延迟
+  回收、真实导航器安装和开放机关节点过滤、单格沟完整起跳—腾空—落地弧线，以及水桶兵
+  留下水源后抵达可达阴影；当前共 38 项服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
 
