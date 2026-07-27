@@ -1,6 +1,8 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.config.ConfigManager;
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.ZombieAttackGoal;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -8,11 +10,13 @@ import net.minecraft.world.entity.monster.zombie.Zombie;
 public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 	private final Zombie zombie;
 	private final ZombieTacticalController controller;
+	private final ZombieWeaponCombat weaponCombat;
 
 	public SmartZombieAttackGoal(final Zombie zombie, final double speedModifier, final boolean trackTarget) {
 		super(zombie, speedModifier, trackTarget);
 		this.zombie = zombie;
 		this.controller = new ZombieTacticalController(zombie);
+		this.weaponCombat = new ZombieWeaponCombat(zombie);
 	}
 
 	/**
@@ -50,7 +54,11 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 		}
 
 		this.controller.observe(target);
-		return this.controller.hasTrackableTarget() && (super.canContinueToUse() || this.controller.hasTacticalIntent());
+		MobsThinkNowConfig config = ConfigManager.get();
+		return this.controller.hasTrackableTarget()
+			&& (super.canContinueToUse()
+				|| this.controller.hasTacticalIntent()
+				|| this.weaponCombat.hasTacticalIntent(config));
 	}
 
 	/** 每个 AI tick 先执行战术命令；只有需要正面追击或挥击时才调用原版 tick。 */
@@ -62,9 +70,13 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 		}
 
 		this.controller.observe(target);
+		MobsThinkNowConfig config = ConfigManager.get();
 		this.controller.tick(target);
 		if (this.controller.shouldRunVanillaCombat(target)) {
-			super.tick();
+			// 盾卫接近与单次反击由盾牌状态机控制节奏，跳过会让斧手另行准备跳劈的常规武器层。
+			if (this.controller.hasShieldCombatIntent() || this.weaponCombat.tick(target, config)) {
+				super.tick();
+			}
 		}
 	}
 
@@ -72,13 +84,30 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 	@Override
 	public void stop() {
 		super.stop();
+		this.weaponCombat.stop();
 		this.controller.stop();
 	}
 
 	/** 盾牌正面包抄尚未完成时禁止过早挥击，避免侧翼又被拉回玩家正前方。 */
 	@Override
 	protected boolean canPerformAttack(final LivingEntity target) {
-		return !this.controller.shouldHoldFrontalAttack(target) && super.canPerformAttack(target);
+		if (this.controller.shouldHoldAttack(target)) {
+			return false;
+		}
+
+		MobsThinkNowConfig config = ConfigManager.get();
+		boolean handledWeapon = this.weaponCombat.handlesCurrentWeapon(config);
+		if (this.controller.isShieldStrikeWindow()) {
+			return (!handledWeapon || this.weaponCombat.isAttackCooldownReady(config))
+				&& this.zombie.isWithinMeleeAttackRange(target)
+				&& this.zombie.getSensing().hasLineOfSight(target);
+		}
+		if (!handledWeapon) {
+			return super.canPerformAttack(target);
+		}
+		return this.weaponCombat.canPerformAttack(target)
+			&& this.zombie.isWithinMeleeAttackRange(target)
+			&& this.zombie.getSensing().hasLineOfSight(target);
 	}
 
 	/**
@@ -87,10 +116,34 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 	 */
 	@Override
 	protected void checkAndPerformAttack(final LivingEntity target) {
-		boolean blockedHitLanding = this.canPerformAttack(target) && target.isBlocking();
+		MobsThinkNowConfig config = ConfigManager.get();
+		if (this.weaponCombat.handlesCurrentWeapon(config)) {
+			if (!this.canPerformAttack(target)) {
+				return;
+			}
+
+			boolean targetWasBlocking = target.isBlocking();
+			boolean shieldStrike = this.controller.isShieldStrikeWindow();
+			boolean critical = !shieldStrike && this.weaponCombat.isCriticalLeapWindow();
+			this.resetAttackCooldown();
+			this.zombie.swing(InteractionHand.MAIN_HAND);
+			this.weaponCombat.performAttack(target, critical);
+			this.weaponCombat.onAttackPerformed(target);
+			this.controller.onAttackPerformed(target);
+			if (targetWasBlocking) {
+				ZombieArmory.tryBreakShield(this.zombie, target, config);
+			}
+			return;
+		}
+
+		boolean attackPerformed = this.canPerformAttack(target);
+		boolean blockedHitLanding = attackPerformed && target.isBlocking();
 		super.checkAndPerformAttack(target);
+		if (attackPerformed) {
+			this.controller.onAttackPerformed(target);
+		}
 		if (blockedHitLanding) {
-			ZombieArmory.tryBreakShield(this.zombie, target, ConfigManager.get());
+			ZombieArmory.tryBreakShield(this.zombie, target, config);
 		}
 	}
 }

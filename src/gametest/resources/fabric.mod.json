@@ -6,7 +6,11 @@
 	"environment": "*",
 	"entrypoints": {
 		"fabric-gametest": [
-			"com.wjz.mobsthinknow.gametest.MobsThinkNowGameTests"
+			"com.wjz.mobsthinknow.gametest.MobsThinkNowGameTests",
+			"com.wjz.mobsthinknow.ai.zombie.ZombieShieldCombatGameTests",
+			"com.wjz.mobsthinknow.ai.zombie.ZombieFoodGameTests",
+			"com.wjz.mobsthinknow.ai.zombie.ZombieFluidTacticsGameTests",
+			"com.wjz.mobsthinknow.ai.zombie.ZombieTerrainTacticsGameTests"
 		]
 	},
 	"depends": {

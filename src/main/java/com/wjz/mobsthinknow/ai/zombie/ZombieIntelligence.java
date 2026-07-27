@@ -15,7 +15,9 @@ public final class ZombieIntelligence {
 	}
 
 	public static void set(final Zombie zombie, final int intelligence) {
-		((ZombieIntelligenceAccess)zombie).mobsthinknow$setIntelligence(intelligence);
+		int clamped = clamp(intelligence);
+		((ZombieIntelligenceAccess)zombie).mobsthinknow$setIntelligence(clamped);
+		ZombieIntelligenceName.updateExisting(zombie, clamped);
 	}
 
 	public static int clamp(final int intelligence) {

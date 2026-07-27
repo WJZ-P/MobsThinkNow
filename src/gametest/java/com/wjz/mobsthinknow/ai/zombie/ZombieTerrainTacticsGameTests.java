@@ -1,0 +1,191 @@
+package com.wjz.mobsthinknow.ai.zombie;
+
+import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicBoolean;
+import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
+import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.BlockPos;
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.animal.golem.IronGolem;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+
+/** 真实服务器实体、方块更新、跳跃物理和攻击范围共同参与的地形战术集成测试。 */
+public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvoker {
+	@GameTest
+	public void smartZombieHarvestsOneReachableSoftBlock(final GameTestHelper helper) {
+		BlockPos dirtPos = new BlockPos(3, 1, 2);
+		// 典型主世界表面是草方块而非裸泥土；空手采集后应按原版语义进入一块泥土。
+		helper.setBlock(dirtPos, Blocks.GRASS_BLOCK);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 2, 2);
+		IronGolem golem = helper.spawn(EntityType.IRON_GOLEM, 5, 2, 2);
+
+		// 只手动驱动待测 Goal；采集阶段无需实体 AI 或时间推进，因此不会被自动 GoalSelector 抢先消费材料。
+		zombie.setNoAi(true);
+		zombie.setNoGravity(true);
+		golem.setNoAi(true);
+		golem.setNoGravity(true);
+		ZombieIntelligence.set(zombie, 10);
+		zombie.setTarget(golem);
+
+		ZombieTerrainTacticsGoal goal = new ZombieTerrainTacticsGoal(zombie);
+		helper.assertTrue(goal.canUse(), "A nearby dirt block did not start the high-intelligence terrain goal.");
+		goal.start();
+		for (int tick = 0; tick < 30 && goal.canContinueToUse(); tick++) {
+			goal.tick();
+		}
+		goal.stop();
+
+		helper.assertTrue(helper.getBlockState(dirtPos).isAir(), "The selected dirt block was not mined.");
+		helper.assertTrue(
+			ZombieBuilderInventory.count(zombie) == 1,
+			"The mined block did not enter the one-slot building inventory."
+		);
+		helper.assertTrue(
+			ZombieBuilderInventory.stack(zombie).is(Items.DIRT),
+			"Empty-hand dirt-family harvesting produced the wrong building material."
+		);
+		Zombie restored = EntityType.ZOMBIE.create(helper.getLevel(), EntitySpawnReason.STRUCTURE);
+		restored.restoreFrom(zombie);
+		helper.assertTrue(
+			ZombieBuilderInventory.count(restored) == 1 && ZombieBuilderInventory.stack(restored).is(Items.DIRT),
+			"The hidden building inventory did not survive the vanilla entity save/load path."
+		);
+		Zombie converted = EntityType.DROWNED.create(helper.getLevel(), EntitySpawnReason.CONVERSION);
+		ZombieBuilderInventory.transfer(restored, converted);
+		helper.assertTrue(
+			ZombieBuilderInventory.count(restored) == 0
+				&& ZombieBuilderInventory.count(converted) == 1
+				&& ZombieBuilderInventory.stack(converted).is(Items.DIRT),
+			"Zombie type conversion did not atomically transfer the hidden building inventory."
+		);
+		helper.succeed();
+	}
+
+	@GameTest(maxTicks = 180)
+	public void smartZombiePillarsAboveIronGolemReachAndStrikesDown(final GameTestHelper helper) {
+		// 不依赖空模板的隐含地面高度：显式铺平地基并清空上方六格，让寻路和跳垫只受待测逻辑影响。
+		for (int x = 0; x <= 8; x++) {
+			for (int z = 0; z <= 6; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+				for (int y = 2; y <= 8; y++) {
+					helper.setBlock(new BlockPos(x, y, z), Blocks.AIR);
+				}
+			}
+		}
+		BlockPos pillarBase = new BlockPos(2, 2, 3);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, pillarBase);
+		IronGolem golem = helper.spawn(EntityType.IRON_GOLEM, 5, 2, 3);
+		AtomicBoolean completePillarObserved = new AtomicBoolean();
+
+		ZombieIntelligence.set(zombie, 10);
+		for (int i = 0; i < ZombieTerrainTacticsGoal.PILLAR_HEIGHT; i++) {
+			ZombieBuilderInventory.addOne(zombie, Items.DIRT.getDefaultInstance(), 8);
+		}
+		golem.setNoAi(true);
+		golem.setNoGravity(true);
+		golem.getAttribute(Attributes.KNOCKBACK_RESISTANCE).setBaseValue(1.0);
+		float originalHealth = golem.getHealth();
+		zombie.setTarget(golem);
+		ZombieTerrainTacticsGoal probe = new ZombieTerrainTacticsGoal(zombie);
+		helper.assertTrue(
+			probe.canUse(),
+			"Prepared terrain goal rejected its controlled start: zombie=" + zombie.position()
+				+ ", golem=" + golem.position()
+				+ ", foundation=" + helper.getBlockState(pillarBase.below())
+				+ ", storedBlocks=" + ZombieBuilderInventory.count(zombie)
+		);
+
+		helper.onEachTick(() -> {
+			zombie.clearFire();
+			zombie.setTarget(golem);
+			golem.invulnerableTime = 0;
+
+			boolean complete = true;
+			for (int dy = 0; dy < ZombieTerrainTacticsGoal.PILLAR_HEIGHT; dy++) {
+				complete &= helper.getBlockState(pillarBase.above(dy)).is(Blocks.DIRT);
+			}
+			if (complete) {
+				completePillarObserved.set(true);
+			}
+
+			if (completePillarObserved.get() && golem.getHealth() < originalHealth) {
+				helper.assertTrue(
+					ZombieBuilderInventory.count(zombie) == 0,
+					"The three placed blocks were not consumed from the building inventory."
+				);
+				helper.assertTrue(
+					zombie.getBoundingBox().minY >= golem.getBoundingBox().maxY,
+					"The zombie attacked before its hitbox was vertically separated from the golem."
+				);
+				helper.assertTrue(
+					!golem.isWithinMeleeAttackRange(zombie),
+					"The completed three-block pillar remained inside the iron golem's vanilla melee range."
+				);
+				helper.succeed();
+			}
+
+			if (zombie.tickCount == 160) {
+				helper.fail(
+					"Terrain tactic stalled: completePillar=" + completePillarObserved.get()
+						+ ", zombie=" + zombie.position()
+						+ ", golem=" + golem.position()
+						+ ", storedBlocks=" + ZombieBuilderInventory.count(zombie)
+						+ ", golemHealth=" + golem.getHealth()
+				);
+			}
+		});
+	}
+
+	@GameTest(maxTicks = 120)
+	public void preloadedSmartZombieBuildsBeforeActiveGolemCanLandASecondHit(final GameTestHelper helper) {
+		for (int x = 0; x <= 8; x++) {
+			for (int z = 0; z <= 6; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+				for (int y = 2; y <= 8; y++) {
+					helper.setBlock(new BlockPos(x, y, z), Blocks.AIR);
+				}
+			}
+		}
+		BlockPos pillarBase = new BlockPos(2, 2, 3);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, pillarBase);
+		IronGolem golem = helper.spawn(EntityType.IRON_GOLEM, 6, 2, 3);
+		ZombieIntelligence.set(zombie, 10);
+		for (int i = 0; i < ZombieTerrainTacticsGoal.PILLAR_HEIGHT; i++) {
+			ZombieBuilderInventory.addOne(zombie, Items.DIRT.getDefaultInstance(), 8);
+		}
+		zombie.setTarget(golem);
+		golem.setTarget(zombie);
+
+		helper.onEachTick(() -> {
+			zombie.clearFire();
+			zombie.setTarget(golem);
+			golem.setTarget(zombie);
+			boolean complete = true;
+			for (int dy = 0; dy < ZombieTerrainTacticsGoal.PILLAR_HEIGHT; dy++) {
+				complete &= helper.getBlockState(pillarBase.above(dy)).is(Blocks.DIRT);
+			}
+			if (complete && zombie.isAlive()) {
+				helper.succeed();
+			}
+			if (zombie.tickCount == 100) {
+				helper.fail(
+					"Active-golem build stalled: alive=" + zombie.isAlive()
+						+ ", health=" + zombie.getHealth()
+						+ ", zombie=" + zombie.position()
+						+ ", golem=" + golem.position()
+						+ ", stored=" + ZombieBuilderInventory.count(zombie)
+				);
+			}
+		});
+	}
+
+	@Override
+	public void invokeTestMethod(final GameTestHelper helper, final Method method) throws ReflectiveOperationException {
+		method.invoke(this, helper);
+	}
+}

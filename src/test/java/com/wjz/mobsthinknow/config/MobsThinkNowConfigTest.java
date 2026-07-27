@@ -53,31 +53,61 @@ class MobsThinkNowConfigTest {
 		MobsThinkNowConfig config = new MobsThinkNowConfig();
 
 		assertEquals(false, config.armedSquads);
+		assertEquals(true, config.weaponCombatTactics);
 		assertEquals(true, config.squadVisualEffects);
 		assertEquals(true, config.squadRoleNameTags);
-		assertEquals(true, config.baitTactics);
+		assertEquals(true, config.individualTraits);
 		assertEquals(true, config.squadIgnoreFriendlyFire);
 		assertEquals(true, config.retreatTactics);
-		assertEquals(0.08, config.retreatChance);
-		assertEquals(0.5, config.leaderRetreatChance);
-		assertEquals(1.25, config.retreatSpeedModifier);
+		assertEquals(0.20, config.retreatHealthThreshold);
+		assertEquals(0.30, config.retreatHeavyHitThreshold);
+		assertEquals(100, config.retreatMaximumTicks);
+		assertEquals(5.0, config.retreatSafeDistance);
+		assertEquals(1.50, config.retreatSpeedModifier);
+		assertEquals(true, config.foodScavenging);
+		assertEquals(6, config.foodMinimumIntelligence);
+		assertEquals(true, config.terrainTactics);
+		assertEquals(8, config.terrainMinimumIntelligence);
+		assertEquals(8, config.terrainBlockInventoryLimit);
+		assertEquals(true, config.pursuitBarriers);
 		assertEquals(0.10, config.squadSpeedBonus);
 		assertEquals(0.85, config.armedChanceHard);
 		assertEquals(0.25, config.armedShieldChance);
+		assertEquals(true, config.specialEquipment);
+		assertEquals(true, config.fluidTactics);
+		assertEquals(0.04, config.waterBucketChance);
+		assertEquals(0.02, config.lavaBucketChance);
+		assertEquals(0.085, config.specialEquipmentDropChance);
 	}
 
 	@Test
 	void clampsRetreatValues() {
 		MobsThinkNowConfig config = new MobsThinkNowConfig();
-		config.retreatChance = 0.9;
-		config.leaderRetreatChance = -1.0;
+		config.retreatHealthThreshold = 0.9;
+		config.retreatHeavyHitThreshold = 9.0;
+		config.retreatMaximumTicks = 500;
+		config.retreatSafeDistance = 100.0;
 		config.retreatSpeedModifier = 3.0;
+		config.foodMinimumIntelligence = 99;
+		config.terrainMinimumIntelligence = 1;
+		config.terrainBlockInventoryLimit = 99;
+		config.waterBucketChance = 4.0;
+		config.lavaBucketChance = -2.0;
+		config.specialEquipmentDropChance = Double.NaN;
 
 		config.validate();
 
-		assertEquals(0.5, config.retreatChance);
-		assertEquals(0.0, config.leaderRetreatChance);
-		assertEquals(1.4, config.retreatSpeedModifier);
+		assertEquals(0.5, config.retreatHealthThreshold);
+		assertEquals(1.0, config.retreatHeavyHitThreshold);
+		assertEquals(200, config.retreatMaximumTicks);
+		assertEquals(16.0, config.retreatSafeDistance);
+		assertEquals(2.0, config.retreatSpeedModifier);
+		assertEquals(10, config.foodMinimumIntelligence);
+		assertEquals(6, config.terrainMinimumIntelligence);
+		assertEquals(16, config.terrainBlockInventoryLimit);
+		assertEquals(1.0, config.waterBucketChance);
+		assertEquals(0.0, config.lavaBucketChance);
+		assertEquals(0.0, config.specialEquipmentDropChance);
 	}
 
 	@Test

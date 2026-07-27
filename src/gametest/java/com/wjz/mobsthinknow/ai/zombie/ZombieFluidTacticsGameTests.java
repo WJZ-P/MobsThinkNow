@@ -1,0 +1,151 @@
+package com.wjz.mobsthinknow.ai.zombie;
+
+import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
+import java.lang.reflect.Method;
+import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
+import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.BlockPos;
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
+
+/** 真实流体源、BucketPickup 与实体持久状态共同参与的集成测试。 */
+public final class ZombieFluidTacticsGameTests implements CustomTestMethodInvoker {
+	@GameTest
+	public void lavaCarrierDeploysAtPlayerFeetThenRecoversAndDisengages(final GameTestHelper helper) {
+		BlockPos playerFeet = new BlockPos(4, 1, 2);
+		helper.setBlock(playerFeet.below(), Blocks.STONE);
+		helper.setBlock(playerFeet, Blocks.AIR);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		zombie.setNoAi(true);
+		zombie.clearFire();
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.LAVA_BUCKET));
+		((ZombieFluidCarrierAccess)zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.LAVA, null, 0L, 0L
+		));
+
+		Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+		Vec3 absolutePlayerFeet = helper.absoluteVec(Vec3.atBottomCenterOf(playerFeet));
+		player.snapTo(absolutePlayerFeet.x, absolutePlayerFeet.y, absolutePlayerFeet.z, 0.0F, 0.0F);
+		player.setInvulnerable(true);
+		helper.getLevel().addFreshEntity(player);
+		// GameTest 的轻量 Mock Player 不进入服务器玩家列表，Mob#canAttack 会拒绝把它设成 target；
+		// 通过与真实受击广播相同的短期威胁入口驱动 Goal，后续投放逻辑完全一致。
+		ZombieFluidThreatMemory.record(zombie, player, zombie.position());
+
+		ZombieFluidTacticsGoal goal = new ZombieFluidTacticsGoal(zombie);
+		helper.assertTrue(
+			goal.canUse(),
+			"A full lava carrier did not start from a real fluid-threat signal."
+		);
+		goal.start();
+		goal.tick();
+
+		ZombieFluidCarrierState deployed = ZombieSpecialEquipment.state(zombie);
+		helper.assertTrue(deployed.isDeployed(), "The lava bucket was not deployed.");
+		helper.assertTrue(
+			helper.getLevel().getFluidState(deployed.source()).is(FluidTags.LAVA),
+			"The deployed source under the player was not lava."
+		);
+		helper.assertTrue(zombie.getMainHandItem().is(Items.BUCKET), "The deployed lava bucket did not become empty.");
+
+		// 跳过等待窗口，真实执行同一 Goal 的 BucketPickup 回收分支。
+		((ZombieFluidCarrierAccess)zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.LAVA,
+			deployed.source(),
+			helper.getLevel().getGameTime(),
+			0L
+		));
+		goal.tick();
+		helper.assertTrue(zombie.getMainHandItem().is(Items.LAVA_BUCKET), "The lava source was not recovered.");
+		helper.assertTrue(
+			helper.getLevel().getFluidState(deployed.source()).isEmpty(),
+			"The source remained after the lava carrier recovered it."
+		);
+		goal.stop();
+		player.discard();
+		helper.succeed();
+	}
+
+	@GameTest
+	public void deployedWaterSourceIsRecoveredIntoTheSameBucket(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		zombie.setNoAi(true);
+		zombie.clearFire();
+		BlockPos relativeSource = new BlockPos(3, 1, 2);
+		BlockPos source = helper.absolutePos(relativeSource);
+		helper.setBlock(relativeSource, Blocks.WATER);
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BUCKET));
+		((ZombieFluidCarrierAccess)zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.WATER,
+			source,
+			helper.getLevel().getGameTime(),
+			0L
+		));
+		Zombie restored = EntityType.ZOMBIE.create(helper.getLevel(), EntitySpawnReason.STRUCTURE);
+		restored.restoreFrom(zombie);
+		ZombieFluidCarrierState restoredState = ZombieSpecialEquipment.state(restored);
+		helper.assertTrue(
+			restoredState.utility() == UtilityClass.WATER && source.equals(restoredState.source()),
+			"The deployed fluid source did not survive the vanilla entity save/load path."
+		);
+
+		ZombieFluidTacticsGoal goal = new ZombieFluidTacticsGoal(restored);
+		helper.assertTrue(goal.canUse(), "A persisted deployed source did not resume its recovery transaction.");
+		goal.start();
+		goal.tick();
+
+		helper.assertTrue(restored.getMainHandItem().is(Items.WATER_BUCKET), "The source did not refill the empty bucket.");
+		helper.assertTrue(helper.getBlockState(relativeSource).isAir(), "The recovered source remained in the world.");
+		helper.assertTrue(
+			!ZombieSpecialEquipment.state(restored).isDeployed(),
+			"The deployed transaction was not cleared after recovery."
+		);
+		goal.stop();
+		helper.succeed();
+	}
+
+	@GameTest
+	public void removedSourceLeavesEmptyBucketAndDropsUtilityRole(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		zombie.setNoAi(true);
+		zombie.clearFire();
+		BlockPos relativeMissingSource = new BlockPos(3, 1, 2);
+		BlockPos missingSource = helper.absolutePos(relativeMissingSource);
+		helper.setBlock(relativeMissingSource, Blocks.AIR);
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BUCKET));
+		((ZombieFluidCarrierAccess)zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.LAVA,
+			missingSource,
+			helper.getLevel().getGameTime(),
+			0L
+		));
+
+		ZombieFluidTacticsGoal goal = new ZombieFluidTacticsGoal(zombie);
+		helper.assertTrue(goal.canUse(), "A pending deployed transaction was not resumed.");
+		goal.start();
+		goal.tick();
+
+		helper.assertTrue(zombie.getMainHandItem().is(Items.BUCKET), "A missing source fabricated a filled bucket.");
+		helper.assertTrue(
+			ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.NONE,
+			"The zombie kept its utility role after the player removed its fluid."
+		);
+		goal.stop();
+		helper.succeed();
+	}
+
+	@Override
+	public void invokeTestMethod(final GameTestHelper helper, final Method method) throws ReflectiveOperationException {
+		method.invoke(this, helper);
+	}
+}

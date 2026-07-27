@@ -3,7 +3,9 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
@@ -26,6 +28,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
@@ -44,9 +47,6 @@ public final class ZombieSquadCoordinator {
 	private static final int MINIMUM_SURVIVING_SQUAD_SIZE = 2;
 	private static final double ORDER_REACHED_DISTANCE_SQUARED = 4.0;
 	private static final double MINIMUM_HORIZONTAL_LENGTH_SQUARED = 1.0E-6;
-	/** 诱饵在目标正面的站位距离与横向游走幅度：足够近能拉住注意力，又不进近战距离。 */
-	private static final double BAIT_STANDOFF_DISTANCE = 3.2;
-	private static final double BAIT_WEAVE_AMPLITUDE = 2.4;
 	private static final Identifier SQUAD_SPEED_MODIFIER_ID =
 		Identifier.fromNamespaceAndPath(MobsThinkNow.MOD_ID, "squad_speed_bonus");
 	private static final Map<ServerLevel, ZombieSquadCoordinator> COORDINATORS = new IdentityHashMap<>();
@@ -119,6 +119,38 @@ public final class ZombieSquadCoordinator {
 	}
 
 	/**
+	 * 真实受击事件触发的有界求援广播。只遍历受害者所在小队（默认最多 20），且只给水桶辅助兵写信号；
+	 * 不在每 tick 做邻居查询，因此不会形成“每只僵尸扫描每只僵尸”的 N² 热点。
+	 */
+	public static void onSquadMemberAttacked(final Zombie victim, final Player attacker) {
+		if (!(victim.level() instanceof ServerLevel serverLevel)
+			|| !attacker.isAlive() || attacker.isCreative() || attacker.isSpectator()) {
+			return;
+		}
+
+		if (ZombieSpecialEquipment.utilityClassOf(victim) == UtilityClass.WATER) {
+			ZombieFluidThreatMemory.record(victim, attacker, victim.position());
+		}
+		ZombieSquadCoordinator coordinator = COORDINATORS.get(serverLevel);
+		if (coordinator == null) {
+			return;
+		}
+		MemberRecord member = coordinator.members.get(victim.getId());
+		ZombieSquad squad = member == null ? null : coordinator.squads.get(member.squadId);
+		if (squad == null) {
+			return;
+		}
+		for (int memberId : squad.memberIds) {
+			MemberRecord helper = coordinator.members.get(memberId);
+			if (helper != null
+				&& helper.zombie != victim
+				&& ZombieSpecialEquipment.utilityClassOf(helper.zombie) == UtilityClass.WATER) {
+				ZombieFluidThreatMemory.record(helper.zombie, attacker, victim.position());
+			}
+		}
+	}
+
+	/**
 	 * 单只僵尸提交自己的观察结果。只有直接视线会刷新时间戳；旧的最后目击位置可以继续上报，
 	 * 但不会被误当成一条更新鲜的情报。
 	 */
@@ -179,11 +211,17 @@ public final class ZombieSquadCoordinator {
 		}
 
 		SquadOrder order = squad.orders.get(zombie.getId());
-		SquadRole role = effectiveRole(
-			order == null ? squad.roles.getOrDefault(zombie.getId(), SquadRole.PRESSURER) : order.role,
-			ConfigManager.get()
-		);
+		SquadRole role = order == null
+			? squad.roles.getOrDefault(zombie.getId(), SquadRole.PRESSURER)
+			: order.role;
 		Vec3 destination = order == null ? null : order.destination;
+		if (role == SquadRole.SUPPORT && ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.NONE) {
+			// 源方块被玩家移走后手里只剩空桶：同一 tick 起按普通施压手执行，不等待下一轮重编队。
+			role = SquadRole.PRESSURER;
+			if (squad.state == SquadState.ENGAGING) {
+				destination = null;
+			}
+		}
 		MemberRecord leader = this.members.get(squad.leaderId);
 		Vec3 focusPosition = leader == null ? squad.rallyPoint : leader.zombie.position().add(0.0, 1.0, 0.0);
 		long now = zombie.level().getGameTime();
@@ -474,22 +512,14 @@ public final class ZombieSquadCoordinator {
 			ordered,
 			squad.leaderId,
 			intelligence,
-			this.memberLoadouts(ordered),
-			ConfigManager.get().baitTactics
+			this.memberLoadouts(ordered)
 		));
 	}
 
-	/**
-	 * 诱饵战术被关闭时，存量小队里已分配的 BAIT 立即按施压手对待（命令、名牌、目的地全部生效），
-	 * 不必等到换届或解散才重排职位表。
-	 */
-	private static SquadRole effectiveRole(final SquadRole role, final MobsThinkNowConfig config) {
-		return role == SquadRole.BAIT && !config.baitTactics ? SquadRole.PRESSURER : role;
-	}
-
-	/** 武装小队开启时才读取兵种与盾牌；空 Map 让规划器保持与旧版一致的分配。 */
+	/** 武装或特殊装备开启时读取完整负载；两者都关时空 Map 保持旧版分配。 */
 	private Map<Integer, SquadLoadout> memberLoadouts(final List<Integer> memberIds) {
-		if (!ConfigManager.get().armedSquads) {
+		MobsThinkNowConfig config = ConfigManager.get();
+		if (!config.armedSquads && !config.specialEquipment) {
 			return Map.of();
 		}
 
@@ -498,8 +528,13 @@ public final class ZombieSquadCoordinator {
 			MemberRecord member = this.members.get(memberId);
 			if (member != null) {
 				loadouts.put(memberId, new SquadLoadout(
-					ZombieArmory.weaponClassOf(member.zombie.getMainHandItem()),
-					ZombieArmory.hasShield(member.zombie)
+					config.armedSquads
+						? ZombieArmory.weaponClassOf(member.zombie.getMainHandItem())
+						: WeaponClass.NONE,
+					config.armedSquads && ZombieArmory.hasShield(member.zombie),
+					config.specialEquipment
+						? ZombieSpecialEquipment.utilityClassOf(member.zombie)
+						: UtilityClass.NONE
 				));
 			}
 		}
@@ -587,7 +622,7 @@ public final class ZombieSquadCoordinator {
 		squad.orders.clear();
 		int pressureIndex = 0;
 		for (int memberId : ordered) {
-			SquadRole role = effectiveRole(squad.roles.getOrDefault(memberId, SquadRole.PRESSURER), config);
+			SquadRole role = squad.roles.getOrDefault(memberId, SquadRole.PRESSURER);
 			Vec3 destination = this.combatDestination(
 				role,
 				targetPosition,
@@ -595,8 +630,7 @@ public final class ZombieSquadCoordinator {
 				lateral,
 				config,
 				engaging,
-				pressureIndex,
-				now
+				pressureIndex
 			);
 			if (role == SquadRole.LEADER || role == SquadRole.PRESSURER) {
 				pressureIndex++;
@@ -612,8 +646,7 @@ public final class ZombieSquadCoordinator {
 		final Vec3 lateral,
 		final MobsThinkNowConfig config,
 		final boolean engaging,
-		final int pressureIndex,
-		final long now
+		final int pressureIndex
 	) {
 		return switch (role) {
 			case LEADER, PRESSURER -> {
@@ -623,10 +656,6 @@ public final class ZombieSquadCoordinator {
 				double side = pressureIndex == 0 ? 0.0 : (pressureIndex % 2 == 0 ? 0.8 : -0.8);
 				yield targetPosition.add(forward.scale(config.formationRadius)).add(lateral.scale(side));
 			}
-			// 诱饵站在目标视线正前方，按时间横向游走：位置醒目、行为反常，天然吸引玩家注意。
-			case BAIT -> targetPosition
-				.add(forward.scale(BAIT_STANDOFF_DISTANCE))
-				.add(lateral.scale(Math.sin(now * 0.45) * BAIT_WEAVE_AMPLITUDE));
 			case FLANK_LEFT -> targetPosition
 				.subtract(forward.scale(config.flankBehindDistance))
 				.add(lateral.scale(config.flankSideDistance));
@@ -634,6 +663,9 @@ public final class ZombieSquadCoordinator {
 				.subtract(forward.scale(config.flankBehindDistance))
 				.subtract(lateral.scale(config.flankSideDistance));
 			case CUTOFF -> targetPosition.subtract(forward.scale(config.formationRadius + 1.5));
+			case SUPPORT -> targetPosition
+				.add(forward.scale(config.formationRadius + 2.5))
+				.add(lateral.scale((pressureIndex & 1) == 0 ? 2.0 : -2.0));
 		};
 	}
 
@@ -816,10 +848,12 @@ public final class ZombieSquadCoordinator {
 			if (memberId == squad.leaderId) {
 				leader = member.zombie;
 			}
-			roleMembers.add(new SquadTheatrics.RoleMember(
-				member.zombie,
-				effectiveRole(squad.roles.getOrDefault(memberId, SquadRole.PRESSURER), config)
-			));
+			SquadRole presentedRole = squad.roles.getOrDefault(memberId, SquadRole.PRESSURER);
+			if (presentedRole == SquadRole.SUPPORT
+				&& ZombieSpecialEquipment.utilityClassOf(member.zombie) == UtilityClass.NONE) {
+				presentedRole = SquadRole.PRESSURER;
+			}
+			roleMembers.add(new SquadTheatrics.RoleMember(member.zombie, presentedRole));
 		}
 		this.theatrics.tickSquad(level, squad.id, squad.state, squad.stateStartedAt, leader, roleMembers, config, now);
 	}

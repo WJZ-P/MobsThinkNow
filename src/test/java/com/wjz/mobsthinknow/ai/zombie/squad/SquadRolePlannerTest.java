@@ -18,28 +18,27 @@ class SquadRolePlannerTest {
 	}
 
 	@Test
-	void brilliantLeaderUnlocksBaitTwoFlanksAndCutoff() {
-		Map<Integer, SquadRole> roles = SquadRolePlanner.plan(List.of(1, 2, 3, 4, 5, 6), 1, 10);
+	void brilliantLeaderUnlocksTwoFlanksAndCutoff() {
+		Map<Integer, SquadRole> roles = SquadRolePlanner.plan(List.of(1, 2, 3, 4, 5), 1, 10);
 
 		assertEquals(SquadRole.LEADER, roles.get(1));
 		assertEquals(SquadRole.PRESSURER, roles.get(2));
 		assertEquals(SquadRole.FLANK_LEFT, roles.get(3));
-		assertEquals(SquadRole.BAIT, roles.get(4));
-		assertEquals(SquadRole.FLANK_RIGHT, roles.get(5));
-		assertEquals(SquadRole.CUTOFF, roles.get(6));
+		assertEquals(SquadRole.FLANK_RIGHT, roles.get(4));
+		assertEquals(SquadRole.CUTOFF, roles.get(5));
 	}
 
 	@Test
-	void intelligenceSixUnlocksBaitButFiveDoesNot() {
-		Map<Integer, SquadRole> smart = SquadRolePlanner.plan(List.of(1, 2, 3, 4), 1, 6);
-		Map<Integer, SquadRole> average = SquadRolePlanner.plan(List.of(1, 2, 3, 4), 1, 5);
+	void rightFlankUnlocksAtSeven() {
+		Map<Integer, SquadRole> seven = SquadRolePlanner.plan(List.of(1, 2, 3, 4), 1, 7);
+		Map<Integer, SquadRole> six = SquadRolePlanner.plan(List.of(1, 2, 3, 4), 1, 6);
 
-		assertEquals(SquadRole.BAIT, smart.get(4));
-		assertEquals(SquadRole.PRESSURER, average.get(4));
+		assertEquals(SquadRole.FLANK_RIGHT, seven.get(4));
+		assertEquals(SquadRole.PRESSURER, six.get(4));
 	}
 
 	@Test
-	void shieldBearersAnchorPressureAndBaitSlots() {
+	void shieldBearersAnchorPressureSlots() {
 		Map<Integer, SquadRole> roles = SquadRolePlanner.planLoadouts(
 			List.of(1, 2, 3, 4, 5),
 			1,
@@ -49,25 +48,13 @@ class SquadRolePlannerTest {
 				3, new SquadLoadout(WeaponClass.AXE, true),
 				4, new SquadLoadout(WeaponClass.SPEAR, false),
 				5, new SquadLoadout(WeaponClass.NONE, true)
-			),
-			true
+			)
 		);
 
 		assertEquals(SquadRole.PRESSURER, roles.get(3));
 		assertEquals(SquadRole.FLANK_LEFT, roles.get(2));
-		assertEquals(SquadRole.BAIT, roles.get(5));
-		assertEquals(SquadRole.FLANK_RIGHT, roles.get(4));
-	}
-
-	@Test
-	void disablingBaitRestoresPreBaitRoleTable() {
-		Map<Integer, SquadRole> roles = SquadRolePlanner.plan(List.of(1, 2, 3, 4, 5), 1, 10, Map.of(), false);
-
-		assertEquals(SquadRole.LEADER, roles.get(1));
-		assertEquals(SquadRole.PRESSURER, roles.get(2));
-		assertEquals(SquadRole.FLANK_LEFT, roles.get(3));
-		assertEquals(SquadRole.FLANK_RIGHT, roles.get(4));
-		assertEquals(SquadRole.CUTOFF, roles.get(5));
+		assertEquals(SquadRole.FLANK_RIGHT, roles.get(5));
+		assertEquals(SquadRole.CUTOFF, roles.get(4));
 	}
 
 	@Test
@@ -82,8 +69,8 @@ class SquadRolePlannerTest {
 		assertEquals(SquadRole.LEADER, roles.get(1));
 		assertEquals(SquadRole.PRESSURER, roles.get(3));
 		assertEquals(SquadRole.FLANK_LEFT, roles.get(2));
-		assertEquals(SquadRole.BAIT, roles.get(5));
-		assertEquals(SquadRole.FLANK_RIGHT, roles.get(4));
+		assertEquals(SquadRole.FLANK_RIGHT, roles.get(5));
+		assertEquals(SquadRole.CUTOFF, roles.get(4));
 	}
 
 	@Test
@@ -97,5 +84,25 @@ class SquadRolePlannerTest {
 		);
 
 		assertEquals(legacy, unarmed);
+	}
+
+	@Test
+	void utilityCarrierReceivesDedicatedSupportRole() {
+		Map<Integer, SquadRole> roles = SquadRolePlanner.planLoadouts(
+			List.of(1, 2, 3, 4, 5),
+			1,
+			10,
+			Map.of(
+				2, new SquadLoadout(WeaponClass.NONE, false, UtilityClass.WATER),
+				3, new SquadLoadout(WeaponClass.AXE, false),
+				4, new SquadLoadout(WeaponClass.SWORD, false),
+				5, SquadLoadout.UNARMED
+			)
+		);
+
+		assertEquals(SquadRole.SUPPORT, roles.get(2));
+		assertEquals(SquadRole.PRESSURER, roles.get(3));
+		assertEquals(SquadRole.FLANK_LEFT, roles.get(4));
+		assertEquals(SquadRole.FLANK_RIGHT, roles.get(5));
 	}
 }

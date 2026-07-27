@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class SmartZombieMetrics {
@@ -15,6 +16,14 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong LEADER_REELECTIONS = new AtomicLong();
 	private static final AtomicLong SQUAD_CANDIDATE_CHECKS = new AtomicLong();
 	private static final AtomicLong RETREATS = new AtomicLong();
+	private static final AtomicLong TERRAIN_BLOCKS_HARVESTED = new AtomicLong();
+	private static final AtomicLong TERRAIN_BLOCKS_PLACED = new AtomicLong();
+	private static final AtomicLong PERCHED_ATTACKS = new AtomicLong();
+	private static final AtomicLong PURSUIT_BARRIERS = new AtomicLong();
+	private static final AtomicLong WATER_DEPLOYMENTS = new AtomicLong();
+	private static final AtomicLong LAVA_DEPLOYMENTS = new AtomicLong();
+	private static final AtomicLong FLUID_RECOVERIES = new AtomicLong();
+	private static final AtomicLong FLUID_SOURCES_LOST = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -63,6 +72,38 @@ public final class SmartZombieMetrics {
 		RETREATS.incrementAndGet();
 	}
 
+	public static void terrainBlockHarvested() {
+		TERRAIN_BLOCKS_HARVESTED.incrementAndGet();
+	}
+
+	public static void terrainBlockPlaced() {
+		TERRAIN_BLOCKS_PLACED.incrementAndGet();
+	}
+
+	public static void perchedAttack() {
+		PERCHED_ATTACKS.incrementAndGet();
+	}
+
+	public static void pursuitBarrierPlaced() {
+		PURSUIT_BARRIERS.incrementAndGet();
+	}
+
+	public static void fluidDeployed(final UtilityClass utility) {
+		if (utility == UtilityClass.WATER) {
+			WATER_DEPLOYMENTS.incrementAndGet();
+		} else if (utility == UtilityClass.LAVA) {
+			LAVA_DEPLOYMENTS.incrementAndGet();
+		}
+	}
+
+	public static void fluidRecovered() {
+		FLUID_RECOVERIES.incrementAndGet();
+	}
+
+	public static void fluidSourceLost() {
+		FLUID_SOURCES_LOST.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -76,7 +117,15 @@ public final class SmartZombieMetrics {
 			LEADER_ELECTIONS.get(),
 			LEADER_REELECTIONS.get(),
 			SQUAD_CANDIDATE_CHECKS.get(),
-			RETREATS.get()
+			RETREATS.get(),
+			TERRAIN_BLOCKS_HARVESTED.get(),
+			TERRAIN_BLOCKS_PLACED.get(),
+			PERCHED_ATTACKS.get(),
+			PURSUIT_BARRIERS.get(),
+			WATER_DEPLOYMENTS.get(),
+			LAVA_DEPLOYMENTS.get(),
+			FLUID_RECOVERIES.get(),
+			FLUID_SOURCES_LOST.get()
 		);
 	}
 
@@ -92,7 +141,15 @@ public final class SmartZombieMetrics {
 		long leaderElections,
 		long leaderReelections,
 		long squadCandidateChecks,
-		long retreats
+		long retreats,
+		long terrainBlocksHarvested,
+		long terrainBlocksPlaced,
+		long perchedAttacks,
+		long pursuitBarriers,
+		long waterDeployments,
+		long lavaDeployments,
+		long fluidRecoveries,
+		long fluidSourcesLost
 	) {
 	}
 }

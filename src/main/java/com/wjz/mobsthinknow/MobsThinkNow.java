@@ -1,15 +1,23 @@
 package com.wjz.mobsthinknow;
 
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
+import com.wjz.mobsthinknow.ai.zombie.ZombieRetreatMemory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieShieldMemory;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.command.MtnCommands;
 import com.wjz.mobsthinknow.config.ConfigManager;
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.player.Player;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,24 +31,63 @@ public final class MobsThinkNow implements ModInitializer {
 		MtnCommands.register();
 		// 协调器统一在每个维度 tick 的末尾做一次决策，保证本 tick 的所有僵尸心跳已经收齐。
 		ServerTickEvents.END_LEVEL_TICK.register(ZombieSquadCoordinator::tickLevel);
-		ServerLevelEvents.UNLOAD.register((server, level) -> ZombieSquadCoordinator.unloadLevel(level));
+		ServerLevelEvents.UNLOAD.register((server, level) -> {
+			ZombieSquadCoordinator.unloadLevel(level);
+			ZombieFluidThreatMemory.clearLevel(level);
+		});
+		// 关服保存前结束最多几十 tick 的临时换手，确保存档里永远是原武器/盾牌。
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> ZombieFoodEquipment.restoreAll());
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			ZombieSquadCoordinator.clearAll();
 			ZombieArmory.clearShieldState();
+			ZombieFoodEquipment.clear();
+			ZombieRetreatMemory.clear();
+			ZombieShieldMemory.clear();
+			ZombieFluidThreatMemory.clear();
 		});
 		// 在 die() 记录“Named entity died”日志之前恢复职业名牌；只做表现清理，不改变死亡结果。
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, damageSource, damageAmount) -> {
 			if (entity instanceof Zombie zombie) {
+				ZombieRetreatMemory.discard(zombie);
+				ZombieShieldMemory.discard(zombie);
+				ZombieFluidThreatMemory.discard(zombie);
 				ZombieSquadCoordinator.onZombieDying(zombie);
+				ZombieFoodEquipment.restore(zombie, true);
+				ZombieIntelligenceName.removeSyntheticMarker(zombie);
 			}
 			return true;
 		});
-		// 斧头攻击举盾僵尸时先破盾再结算伤害；原版的盾牌禁用冷却只对玩家生效，这里补对称。
+		// ALLOW_DEATH 仍可能被后注册的复活机制取消；材料只在不可撤销的死亡事件中掉落，避免复制或误掉落。
+		ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
+			if (entity instanceof Zombie zombie) {
+				ZombieBuilderInventory.dropAll(zombie);
+			}
+		});
+		ServerLivingEntityEvents.MOB_CONVERSION.register((previous, converted, conversionContext) -> {
+			if (previous instanceof Zombie oldZombie && converted instanceof Zombie newZombie) {
+				ZombieBuilderInventory.transfer(oldZombie, newZombie);
+			}
+		});
+		// 同一入口先快照生命值，并在斧击举盾僵尸时补上原版只对玩家生效的破盾冷却。
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, damageSource, damageAmount) -> {
 			if (entity instanceof Zombie zombie) {
-				ZombieArmory.onZombieAttacked(zombie, damageSource, ConfigManager.get());
+				MobsThinkNowConfig config = ConfigManager.get();
+				// 必须先快照生命值：ZombieArmory 可能因斧击收盾，随后原版才会结算实际扣血。
+				ZombieRetreatMemory.beginDamage(zombie);
+				// 先记录攻击意图：盾牌随后即使完全挡住伤害，盾卫也能识别并安排一次反击。
+				ZombieShieldMemory.recordAttack(zombie, damageSource, config);
+				ZombieArmory.onZombieAttacked(zombie, damageSource, config);
+				// 事件驱动地通知至多一支小队；水桶兵因此无需逐 tick 扫描“谁正在挨打”。
+				if (damageSource.getEntity() instanceof Player player) {
+					ZombieSquadCoordinator.onSquadMemberAttacked(zombie, player);
+				}
 			}
 			return true;
+		});
+		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, damageSource, baseDamage, damage, blocked) -> {
+			if (entity instanceof Zombie zombie) {
+				ZombieRetreatMemory.finishDamage(zombie, damageSource);
+			}
 		});
 		LOGGER.info("Mobs Think Now initialized for Minecraft 26.1.2.");
 	}

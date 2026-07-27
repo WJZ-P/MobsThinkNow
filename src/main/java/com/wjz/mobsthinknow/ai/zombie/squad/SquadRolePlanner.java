@@ -30,34 +30,30 @@ public final class SquadRolePlanner {
 		final int leaderIntelligence,
 		final Map<Integer, WeaponClass> weapons
 	) {
-		return plan(orderedMemberIds, leaderId, leaderIntelligence, weapons, true);
-	}
-
-	public static Map<Integer, SquadRole> plan(
-		final List<Integer> orderedMemberIds,
-		final int leaderId,
-		final int leaderIntelligence,
-		final Map<Integer, WeaponClass> weapons,
-		final boolean allowBait
-	) {
 		Map<Integer, SquadLoadout> loadouts = new LinkedHashMap<>();
 		weapons.forEach((memberId, weapon) -> loadouts.put(memberId, new SquadLoadout(weapon, false)));
-		return planLoadouts(orderedMemberIds, leaderId, leaderIntelligence, loadouts, allowBait);
+		return planLoadouts(orderedMemberIds, leaderId, leaderIntelligence, loadouts);
 	}
 
 	public static Map<Integer, SquadRole> planLoadouts(
 		final List<Integer> orderedMemberIds,
 		final int leaderId,
 		final int leaderIntelligence,
-		final Map<Integer, SquadLoadout> loadouts,
-		final boolean allowBait
+		final Map<Integer, SquadLoadout> loadouts
 	) {
 		Map<Integer, SquadRole> roles = new LinkedHashMap<>();
 		roles.put(leaderId, SquadRole.LEADER);
 
 		List<Integer> followers = new ArrayList<>(orderedMemberIds.size());
 		for (int memberId : orderedMemberIds) {
-			if (memberId != leaderId) {
+			if (memberId == leaderId) {
+				continue;
+			}
+			SquadLoadout loadout = loadouts.getOrDefault(memberId, SquadLoadout.UNARMED);
+			if (loadout.utility() != UtilityClass.NONE) {
+				// 工具兵的专职优先于普通阵型槽；若工具兵当选首领，仍保留 LEADER 身份。
+				roles.put(memberId, SquadRole.SUPPORT);
+			} else {
 				followers.add(memberId);
 			}
 		}
@@ -65,7 +61,7 @@ public final class SquadRolePlanner {
 		// 职位槽仍完全由首领智力决定；装备只影响"谁去补哪个槽"。
 		boolean[] assigned = new boolean[followers.size()];
 		for (int slotIndex = 0; slotIndex < followers.size(); slotIndex++) {
-			SquadRole slot = roleFor(slotIndex, leaderIntelligence, allowBait);
+			SquadRole slot = roleFor(slotIndex, leaderIntelligence);
 			int chosen = -1;
 			int chosenScore = Integer.MIN_VALUE;
 			for (int i = 0; i < followers.size(); i++) {
@@ -86,33 +82,21 @@ public final class SquadRolePlanner {
 	}
 
 	/**
-	 * 智力到职位槽的映射：1~3 全员正面；4~5 解锁左翼；6 解锁诱饵勾引；
-	 * 7~8 解锁右翼；9~10 解锁截断退路。禁用诱饵战术时退回不含诱饵的旧职位表。
+	 * 智力到职位槽的映射：1~3 全员正面；4~6 解锁左翼；7~8 解锁右翼；
+	 * 9~10 解锁截断退路。超出基础槽位的高智力成员继续补两翼。
 	 */
-	private static SquadRole roleFor(final int index, final int intelligence, final boolean allowBait) {
+	private static SquadRole roleFor(final int index, final int intelligence) {
 		if (intelligence <= 3 || index == 0) {
 			return SquadRole.PRESSURER;
 		}
 		if (index == 1 && intelligence >= 4) {
 			return SquadRole.FLANK_LEFT;
 		}
-		if (allowBait) {
-			if (index == 2) {
-				return intelligence >= 6 ? SquadRole.BAIT : SquadRole.PRESSURER;
-			}
-			if (index == 3 && intelligence >= 7) {
-				return SquadRole.FLANK_RIGHT;
-			}
-			if (index == 4 && intelligence >= 9) {
-				return SquadRole.CUTOFF;
-			}
-		} else {
-			if (index == 2 && intelligence >= 7) {
-				return SquadRole.FLANK_RIGHT;
-			}
-			if (index == 3 && intelligence >= 9) {
-				return SquadRole.CUTOFF;
-			}
+		if (index == 2 && intelligence >= 7) {
+			return SquadRole.FLANK_RIGHT;
+		}
+		if (index == 3 && intelligence >= 9) {
+			return SquadRole.CUTOFF;
 		}
 
 		if (intelligence >= 7) {
@@ -123,8 +107,8 @@ public final class SquadRolePlanner {
 
 	private static int preference(final SquadRole slot, final SquadLoadout loadout) {
 		int base = weaponPreference(slot, loadout.weapon());
-		// 盾牌属于"顶在前面挨打"的装备：施压位当铁罐头，诱饵位当打不死的挑衅者。
-		if (loadout.shield() && (slot == SquadRole.PRESSURER || slot == SquadRole.BAIT)) {
+		// 盾牌属于"顶在前面挨打"的装备：优先把持盾成员派到正面施压位。
+		if (loadout.shield() && slot == SquadRole.PRESSURER) {
 			base += 2;
 		}
 		return base;
@@ -149,13 +133,7 @@ public final class SquadRolePlanner {
 				case NONE -> 1;
 				case AXE -> 0;
 			};
-			// 诱饵是消耗性职位，优先派空手成员上，别浪费武器输出。
-			case BAIT -> switch (weapon) {
-				case NONE -> 3;
-				case SWORD, SPEAR -> 1;
-				case AXE -> 0;
-			};
-			case LEADER -> 0;
+			case LEADER, SUPPORT -> 0;
 		};
 	}
 }

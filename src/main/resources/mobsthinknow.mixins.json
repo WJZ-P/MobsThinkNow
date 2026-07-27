@@ -5,6 +5,10 @@
 	"mixins": [
 		"ZombieMixin"
 	],
+	"client": [
+		"client.AbstractZombieModelMixin",
+		"client.AbstractZombieRendererMixin"
+	],
 	"injectors": {
 		"defaultRequire": 1
 	}

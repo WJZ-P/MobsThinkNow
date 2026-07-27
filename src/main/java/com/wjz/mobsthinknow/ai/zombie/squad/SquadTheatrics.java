@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
+import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,7 +31,7 @@ public final class SquadTheatrics {
 	private static final String ROLE_KEY_PREFIX = "mobsthinknow.role.";
 	private static final int BRIEFING_SENTENCE_TICKS = 14;
 	private static final int MARCH_GRUNT_TICKS = 22;
-	private static final int WAR_CRY_MAX_VOICES = 8;
+	private static final int WAR_CRY_MAX_VOICES = 20;
 	private static final DustParticleOptions LEADER_AURA_DUST = new DustParticleOptions(0xFFC933, 1.0F);
 
 	/** 记录被名牌覆盖前的原始名字，成员离队时恢复。 */
@@ -64,14 +65,11 @@ public final class SquadTheatrics {
 		}
 
 		long phase = Math.max(0L, now - stateStartedAt);
-		switch (state) {
+			switch (state) {
 			case FORMING, RALLYING -> emitMarchGrunts(level, members, phase);
 			case BRIEFING, REORGANIZING -> emitBriefingConversation(level, squadId, leader, members, phase);
 			case DEPLOYING -> emitRoleTrails(level, members, phase);
-			case ENGAGING -> {
-				emitWarCryRipple(level, leader, members, phase);
-				emitBaitTaunts(level, members, phase);
-			}
+			case ENGAGING -> emitWarCryRipple(level, leader, members, phase);
 		}
 	}
 
@@ -145,10 +143,10 @@ public final class SquadTheatrics {
 		return switch (role) {
 			case LEADER -> "[Leader]";
 			case PRESSURER -> "[Pressurer]";
-			case BAIT -> "[Bait]";
 			case FLANK_LEFT -> "[Left Flank]";
 			case FLANK_RIGHT -> "[Right Flank]";
 			case CUTOFF -> "[Cutoff]";
+			case SUPPORT -> "[Support]";
 		};
 	}
 
@@ -156,10 +154,10 @@ public final class SquadTheatrics {
 		return switch (role) {
 			case LEADER -> ChatFormatting.GOLD;
 			case PRESSURER -> ChatFormatting.RED;
-			case BAIT -> ChatFormatting.YELLOW;
 			case FLANK_LEFT -> ChatFormatting.GREEN;
 			case FLANK_RIGHT -> ChatFormatting.AQUA;
 			case CUTOFF -> ChatFormatting.LIGHT_PURPLE;
+			case SUPPORT -> ChatFormatting.BLUE;
 		};
 	}
 
@@ -167,10 +165,10 @@ public final class SquadTheatrics {
 		return switch (role) {
 			case LEADER -> LEADER_AURA_DUST;
 			case PRESSURER -> new DustParticleOptions(0xE04B3A, 0.9F);
-			case BAIT -> new DustParticleOptions(0xF2E14C, 0.9F);
 			case FLANK_LEFT -> new DustParticleOptions(0x4BD37B, 0.9F);
 			case FLANK_RIGHT -> new DustParticleOptions(0x3FB8E0, 0.9F);
 			case CUTOFF -> new DustParticleOptions(0xB05CE6, 0.9F);
+			case SUPPORT -> new DustParticleOptions(0x3F72E0, 0.9F);
 		};
 	}
 
@@ -192,7 +190,14 @@ public final class SquadTheatrics {
 			return;
 		}
 		Zombie speaker = members.get((int)((phase / MARCH_GRUNT_TICKS) % members.size())).zombie();
-		level.playSound(null, speaker, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 0.5F, 0.95F + (speaker.getId() % 3) * 0.06F);
+		level.playSound(
+			null,
+			speaker,
+			SoundEvents.ZOMBIE_AMBIENT,
+			SoundSource.HOSTILE,
+			0.5F,
+			ZombieVoiceProfile.expressivePitch(speaker, 0.98F)
+		);
 	}
 
 	/**
@@ -208,7 +213,7 @@ public final class SquadTheatrics {
 	) {
 		if (leader != null && phase % BRIEFING_SENTENCE_TICKS == 0L) {
 			// 不同小队的首领音高略有差异，多队同屏时不会像一个声音在循环。
-			float pitch = 0.58F + (squadId % 4L) * 0.04F;
+			float pitch = ZombieVoiceProfile.expressivePitch(leader, 0.62F + (squadId % 3L) * 0.03F);
 			level.playSound(null, leader, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 1.1F, pitch);
 			level.sendParticles(
 				ParticleTypes.ANGRY_VILLAGER,
@@ -231,7 +236,14 @@ public final class SquadTheatrics {
 			return;
 		}
 		Zombie speaker = followers.get((int)((phase / BRIEFING_SENTENCE_TICKS) % followers.size())).zombie();
-		level.playSound(null, speaker, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 0.65F, 1.05F + (speaker.getId() % 4) * 0.06F);
+		level.playSound(
+			null,
+			speaker,
+			SoundEvents.ZOMBIE_AMBIENT,
+			SoundSource.HOSTILE,
+			0.65F,
+			ZombieVoiceProfile.expressivePitch(speaker, 1.08F)
+		);
 		level.sendParticles(
 			ParticleTypes.NOTE,
 			speaker.getX(), speaker.getEyeY() + 0.5, speaker.getZ(),
@@ -262,37 +274,39 @@ public final class SquadTheatrics {
 		final long phase
 	) {
 		if (phase == 0L && leader != null) {
-			level.playSound(null, leader, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 1.3F, 0.5F);
+			// 首领先用低沉长吼下达进攻命令，成员再按两 tick 间隔依次应声。
+			level.playSound(
+				null,
+				leader,
+				SoundEvents.ZOMBIE_AMBIENT,
+				SoundSource.HOSTILE,
+				1.3F,
+				ZombieVoiceProfile.expressivePitch(leader, 0.55F)
+			);
 			return;
 		}
 		if (phase < 2L || phase % 2L != 0L) {
 			return;
 		}
-		int index = (int)((phase - 2L) / 2L);
-		if (index >= Math.min(members.size(), WAR_CRY_MAX_VOICES)) {
-			return;
-		}
-		Zombie voice = members.get(index).zombie();
-		level.playSound(null, voice, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 0.9F, 0.8F + (voice.getId() % 3) * 0.08F);
-	}
-
-	/** 交战期间诱饵持续高声叫嚣并冒黄色粒子——它的工作就是让玩家忍不住看它。 */
-	private static void emitBaitTaunts(final ServerLevel level, final List<RoleMember> members, final long phase) {
-		if (phase % 16L != 0L) {
-			return;
-		}
+		List<RoleMember> followers = new ArrayList<>(members.size());
 		for (RoleMember member : members) {
-			if (member.role() != SquadRole.BAIT) {
-				continue;
+			if (leader == null || member.zombie() != leader) {
+				followers.add(member);
 			}
-			Zombie bait = member.zombie();
-			level.playSound(null, bait, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 0.9F, 1.25F + (bait.getId() % 3) * 0.05F);
-			level.sendParticles(
-				roleDust(SquadRole.BAIT),
-				bait.getX(), bait.getEyeY() + 0.5, bait.getZ(),
-				2, 0.2, 0.15, 0.2, 0.0
-			);
 		}
+		int index = (int)((phase - 2L) / 2L);
+		if (index >= Math.min(followers.size(), WAR_CRY_MAX_VOICES)) {
+			return;
+		}
+		Zombie voice = followers.get(index).zombie();
+		level.playSound(
+			null,
+			voice,
+			SoundEvents.ZOMBIE_AMBIENT,
+			SoundSource.HOSTILE,
+			0.9F,
+			ZombieVoiceProfile.expressivePitch(voice, 0.86F)
+		);
 	}
 
 	/** 协调器传入的成员及其当前职位快照。 */
