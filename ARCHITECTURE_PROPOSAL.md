@@ -392,6 +392,35 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   不再是匹配类型的静止源，或玩家提前收走时，事务清空但空桶不被伪造回满，优先级 3
   普通攻击在同一 tick 后重新可用；配置关闭后只允许已投放事务完成清理，不再新投放。
 
+持矛空袭（`ZombieAirAssault` + `ZombieSpearAirAssaultGoal`，优先级 0）：
+
+- 原版 `LivingEntity.travel` 已为所有生物实现鞘翅动力学，`updateFallFlying` 也负责
+  GLIDER 组件校验和耐久消耗；缺失的只是怪物侧公开起飞入口。`ZombieFlightAccess`
+  在 `ZombieMixin` 的继承上下文中设置原版共享滑翔位，停止时仍调用原版
+  `stopFallFlying`，不复制或旁路物理；
+- 原版 `FireworkRocketEntity(ServerLevel, ItemStack, LivingEntity)` 可以附着并推进任意
+  正在滑翔的 `LivingEntity`，限制在玩家的是烟花物品的交互入口而非弹体本身。Goal
+  每次从副手真实拆掉一枚，再生成附着弹体；生成失败时不扣弹。出生弹量始终为
+  16～64，简单/普通/困难以指数 1.8/1.0/0.6 对同一随机数做分布偏置，保持上下限
+  一致而逐级提高均值；
+- 状态机为 `SEEKING_LAUNCH → LAUNCHING → CLIMBING → STAGING → ARMING → DIVING →
+  RECOVERING`，目标死亡、鞘翅失效或弹尽后的航次结束转 `LANDING`。最后一枚火箭
+  消耗后仍允许完成当前蓄矛/俯冲，不会在半空把 MOVE/LOOK 交还给地面 Goal；落地且
+  副手为空后 `SmartZombieSpearUseGoal` 才恢复原版 `SpearUseGoal`；
+- 起飞搜索半径 7、每轮最多检查 672 个方块（完整覆盖七层方环与三个脚部高度）、最多创建
+  4 条路径且每 20 tick 才重搜；
+  候选要求完整地基、六格无碰撞/无流体净空并可见天空。飞行阶段只做 O(1) 的向量
+  引导，`redirectVelocityToward` 只改变已有速度方向，推进能量仍来自下落和原版烟花；
+- 铁矛 `KINETIC_WEAPON.delayTicks=12`，而烟花滑翔可在更短时间飞完 10 格。`ARMING`
+  因此先在攻击线外调用 `startUsingItem(MAIN_HAND)` 并等待该组件自己的准备时间，随后
+  才进入俯冲。命中继续由 `KineticWeapon.damageEntities` 的长矛射线、相对速度条件、
+  `stabAttack` 和接触冷却完成；Goal 不直接调用 `hurt`，命中后通过原版 stabbed 记忆
+  判断拉起；
+- `LivingEntityRendererMixin` 只对 `ZombieRenderState.isFallFlying` 增加玩家同方向的
+  水平机身旋转；`AbstractZombieModelMixin` 在滑翔且使用动能武器时保留
+  `HumanoidModel` 已算好的举矛姿势，不再让僵尸双臂前伸动画覆盖它。服务器完全不依赖
+  客户端 Mixin。
+
 武装小队（`ZombieArmory`，默认关闭）：
 
 - `finalizeSpawn` 尾部按难度掷持械概率，只补空手僵尸，转化路径不参与，
@@ -455,7 +484,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 
 ## 9. 验证体系
 
-- JUnit：效用选择、配置边界、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
+- JUnit：效用选择、配置边界、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
   四格上限、IQ 8～10 拆柱概率、
   觅食半血边界、个体声线映射、难度属性均值、特殊桶概率分区与原版掉落率、智力
   概率和换手选择、智力名字结构、盾卫随机观察与反击窗口边界、首领选举优先级、
@@ -470,7 +499,9 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   预装材料僵尸能在第二次重击前完成立柱、流体源真实回收到同类桶、源丢失降级，
   高处非铁傀儡目标在目标邻格触发三次逐格跳垫、到达同一战斗层并进入原版近战范围，
   软柱顶经过完整挖掘反馈后只破坏一格并使目标下落、地面武器按强度优先拾取且主手杂物
-  完整掉回，以及岩浆桶在生存玩家脚下真实投放后回收；当前共 21 项服务端 GameTest；
+  完整掉回，以及岩浆桶在生存玩家脚下真实投放后回收；持矛套装及存档、地面/空中战斗
+  互斥、真实附着烟花消费、原版滑翔、蓄矛后的原版动能伤害和末发火箭着陆也有独立
+  端到端覆盖；当前共 27 项服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
 

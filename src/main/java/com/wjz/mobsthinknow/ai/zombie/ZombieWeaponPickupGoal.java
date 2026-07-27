@@ -61,6 +61,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 	public boolean canUse() {
 		MobsThinkNowConfig config = ConfigManager.get();
 		if (!isEnabled(this.zombie, config)
+			|| ZombieAirAssault.isAirAssaultLoadout(this.zombie)
 			|| ZombieFoodEquipment.isActive(this.zombie)
 			|| !(this.zombie.level() instanceof ServerLevel level)
 			|| !level.getGameRules().get(GameRules.MOB_GRIEFING)) {
@@ -90,6 +91,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 		MobsThinkNowConfig config = ConfigManager.get();
 		return this.phase == Phase.SEEKING
 			&& isEnabled(this.zombie, config)
+			&& !ZombieAirAssault.isAirAssaultLoadout(this.zombie)
 			&& !ZombieFoodEquipment.isActive(this.zombie)
 			&& this.zombie.level().getGameTime() < this.searchDeadline
 			&& isAvailableWeaponEntity(this.targetWeapon)

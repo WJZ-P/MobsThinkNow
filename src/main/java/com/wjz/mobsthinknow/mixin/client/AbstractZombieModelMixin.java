@@ -50,6 +50,11 @@ public abstract class AbstractZombieModelMixin {
 			? state.mainArm
 			: state.mainArm.getOpposite();
 		ItemStack usedItem = state.getUseItemStackForArm(usingArm);
+		if (state.isFallFlying && usedItem.has(DataComponents.KINETIC_WEAPON)) {
+			// HumanoidModel 已经算出双手持矛俯冲姿势；跳过僵尸双臂前伸覆盖，视觉上才是真正“举矛冲锋”。
+			callbackInfo.cancel();
+			return;
+		}
 		ItemUseAnimation animation = usedItem.getUseAnimation();
 		if (!usedItem.has(DataComponents.FOOD)
 			|| (animation != ItemUseAnimation.EAT && animation != ItemUseAnimation.DRINK)) {

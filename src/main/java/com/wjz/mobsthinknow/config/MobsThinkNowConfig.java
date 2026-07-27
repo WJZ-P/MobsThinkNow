@@ -60,6 +60,8 @@ public final class MobsThinkNowConfig {
 	public boolean armedSquads = false;
 	/** 所有持剑/斧的普通僵尸按武器冷却周旋；斧手会优先尝试跳劈。 */
 	public boolean weaponCombatTactics = true;
+	/** 原版自然生成的持矛僵尸是否自动装备鞘翅和 16～64 枚烟花，改用空中突刺。 */
+	public boolean spearAirAssault = true;
 	public double armedChanceEasy = 0.10;
 	public double armedChanceNormal = 0.30;
 	/** 困难模式下"一般僵尸都持械"：基础 85%，再乘区域难度系数。 */

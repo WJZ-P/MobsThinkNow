@@ -182,6 +182,14 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.weaponCombatTactics = value))
 			.build());
 		armedCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.spear_air_assault"),
+			config.spearAirAssault
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.spear_air_assault.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spearAirAssault = value))
+			.build());
+		armedCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.special_equipment"),
 			config.specialEquipment
 		)

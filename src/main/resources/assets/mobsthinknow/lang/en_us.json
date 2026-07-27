@@ -35,6 +35,8 @@
 	"mobsthinknow.config.armed_squads.tooltip": "Off by default. Raises weapon-carry odds with difficulty and may produce sword or axe zombies with shields.",
 	"mobsthinknow.config.weapon_combat_tactics": "Smart Weapon Combat",
 	"mobsthinknow.config.weapon_combat_tactics.tooltip": "All sword and axe zombies respect the item's attack-speed cooldown and circle their target while waiting. Axemen attempt falling leap attacks when space permits; swordsmen use normal strikes.",
+	"mobsthinknow.config.spear_air_assault": "Spear Zombie Air Assault",
+	"mobsthinknow.config.spear_air_assault.tooltip": "Naturally spawned spear zombies receive an elytra and 16-64 rockets. They launch, climb, line up, and dive with a raised spear; once empty, they land before returning to vanilla ground thrusts.",
 	"mobsthinknow.config.special_equipment": "Water & Lava Utility Zombies",
 	"mobsthinknow.config.special_equipment.tooltip": "Allows empty-handed adult zombies to spawn with fluid buckets. This is independent from the experimental Armed Squads toggle.",
 	"mobsthinknow.config.fluid_tactics": "Smart Fluid Deployment & Recovery",

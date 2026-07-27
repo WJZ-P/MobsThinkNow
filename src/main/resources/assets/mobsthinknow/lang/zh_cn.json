@@ -35,6 +35,8 @@
 	"mobsthinknow.config.armed_squads.tooltip": "默认关闭。开启后僵尸持械概率随难度提高，并可能生成持盾的剑手或斧手。",
 	"mobsthinknow.config.weapon_combat_tactics": "智能武器战斗",
 	"mobsthinknow.config.weapon_combat_tactics.tooltip": "所有持剑或斧的普通僵尸按物品攻击速度等待冷却，期间与目标周旋；斧手有空间时尝试下落跳劈，剑手保持普通挥击。",
+	"mobsthinknow.config.spear_air_assault": "持矛僵尸空袭",
+	"mobsthinknow.config.spear_air_assault.tooltip": "自然生成的持矛僵尸自动装备鞘翅与 16～64 枚烟花；先起飞、爬升和对准，再举矛俯冲。弹药耗尽后先落地，随后恢复原版地面突刺。",
 	"mobsthinknow.config.special_equipment": "水桶与岩浆桶辅助兵",
 	"mobsthinknow.config.special_equipment.tooltip": "允许空手成年僵尸随机携带流体桶；该系统独立于实验性武装小队开关。",
 	"mobsthinknow.config.fluid_tactics": "智能流体投放与回收",

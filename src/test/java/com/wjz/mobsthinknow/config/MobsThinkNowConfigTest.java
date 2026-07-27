@@ -54,6 +54,7 @@ class MobsThinkNowConfigTest {
 
 		assertEquals(false, config.armedSquads);
 		assertEquals(true, config.weaponCombatTactics);
+		assertEquals(true, config.spearAirAssault);
 		assertEquals(true, config.squadVisualEffects);
 		assertEquals(true, config.squadRoleNameTags);
 		assertEquals(true, config.individualTraits);

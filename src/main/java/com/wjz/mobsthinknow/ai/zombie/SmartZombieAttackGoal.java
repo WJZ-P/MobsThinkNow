@@ -28,6 +28,9 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 		if (!ConfigManager.get().enabled || !ConfigManager.get().zombieAiEnabled) {
 			return super.canUse();
 		}
+		if (ZombieAirAssault.suppressGroundCombat(this.zombie, ConfigManager.get())) {
+			return false;
+		}
 
 		LivingEntity target = this.zombie.getTarget();
 		if (target == null || !target.isAlive()) {
@@ -46,6 +49,9 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 	public boolean canContinueToUse() {
 		if (!ConfigManager.get().enabled || !ConfigManager.get().zombieAiEnabled) {
 			return super.canContinueToUse();
+		}
+		if (ZombieAirAssault.suppressGroundCombat(this.zombie, ConfigManager.get())) {
+			return false;
 		}
 
 		LivingEntity target = this.zombie.getTarget();
