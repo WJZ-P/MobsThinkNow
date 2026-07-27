@@ -7,7 +7,7 @@
 
 - 只改造原版普通僵尸 `minecraft:zombie`；
 - 服务端权威，不增加客户端协议、模型或资源；
-- 不提高生命、伤害、攻击速度或生成量；
+- 不提高生成量；个体速度、最大生命、伤害与追踪距离围绕随难度变化的均值随机浮动；
 - 复用原版视线、GoalSelector、导航、近战距离和命中判定；
 - 世界对象只在服务器主线程访问，不把实体和导航器交给工作线程；
 - 尸壳、溺尸、僵尸村民和其他 Mod 实体暂不注入。
@@ -18,9 +18,26 @@
 flowchart TD
     Spawn["普通僵尸创建"] --> Mixin["ZombieMixin"]
     Mixin --> Intelligence["持久智力值 1～10"]
-    Mixin --> Goal["SmartZombieAttackGoal"]
+    Intelligence --> NameTag["名字末尾智力数字"]
+    Mixin --> Traits["固定声线 + 难度化永久属性"]
+    Mixin --> AttackGoal["SmartZombieAttackGoal / priority 3"]
+    Mixin --> RetreatGoal["ReactiveRetreatGoal / priority 1"]
+    Mixin --> FluidGoal["ZombieFluidTacticsGoal / priority 2"]
+    Mixin --> FoodGoal["ZombieFoodSearchGoal / priority 2"]
+    Mixin --> TerrainGoal["ZombieTerrainTacticsGoal / priority 2"]
+    GroundFood["12 格内地面食物"] --> FoodGoal
+    DamageEvents["ALLOW_DAMAGE + AFTER_DAMAGE"] --> RetreatMemory["最终实伤与攻击者快照"]
+    RetreatMemory --> RetreatGoal
+    DamageEvents --> ShieldMemory["举盾期间的敌方攻击信号"]
+    DamageEvents --> FluidAlert["队员受击的有界辅助广播"]
+    FluidAlert --> FluidGoal
 
-    Goal --> Observe["有限感知与个体最后目击"]
+    AttackGoal --> Observe["有限感知与个体最后目击"]
+    AttackGoal --> WeaponCombat["剑/斧武器状态机"]
+    AttackGoal --> ShieldCombat["举盾接近 / 观察 / 单次反击"]
+    ShieldMemory --> ShieldCombat
+    WeaponCombat --> CooldownOrbit["物品 CD + 后撤圆弧周旋"]
+    WeaponCombat --> AxeLeap["斧手下落跳劈 / 1.5x"]
     Observe --> Heartbeat["O(1) 小队心跳"]
     Heartbeat --> Coordinator["每个 ServerLevel 一个 ZombieSquadCoordinator"]
 
@@ -35,6 +52,16 @@ flowchart TD
     Orders --> Controller["ZombieTacticalController"]
     Controller --> Navigation["原版导航器"]
     Controller --> Melee["原版 ZombieAttackGoal 追击与挥击"]
+    Controller --> ShieldUse["原版 startUsingItem(OFF_HAND)"]
+    ShieldUse --> ShieldPose["client Mixin: ArmPose.BLOCK"]
+    RetreatGoal -->|"MOVE / LOOK 抢占"| Navigation
+    RetreatGoal -.->|"结束后释放控制权"| AttackGoal
+    RetreatGoal --> Barrier["确认玩家追击后消耗材料搭墙"]
+    TerrainGoal --> BuilderInventory["持久材料槽 / 铁傀儡立柱 / 玩家储备"]
+    FluidGoal --> FluidTransaction["投放 / 拉开 / 源方块回收 / 丢失降级"]
+    FoodGoal -->|"仅可达食物存在时"| Navigation
+    FoodGoal --> FoodUse["单份拾取 + 原版 useItem"]
+    FoodUse --> FoodPose["client Mixin: 抬手咀嚼"]
 ```
 
 主要职责：
@@ -44,11 +71,26 @@ com.wjz.mobsthinknow
 ├─ MobsThinkNow                         Fabric 初始化与世界事件注册
 ├─ ai/utility                           通用效用选择器
 ├─ ai/zombie
-│  ├─ SmartZombieAttackGoal             原版 Goal 生命周期边界 + 斧手破盾钩子
+│  ├─ SmartZombieAttackGoal             原版 Goal 生命周期与武器命中边界
+│  ├─ ReactiveRetreatGoal               低血/单次重伤撤退与限时重返战斗
+│  ├─ ZombieRetreatMemory               最终实伤快照与待消费攻击事件
+│  ├─ ZombieShieldMemory                被盾挡住也不会丢失的攻击意图信号
+│  ├─ ZombieFoodSearchGoal              半血以下概率搜索、寻路与单份进食
+│  ├─ ZombieFoodEquipment               临时换手、打断/死亡/存档装备恢复
+│  ├─ ZombieVoiceProfile                固定个体声线的生成、持久化和显式叫声换算
+│  ├─ ZombieIndividualTraits            随难度变化的永久个体属性修饰符
+│  ├─ ZombieTerrainTacticsGoal           软方块采集、铁傀儡立柱与玩家材料储备
+│  ├─ ZombieBuilderInventory             不占双手的持久化建筑材料槽
+│  ├─ ZombieFluidTacticsGoal             水/岩浆投放、拉扯、回收与失效降级
+│  ├─ ZombieSpecialEquipment             特殊桶生成率、掉落率与流体事务存档
+│  ├─ ZombieFluidThreatMemory            事件驱动的队友受击求援信号
 │  ├─ ZombieTacticalController          单只僵尸的感知与命令执行
 │  ├─ ZombieIntelligence                持久智力值访问
+│  ├─ ZombieIntelligenceName            名字末尾智力数字的应用与剥离
 │  ├─ ZombieTacticEvaluator             无小队时的单体战术
 │  ├─ ZombieArmory                      武装小队的持械概率、兵种识别与破盾
+│  ├─ ZombieWeaponCombat                武器 CD、周旋、斧手跳劈与暴击
+│  ├─ ZombieShieldCombat                举盾接近、随机守候、反击窗口与重举盾
 │  ├─ SmartZombieMetrics                运行指标
 │  └─ squad
 │     ├─ ZombieSquadCoordinator         组队、黑板、状态机与命令
@@ -56,10 +98,12 @@ com.wjz.mobsthinknow
 │     ├─ SquadRolePlanner                智力到战术复杂度的映射 + 兵种职位偏好
 │     ├─ SquadTheatrics                 职业名牌、首领光环与会议声画表现层
 │     ├─ WeaponClass                    主手武器的战术分类
+│     ├─ UtilityClass                   水/岩浆战场工具分类
 │     └─ SquadDirective                 单只僵尸收到的只读命令
 ├─ command/MtnCommands                  status 与 reload
 ├─ config                               JSON 配置、校验和热重载
-└─ mixin/ZombieMixin                    Goal 替换与智力存档注入
+├─ mixin/ZombieMixin                    Goal 替换与智力存档注入
+└─ mixin/client                         僵尸盾牌 BLOCK 与食物抬手咀嚼动画仲裁
 ```
 
 ## 3. 小队生命周期
@@ -96,7 +140,12 @@ stateDiagram-v2
 
 每只僵尸第一次需要智力时均匀生成 `1～10`，通过 26.1.2 的
 `ValueInput/ValueOutput` 实体存档链写入 `MobsThinkNowIntelligence`。重新进入世界后
-数值不变。
+数值不变。`ZombieIntelligenceName` 同步把数字追加在实体名末尾；默认类型名在死亡或
+转化前恢复为 `null`，玩家通过命名牌设置的基础名字则原样保留。
+
+同一存档链还保存 `MobsThinkNowVoiceFactor`、隐藏建筑材料槽，以及流体辅助兵的
+工具种类、源方块绝对坐标、回收时刻和冷却时刻。速度/生命/伤害/追踪距离使用带固定
+Identifier 的原版永久 AttributeModifier，由实体属性存档负责保存；读档只恢复而不重新掷点。
 
 ### 临时数据
 
@@ -119,16 +168,17 @@ stateDiagram-v2
 | 首领智力 | 可用方案 |
 |---:|---|
 | `1～3` | 首领与施压者正面突进 |
-| `4～5` | 增加左翼包抄 |
-| `6` | 增加诱饵勾引位 |
+| `4～6` | 增加左翼包抄 |
 | `7～8` | 增加右翼形成双侧包抄 |
 | `9～10` | 增加截断退路位 |
 
-职位包括 `LEADER`、`PRESSURER`、`BAIT`、`FLANK_LEFT`、`FLANK_RIGHT` 和
-`CUTOFF`。诱饵在目标正面 3 格左右按 tick 横向游走并持续叫嚣；交战中两翼与
-截断位实时判断目标水平视线（约 60° 锥角）——被盯住时沿协调器给的绕后弧线
-点机动，视线离开的瞬间改为直线突袭目标当前位置。诱饵被目标贴近时向后拉开
-保持勾引距离，仅在贴身时自卫反击。
+职位包括 `LEADER`、`PRESSURER`、`FLANK_LEFT`、`FLANK_RIGHT`、`CUTOFF` 和
+`SUPPORT`。携带水桶/岩浆桶的非首领成员先锁定 `SUPPORT`，剩余普通成员再竞争智力
+解锁的阵型槽；工具兵成为首领时仍保留 `LEADER`。源方块被玩家拿走后，协调器在同一
+tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
+交战中两翼与截断位实时判断目标水平视线（约 60° 锥角）：被盯住时沿协调器给的
+绕后弧线点机动，视线离开的瞬间改为直线突袭目标当前位置。没有专门的诱饵职位，
+不会固定牺牲某一名成员承担伤害。
 部署结束后，首领和施压者继续使用原版追击攻击；侧翼只有到达合理攻击角度后才重新
 进入原版挥击逻辑。
 
@@ -138,8 +188,11 @@ stateDiagram-v2
 - 小队共享的是成员实际目击过的最后位置，不是墙后玩家的实时坐标；
 - 共享记忆默认 60 tick 后过期，小队随后解散；
 - 所有战术移动都交给原版导航器，不传送、不穿墙；
-- 攻击仍服从原版近战距离、视线和攻击冷却；
-- 本版不破坏方块，也不修改 `mobGriefing`。
+- 常规攻击仍服从原版近战距离、视线和攻击冷却；三格立柱完成后有一个明确的
+  俯击例外：要求双方碰撞箱已竖直分离、水平距离不高于 3.25 格且仍有视线，冷却
+  继续读取主手武器攻速；
+- 地形战术严格读取 `mobGriefing`。采集仅限软方块白名单、3.1 格触及距离和真实
+  方块射线，放置前验证完整地基、整列空间、流体、方块实体和实体碰撞。
 
 紧急接敌只会在成员亲眼看到近距离目标或刚刚受击时触发，而且它只切换状态，不绕过
 原版命中条件。
@@ -158,9 +211,16 @@ stateDiagram-v2
    调到硬上限 100，每个种子的原始候选检查也最多 1600 次，不随总僵尸数平方增长；
 6. 已有小队只遍历自己的成员，默认最多 20 只、配置硬上限为 100 只；
 7. 路径按决策间隔更新，目的地未明显变化时复用现有 Path。
+8. 地形采集不做逐 tick 体素扫描：只在 Goal 启动和完成一块采集后检查，单次最多
+   读取 320 个五格内方块，整个搜索最多创建 4 条采集路径；立柱候选最多创建 8 条路径。
+   该流程只访问方块和当前铁傀儡/玩家目标，不查询其他僵尸，因此不会引入 N²。
+9. 水桶求援只在真实伤害事件发生时遍历受害者所在小队（默认至多 20、硬上限 100）；
+   流体 Goal 每 tick 只读取自己的目标、一个源坐标和常数个落点。岩浆友军检查仅在尝试
+   投放时查询落点附近 1.25 格 AABB，不参与常规 AI tick。
 
 `/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
-50、100、200 只激活僵尸的 MSPT 实机基准。
+50、100、200 只激活僵尸的 MSPT 实机基准；同时输出累计采集、放置和俯击次数，
+用于判断地形战术在真实服务器中的触发频率。
 
 ## 8. 关键配置
 
@@ -187,19 +247,33 @@ stateDiagram-v2
 | `deploymentQuorum` | `0.6` | 部署完成比例 |
 | `squadVisualEffects` | `true` | 会议叫声、粒子、光环与怒吼 |
 | `squadRoleNameTags` | `true` | 组队期间的职业名牌 |
-| `baitTactics` | `true` | 诱饵勾引与视线突袭 |
+| `individualTraits` | `true` | 难度化速度/生命/伤害/追踪距离差异；固定声线始终属于表现层 |
 | `retreatTactics` | `true` | 拉扯机制总开关 |
-| `retreatChance` | `0.08` | 普通成员受击后的撤离概率，范围 `0～0.5` |
-| `leaderRetreatChance` | `0.5` | 首领受击后的撤离概率，范围 `0～1` |
-| `retreatSpeedModifier` | `1.25` | 撤退移速倍率，范围 `1.0～1.4` |
+| `retreatHealthThreshold` | `0.20` | 受击后触发撤退的生命比例，范围 `0.05～0.5` |
+| `retreatHeavyHitThreshold` | `0.30` | 单次最终实伤触发比例，范围 `0.05～1.0` |
+| `retreatMaximumTicks` | `100` | 从撤退开始计算的硬时限，范围 `20～200` tick，途中受击不延长 |
+| `retreatSafeDistance` | `5.0` | 与当前攻击者达到该水平距离时提前结束，范围 `2～16` 格 |
+| `retreatSpeedModifier` | `1.50` | 撤退寻路速度倍率，范围 `1.0～2.0` |
+| `foodScavenging` | `true` | 半血以下的中高智力僵尸是否启用觅食回血 |
+| `foodMinimumIntelligence` | `6` | 掌握觅食所需最低智力，可配置范围 `4～10` |
+| `terrainTactics` | `true` | 高智力僵尸是否按需采集软方块并针对铁傀儡垫高 |
+| `terrainMinimumIntelligence` | `8` | 掌握地形战术所需最低智力，可配置范围 `6～10` |
+| `terrainBlockInventoryLimit` | `8` | 隐藏建筑材料槽容量，可配置范围 `3～16` |
+| `pursuitBarriers` | `true` | 撤退且确认玩家追击时允许消耗至多两块材料搭墙 |
 | `squadSpeedBonus` | `0.10` | 组队期间全员移速加成，范围 `0～0.5`，`0` 关闭 |
 | `armedSquads` | `false` | 武装小队总开关 |
+| `weaponCombatTactics` | `true` | 所有普通持剑/斧僵尸启用武器 CD、周旋和斧手跳劈 |
 | `armedChanceEasy` | `0.10` | 简单难度持械概率，范围 `0～1` |
 | `armedChanceNormal` | `0.30` | 普通难度持械概率，范围 `0～1` |
 | `armedChanceHard` | `0.85` | 困难难度持械概率（一般僵尸都持械），范围 `0～1` |
 | `armedShieldChance` | `0.25` | 持械僵尸额外配盾概率；简单不发、普通减半、困难全额 |
 | `armedShieldBreakSeconds` | `3.0` | 斧手命中格挡后禁用盾牌秒数，`0` 关闭 |
 | `armedFlankSpeedBonus` | `0.12` | 两翼与截断位的机动速度加成 |
+| `specialEquipment` | `true` | 水桶/岩浆桶辅助兵生成总开关，独立于 `armedSquads` |
+| `fluidTactics` | `true` | 智能投放、拉扯、回收与丢失降级 |
+| `waterBucketChance` | `0.04` | 水桶兵基础生成概率，范围 `0～1` |
+| `lavaBucketChance` | `0.02` | 岩浆桶兵基础生成概率，范围 `0～1` |
+| `specialEquipmentDropChance` | `0.085` | 特殊主手装备掉落率，范围 `0～1`；默认等于原版 |
 | `squadIgnoreFriendlyFire` | `true` | 同队误伤不转移仇恨 |
 
 所有数值在加载时都会钳制到安全范围。
@@ -208,13 +282,89 @@ stateDiagram-v2
 
 表现层（`SquadTheatrics`）完全独立于战术决策：
 
+- 每只僵尸出生时固化 `0.86～1.14` 声线因子；原版逐次叫声抖动继续保留，会议和
+  战吼的显式 pitch 也乘同一因子，因此声音既有个体辨识度又不会机械重复；
 - 会议阶段首领每 14 tick 低吼一句并冒怒气云，句间由成员轮流应声冒音符，
   形成一来一回的“布置任务”对话；
 - 首领常驻金色光环（每 3 tick 少量 dust 粒子）；部署阶段成员拖出职业颜色
-  轨迹；进入交战瞬间首领怒吼、成员声浪依次跟上；
+  轨迹；进入交战瞬间首领先下达低沉进攻命令，最多 20 名非首领成员按两 tick 间隔依次跟上；
 - 职业名牌用 `translatableWithFallback` 写入实体 CustomName，未装模组的
   原版客户端显示英文回退；离队/解散/换目标时恢复原名，读档时剥掉异常退出
   可能残留的名牌（名牌会阻止自然消失，必须清理）。
+
+低血觅食（`ZombieFoodSearchGoal`，优先级 2）：
+
+- 只有生命值严格低于 50%、智力达到 `foodMinimumIntelligence` 且
+  `mobGriefing=true` 的普通僵尸参与；默认 IQ 6 每次搜索机会 25%，随后每级增加
+  10%，IQ 10 为 65%。搜索机会按 40～80 tick 错峰，不做逐 tick 范围扫描；
+- 搜索只访问 12 格 AABB 的地面 `ItemEntity` 空间索引，先按附魔金苹果、金苹果、
+  其余食物分层，再按营养值、距离与实体 ID 排序，最多为前 4 个候选创建路径。腐肉
+  保留标准食物身份作为兜底。没有可达食物时 `canUse=false`，优先级 3 的战斗 Goal
+  保持可运行；撤退 Goal 的优先级 1 始终可以抢占；
+- 食物按 `DataComponents.FOOD + CONSUMABLE` 识别，兼容带标准组件的模组食物。
+  抵达后通过 `split(1)` 只取一份，并复用原版 `startUsingItem`、消费声音、颗粒、
+  使用时长及食物副作用；完成动画后额外调用 `heal(nutrition)`，例如面包恢复 5 点；
+- 主手为空时用主手，否则用副手。`ZombieFoodEquipment` 暂存被替换的武器/盾牌，
+  正常吃完、撤退打断、死亡和关服保存前均恢复；实体自动保存恰好落在进食窗口时，
+  额外 NBT 标签保存真实装备，读档优先恢复真实装备而非临时食物；
+- `ZombieMixin.wantsToPickUp` 阻止原版 looting 把食物永久当作武器装备，所有食物
+  统一进入单份消费事务。客户端把使用手映射为 `ArmPose.ITEM`，再在模型层将手抬到
+  嘴边并按 `ticksUsingItem` 加入轻微咀嚼摆动；原版消费声音和颗粒仍完整播放。
+
+地形战术（`ZombieTerrainTacticsGoal`，优先级 2）：
+
+- 与觅食同级但后注册，低血且存在可达食物时先觅食；优先级 1 的受击撤退仍可抢占。
+  只有普通僵尸、智力不低于 `terrainMinimumIntelligence`、当前目标为 18 格内铁傀儡
+  或生存玩家且 `mobGriefing=true` 时参与，因此不会为了普通巡逻持续破坏地形；
+- `ZombieBuilderInventory` 通过 `ZombieBuilderInventoryAccess` 提供不占双手的持久化
+  单槽。容量默认 8，但一次立柱任务只主动收集到三块；槽中只能堆叠同类方块。存档用
+  `ItemStack.OPTIONAL_CODEC`，加载时再次检查方块物品、流体和方块实体；死亡时掉出，
+  `AFTER_DEATH` 保证不会被随后取消死亡的复活机制提前触发；原版类型转换不复制
+  自定义字段，因此 `MOB_CONVERSION` 会先清空旧实体再原子转移给新实体；
+- 采集白名单是泥土标签以及草方块、灰化土、菌丝、土径，沙/泥标签和显式沙砾、
+  黏土；同时要求无需正确工具、硬度 `0～1`、无流体、无方块实体。草方块等按空手
+  掉落语义统一变成泥土，其他方块保留自身材料。破坏不生成原版随机战利品，而是在
+  成功 `destroyBlock(..., false, zombie, 512)` 后确定性入槽一块，避免沙砾随机掉落
+  引发材料漂移或复制；
+- 搜索半径 5、单次原始方块检查上限 320。候选按距离和方块坐标稳定排序，最多创建
+  4 条路径。抵达后眼睛到方块中心不得超过 3.1 格，`ClipContext.OUTLINE` 射线必须
+  首先命中该方块；破坏时长近似空手 `ceil(hardness × 30)` 并钳制到 5～40 tick，
+  逐阶段同步裂纹，每 5 tick 挥手并播放低音量敲击声；
+- 集齐三块后，候选基座必须距铁傀儡水平 2.4～4.25 格、脚下为完整碰撞方块，未来
+  五格高度内可替换且无流体/方块实体，并且柱体 AABB 内没有其他生物。还会预估三格
+  完工后的脚底是否高于铁傀儡碰撞箱，排除低洼处“搭完仍挨打”的伪安全位置；
+- 建造不瞬移：僵尸先走到方块中心，每层调用原版 `JumpControl`，只有碰撞箱底部完全
+  高于待放方块顶面且 `isUnobstructed` 成立时才 `setBlock(UPDATE_ALL)`，随后落在新块
+  上继续下一跳。每次放置同步方块声、挥手和 `GameEvent.BLOCK_PLACE`；撤退、死亡或
+  配置热重载在一两层时打断，会自顶向下回收仍与原材料状态一致的半成品；
+- 完工后 Goal 持续持有 `MOVE/LOOK` 并把僵尸稳定在柱心。俯击只在僵尸碰撞箱底部
+  高于铁傀儡碰撞箱顶部、有视线、水平距离不高于 3.25 格、垂直差不高于 4.5 格时
+  调用 `Zombie.doHurtTarget`，攻击间隔复用 `ZombieWeaponCombat.attackCooldownTicks`。
+  铁傀儡的原版 `isWithinMeleeAttackRange` 不扩张竖直碰撞箱，因此三格柱上无法反击；
+  目标离柱超过 6 格、120 tick 不进入俯击窗口或柱体被破坏时退出。完整立柱保留。
+
+玩家向地形阻挡（`ZombieTerrainTacticsGoal` + `ReactiveRetreatGoal`）：
+
+- 锁定玩家时采集 Goal 只把隐藏材料补到两块，不执行铁傀儡立柱；
+- 撤退开始时按智力掷一次挡墙意图（IQ 8/9/10 为 35%/50%/65%），随后要求玩家位于
+  1.5～5.75 格且移动方向或视线确实朝向僵尸，才在双方之间检查固定两个候选格；
+- 放置复用 `ZombieBlockActions` 的可替换、无流体/方块实体、地基、存活条件和实体
+  碰撞校验，一次最多构成两格高墙。成功后停掉旧导航并在下一 tick 重算逃跑路径。
+
+流体辅助兵（`ZombieSpecialEquipment` + `ZombieFluidTacticsGoal`，优先级 2）：
+
+- 出生装备先于 `ZombieArmory` 执行，只占用原本空着的成年普通僵尸主手。水/岩浆
+  概率共享一次随机数；有效总和超过 1 时按二者相对权重归一化，困难/区域难度只提高有效概率；主手掉落率默认
+  `DropChances.DEFAULT_EQUIPMENT_DROP_CHANCE=0.085`；
+- `ALLOW_DAMAGE` 只在攻击者为生存玩家时调用协调器。协调器遍历受害者所在单队，
+  仅向水桶成员写入 100 tick 求援快照；水桶兵平时保持 4.5～8 格支援距离，收到信号
+  才尝试在玩家脚下或玩家到被保护成员之间放水；
+- 岩浆兵以玩家脚下为第一候选，放置前用一次小 AABB 排除附近友军。两类投放均调用
+  真实 `BucketItem.emptyContents`，手中立即变成空桶；等待期间使用 `LandRandomPos`
+  拉开，时限到后回到 4.25 格交互距离，通过方块自己的 `BucketPickup` 收源；
+- `ZombieFluidCarrierState` 保存工具类、源绝对坐标、回收时刻和冷却时刻。源不存在、
+  不再是匹配类型的静止源，或玩家提前收走时，事务清空但空桶不被伪造回满，优先级 3
+  普通攻击在同一 tick 后重新可用；配置关闭后只允许已投放事务完成清理，不再新投放。
 
 武装小队（`ZombieArmory`，默认关闭）：
 
@@ -225,35 +375,74 @@ stateDiagram-v2
 - 26.1.2 中怪物普通挥击不触发原版 activeItem 破盾判定，因此斧手命中格挡
   目标后由 `BlocksAttacks.disable` 显式补一次盾牌禁用；
 - 两翼与截断位机动时获得 `armedFlankSpeedBonus` 的速度加成，上限 1.5；
+- **智能武器战斗**：`ZombieWeaponCombat` 独立于装备发放开关，作用于所有普通
+  持剑/斧僵尸。原版 `MeleeAttackGoal` 为所有怪物硬编码 20 tick，本层读取主手
+  `ATTRIBUTE_MODIFIERS`，以玩家同口径 `ceil(20 / attackSpeed)` 计算冷却；没有合法
+  攻速组件时回退 20 tick。每次命中后先施加后退+侧移短动量，冷却阶段每 6～8 tick
+  错峰更新约 2.8 格圆弧路径，不会每 tick 寻路，也不读取失去视线后目标的新位置。
+  冷却结束后剑手直接重新近身普通挥击；斧手在水平距离 1.8～3.3 格、垂直差不高于
+  1.25 格且跳跃包围盒无碰撞时起跳，空中仅做轻微航向修正，只有下落速度低于
+  -0.02 时允许命中。命中通过临时 `ATTACK_DAMAGE +50% ADD_MULTIPLIED_TOTAL` 复用
+  `Zombie.doHurtTarget` 的伤害源、附魔、耐久、击退与攻击后效果，之后立即移除属性；
+  水中、骑乘、明显高低差直接普通攻击，连续 30 tick 找不到起跳空间也会降级，避免
+  洞穴或门框内失去战斗能力；
 - **盾卫**：持械僵尸按 `armedShieldChance` 额外获得副手盾（持矛者除外，
   原版 `SpearUseGoal` 独占 useItem 槽，盾会成为死物；武装系统也因此只发
-  剑与斧）。控制器用迟滞带控制举盾：目标进入 2.6～5 格且有视线时
-  `startUsingItem(OFF_HAND)`，贴身到 2 格内或拉开超过 6.5 格才收盾，
-  两组阈值之间保持现状——避免边界抖动反复重置原版约 5 tick 的起盾延迟。
-  格挡走原版 `applyItemBlocking` 管线；原版的盾禁用冷却和盾耐久损耗都只
+  剑与斧）。`ZombieShieldCombat` 在目标进入 6 格且有视线时先
+  `startUsingItem(OFF_HAND)`，拉开到 7.5 格才收盾，形成外沿迟滞；进入原版近战
+  范围后停掉导航，保持盾姿观察随机 12～28 tick。`ALLOW_DAMAGE` 在原版格挡结算
+  前写入 `ZombieShieldMemory`，所以最终零伤的成功格挡同样会形成反击信号；敌人
+  先攻击，或观察时限已到且武器冷却完成时，状态机才打开最多 10 tick 的单次攻击
+  窗口。一次挥击后立即重举盾并重掷观察时间，目标躲开则窗口超时收招。盾卫独立
+  记录物品攻速冷却，关闭通用武器战术时也不会因守势暂停原版 Goal 而冻结 CD。
+  格挡仍走原版 `applyItemBlocking` 管线；原版的盾禁用冷却和盾耐久损耗都只
   对玩家生效，所以 `ZombieArmory.onZombieAttacked`（ALLOW_DAMAGE 事件）
   补了对称机制：斧类攻击命中举盾僵尸时先收盾并进入 `armedShieldBreakSeconds`
-  的禁用窗口，本次伤害照常结算。持盾者在职位规划中优先补施压位与诱饵位
-  （+2 偏好）；
+  的禁用窗口，本次伤害照常结算。持盾者在职位规划中优先补正面施压位
+  （+2 偏好）。客户端 `AbstractZombieRendererMixin` 在盾牌真实处于 useItem 状态时
+  把对应手臂设为玩家同款 `ArmPose.BLOCK`；`AbstractZombieModelMixin` 随后跳过会
+  覆盖该结果的 `animateZombieArms`，所以盾牌稳定贴在胸前，另一只手仍使用
+  `HumanoidModel` 的自然持械和走路动作；
 - **同队仇恨免疫的事件消费**：拦截误伤时会同时 `setLastHurtByMob(null)`
   消费事件——`lastHurtByMob` 原版会保留 100 tick，只返回 false 的话小队
   解散后旧账会被翻出来，引发僵尸内战和 alertOthers 警报连锁；
-- **拉扯机制**：控制器用 `getLastHurtByMobTimestamp` 的变化检测"刚被当前
-  目标打中"这一事件（基线同步避免旧伤误判），按角色概率触发撤退：目的地
-  为背向目标约 8 格，速度 `retreatSpeedModifier`（收盾全速跑），单次上限
-  50 tick（短于 60 tick 目击记忆，撤退不脱战），冷却 140 tick，寻路失败
-  立即放弃。撤退期间屏蔽原版追击与小队命令，结束后自然回到正常战斗；
-  首领撤离期间黑板合并与命令下发照常进行。
+- **受击拉扯**：独立的 `ReactiveRetreatGoal`（优先级 1）消费
+  `ZombieRetreatMemory` 生成的短期攻击事件。后者在 Fabric `ALLOW_DAMAGE` 时记录
+  受击前生命，在 `AFTER_DAMAGE` 时以生命差计算盾牌、护甲、附魔和吸收之后的
+  最终实伤；同一 AI 评估周期内同时保留最近攻击者和最大单次实伤来源，后续轻击
+  不会覆盖重击来源。Goal 不依赖 `SmartZombieAttackGoal` 能否寻路启动，因此被困
+  或暂时没有可达攻击路径的僵尸同样会撤退。伤害结算后的生命值不高于
+  `最大生命值 × retreatHealthThreshold`，或任一单次实伤不低于
+  `最大生命值 × retreatHeavyHitThreshold` 时确定性触发，不区分首领和成员，
+  也没有概率与冷却。低血时远离最近攻击者，重伤时优先远离重击来源；`LandRandomPos`
+  每 8 tick 在背向攻击者的半平面搜索 5～9 格外的可行走点，找不到时退化为
+  严格背向坐标并继续重试，而不是因一次寻路失败提前结束。撤退以两个条件中的
+  先到者终止：与当前攻击者的水平距离达到 `retreatSafeDistance`，或从 `start`
+  起经过 `retreatMaximumTicks`；途中再次挨打只更新攻击者和路径，不延长硬时限。
+  Goal 通过 `MOVE/LOOK` 控制标记抢占原版追击、长矛使用和小队命令，并在 `start`
+  时收盾；终止时主动停掉逃跑路径并释放控制权，正常战斗随后重新竞争执行。撤退
+  Goal 自己维持小队心跳，因此首领撤退时黑板与命令调度仍照常工作。
 - **同队仇恨免疫**：`SquadHurtByTargetGoal` 替换原版 `HurtByTargetGoal`
   （保留对僵尸猪灵的警报豁免）。攻击者是同队僵尸时 `canUse` 直接返回
   false——既不反击也不向周围广播错误仇恨；队外来源照常反击。
 
 ## 9. 验证体系
 
-- JUnit：效用选择、配置边界、首领选举优先级、低/高智力职位规划；
+- JUnit：效用选择、配置边界、撤退硬时限/水平安全距离边界、玩家追击与挡墙概率、
+  觅食半血边界、个体声线映射、难度属性均值、特殊桶概率分区与原版掉落率、智力
+  概率和换手选择、智力名字结构、盾卫随机观察与反击窗口边界、首领选举优先级、
+  低/高智力职位规划、武器攻速冷却换算与圆弧目的地、空手软方块破坏时长以及
+  草方块到泥土的采集语义；
 - Minecraft 服务端 GameTest：生产 Mixin 安装、智力经过真实实体存读链保持不变、
-  最高智力首领当选、首领移除后自动换届；
+  最高智力首领当选、首领移除后自动换届、受击撤退触发与 5 格安全半径终止、
+  盾卫无攻击时随机试探/受击后立即反击并重新举盾、斧手真实下落跳劈 1.5 倍伤害、
+  剑手按 13 tick 组件冷却周旋且不跳跃、IQ 门槛/无食物不接管、面包单份消费、
+  nutrition 回血以及主副手装备恢复、宝藏食物优先选择、软方块真实破坏与材料持久化、三次真实跳垫、
+  三格高度下铁傀儡原版攻击范围失效、受武器冷却约束的俯击，以及主动铁傀儡接敌时
+  预装材料僵尸能在第二次重击前完成立柱、流体源真实回收到同类桶、源丢失降级，
+  以及岩浆桶在生存玩家脚下真实投放后回收；当前共 19 项服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
 
-下一阶段仍需补实际地形轨迹测试，以及 50/100/200 只僵尸的 MSPT 与内存基准。
+下一阶段仍需补复杂高低差、领地保护 Mod 联动与完整立柱战后清理测试，以及
+50/100/200 只僵尸的 MSPT 与内存基准。
