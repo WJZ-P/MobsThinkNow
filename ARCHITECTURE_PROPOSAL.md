@@ -30,8 +30,11 @@ flowchart TD
     EngineerProfile --> EngineerGoal["ZombieEngineerSkillGoal / priority 2"]
     EngineerGoal --> EngineerPool["6～10 秒后从可执行技能中随机选择"]
     EngineerPool --> EngineerTnt["真实 TNT 放置 → 点燃 → 撤离"]
-    EngineerPool --> EngineerRepair["战地装备维修"]
-    EngineerPool --> EngineerFortify["小队临时加固"]
+    EngineerPool --> EngineerWater["真实水源投放 → 撤离 → 回收"]
+    EngineerPool --> EngineerLava["真实岩浆源投放 → 撤离 → 回收"]
+    EngineerPool --> EngineerIgnite["近身打火石点燃目标"]
+    EngineerWater --> EngineerFluidTransaction["持久流体事务 / BucketPickup"]
+    EngineerLava --> EngineerFluidTransaction
     EngineerGoal --> EngineerEquipment["临时工具换手 / 存档恢复"]
     Mixin --> FireGoal["ZombieFireSurvivalGoal / 着火 priority 0 + 日晒 priority 1"]
     Mixin --> GapGoal["SmartZombieGapJumpGoal / priority 2"]
@@ -101,7 +104,7 @@ com.wjz.mobsthinknow
 │  ├─ ZombieTerrainTacticsGoal           软方块采集、铁傀儡立柱、相邻追高与软柱拆除
 │  ├─ ZombieBuilderInventory             不占双手的持久化建筑材料槽
 │  ├─ ZombieEngineerProfile              工程兵资格、难度化生成率与持久身份
-│  ├─ ZombieEngineerSkillGoal            低频爆破、维修、加固技能状态机
+│  ├─ ZombieEngineerSkillGoal            低频 TNT、水、岩浆与近身点燃状态机
 │  ├─ ZombieEngineerEquipment            技能可见工具的换手、打断与存档恢复
 │  ├─ ZombieWeaponPickupGoal             地面武器排序、寻路、杂物替换与旧物掉回
 │  ├─ ZombieFluidTacticsGoal             水/岩浆投放、拉扯、回收与失效降级
@@ -140,10 +143,11 @@ com.wjz.mobsthinknow
 
 ## 2.1 工程兵技能生命周期
 
-“会搭方块”是高智力僵尸的通用地形能力；“工程兵”则是少量个体的持久职业。自然出生时，
-只有普通成年、双手为空、智力达到 `terrainMinimumIntelligence`，且未被分配为流体辅助或
-持矛空袭的僵尸才参与工程兵掷点。`engineerSpawnChance=0.08` 是合格候选基础占比，随后按
-世界与区域难度缩放；命令样本 `/mtn spawn builder` 则跳过概率并明确设置工程兵身份。
+“会搭方块”是高智力僵尸的通用地形能力；“工程兵”则是少量个体的持久职业。普通自然候选
+必须成年、双手为空、智力达到 `terrainMinimumIntelligence` 且不是持矛空袭；
+`engineerSpawnChance=0.08` 是合格候选基础占比，随后按世界与区域难度缩放。水桶和岩浆桶
+出生变体直接并入工程兵，并把智力抬到地形门槛；它们保留真实桶的救火/骚扰状态机，同时
+获得同一套随机技能。命令样本 `builder`、`water_support`、`lava_harasser` 均明确设置身份。
 
 ```mermaid
 stateDiagram-v2
@@ -154,11 +158,14 @@ stateDiagram-v2
     TNT_PLACE --> TNT_ARM: 真实放置 TNT / 8 tick 动作
     TNT_ARM --> TNT_RETREAT: 打火石动作 / 生成带 owner 的 PrimedTnt
     TNT_RETREAT --> COOLDOWN: 距装药 8 格或 60 tick
-    SELECT --> REPAIR_MOVE: 存在损坏装备的自己或盟友
-    REPAIR_MOVE --> REPAIR: 进入 3 格维修距离
-    REPAIR --> COOLDOWN: 恢复最大耐久的 25%
-    SELECT --> FORTIFY
-    FORTIFY --> COOLDOWN: 至多 20 名盟友获得 5 秒抗性 I
+    SELECT --> FLUID_MOVE: 随机选中水/岩浆且存在合法落点
+    FLUID_MOVE --> FLUID_DEPLOY: 进入 4.25 格桶交互距离
+    FLUID_DEPLOY --> FLUID_HOLD: BucketItem 生成真实源方块
+    FLUID_HOLD --> FLUID_RETRIEVE: 水 45～60 / 岩浆 32～41 tick
+    FLUID_RETRIEVE --> COOLDOWN: BucketPickup 回收真实源
+    SELECT --> IGNITE_MOVE: 尚未着火且存在可达路径
+    IGNITE_MOVE --> IGNITE_WINDUP: 2.6 格内且有真实视线
+    IGNITE_WINDUP --> COOLDOWN: 8 tick 后点燃目标 5 秒
     TNT_MOVE --> CLEANUP: 点燃前被高优先级 Goal 打断
     TNT_PLACE --> CLEANUP: 点燃前被高优先级 Goal 打断
     TNT_ARM --> CLEANUP: 点燃前被高优先级 Goal 打断
@@ -168,9 +175,12 @@ stateDiagram-v2
 调度器只把当前条件成立的技能放入候选池，然后等概率选择；没有目标时每 20 tick 轻量重试，
 不会白白消费完整周期。爆破同时服从 `engineerTntSkill`、`mobGriefing` 与 `tntExplodes`，
 装药点还要通过地基、边界、已加载区块、流体、方块实体、生物碰撞和 3.25 格友军安全检查。
-着火求生（priority 0）及受击撤退（priority 1）可以抢占 priority 2 的工程技能。TNT、打火石
-与铁锭只是表现工具；`ZombieEngineerEquipment` 会在正常结束、打断、死亡、转换、关服或读档
-时恢复真正的双手装备。
+水/岩浆服从 `engineerFluidSkills + mobGriefing`，只检查目标脚下与四个正交邻格；`BucketItem`
+负责真实投放与原版声音，`BucketPickup` 负责回收。打火石服从 `engineerIgnitionSkill`，要求
+近身、可达和真实视线。着火求生（priority 0）及受击撤退（priority 1）可以抢占 priority 2
+的工程技能；已经投放的 `ENGINEER` 流体事务不受热关闭影响，抢占结束或读档后优先恢复。
+TNT、桶、空桶与打火石只是表现工具；`ZombieEngineerEquipment` 会在正常结束、打断、死亡、
+转换、关服或读档时恢复真正的双手装备。
 
 ## 3. 小队生命周期
 
@@ -209,11 +219,13 @@ stateDiagram-v2
 数值不变。`ZombieIntelligenceName` 同步把数字追加在实体名末尾；默认类型名在死亡或
 转化前恢复为 `null`，玩家通过命名牌设置的基础名字则原样保留。
 
-同一存档链还保存 `MobsThinkNowVoiceFactor`、`MobsThinkNowEngineer` 工程兵身份、隐藏建筑材料槽，以及流体辅助兵的
+同一存档链还保存 `MobsThinkNowVoiceFactor`、`MobsThinkNowEngineer` 工程兵身份、隐藏建筑材料槽，以及流体辅助兵/工程技能的
 工具种类、源方块绝对坐标、回收时刻和冷却时刻。速度/生命/伤害/追踪距离使用带固定
 Identifier 的原版永久 AttributeModifier，由实体属性存档负责保存；读档只恢复而不重新掷点。
-若自动保存恰好发生在工程技能动画中，存档还会临时写入被可见工具替换的手与原装备，
-读档后先恢复真实装备，不会把 TNT、打火石或铁锭固化为战利品。
+`FluidDeploymentPurpose.ENGINEER` 追加在旧枚举 ordinal 之后，兼容既有 COMBAT/SURVIVAL
+存档，并允许没有真实手持桶的工程兵恢复待回收源。若自动保存恰好发生在工程技能动画中，
+存档还会临时写入被可见工具替换的手与原装备；读档后先恢复真实装备，不会把 TNT、桶或
+打火石固化为战利品。
 
 ### 临时数据
 
@@ -263,7 +275,10 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   方块射线，放置前验证完整地基、整列空间、流体、方块实体和实体碰撞；
 - 工程爆破只在目标脚下及八个相邻格尝试，要求真实可达、完整地基、已加载且位于世界边界
   内，排除流体、方块实体、生物占位和 3.25 格内友军。点燃前打断会清理本次装药，点燃后
-  使用原版 80 tick 引信、伤害与爆炸规则，并把工程兵设为 `PrimedTnt` owner。
+  使用原版 80 tick 引信、伤害与爆炸规则，并把工程兵设为 `PrimedTnt` owner；
+- 工程流体只落在可替换、无既有流体/方块实体、已加载且处于世界边界的五个固定候选格；
+  岩浆额外排除实际占位的友军。目标点燃必须进入 2.6 格并通过 `Sensing.hasLineOfSight`，
+  不会隔墙或对已经着火的目标重复使用。
 
 紧急接敌只会在成员亲眼看到近距离目标或刚刚受击时触发，而且它只切换状态，不绕过
 原版命中条件。
@@ -292,12 +307,13 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
    流体 Goal 每 tick 只读取自己的目标、一个源坐标和常数个落点。岩浆最多检查目标脚下
    与四个相邻候选格，并仅用贴合源方块的小 AABB 排除实际占位的友军，不参与常规 AI tick。
 11. 工程兵不会每 tick 扫描附近实体：每项技能完成后随机等待 120～200 tick，到期才查询
-   一次局部候选。TNT 只检查固定 9 个目标邻格；维修/加固只读 8 格 AABB，盟友截断为 20，
-   维修最多为 4 个候选创建路径。未到冷却时 `canUse` 只有常数次字段读取，不形成 N² 互扫。
+   一次局部候选。TNT 固定检查 9 格，水和岩浆各固定检查 5 格，点燃只验证当前目标和一条
+   可达路径；未到冷却时 `canUse` 只有常数次字段读取。流体投放后的每 tick 只读取一个持久
+   源坐标，不查询同伴，不形成 N² 互扫。
 
 `/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
 50、100、200 只激活僵尸的 MSPT 实机基准；同时输出累计采集、放置、俯击、工程兵 TNT、
-维修与加固次数，用于判断地形和工程战术在真实服务器中的触发频率。
+水、岩浆与目标点燃次数，用于判断地形和工程战术在真实服务器中的触发频率。
 
 ## 8. 关键配置
 
@@ -338,9 +354,11 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `smartTraversal` | `true` | 避开开放机关的虚假落脚面，并在安全几何下跳过一格宽沟槽 |
 | `terrainMinimumIntelligence` | `8` | 掌握地形战术所需最低智力，可配置范围 `6～10` |
 | `terrainBlockInventoryLimit` | `8` | 隐藏建筑材料槽容量，可配置范围 `3～16` |
-| `engineerSkills` | `true` | 正式工程兵的爆破、维修与临时加固总开关 |
-| `engineerSpawnChance` | `0.08` | 合格高智力空手候选中的基础工程兵占比，范围 `0～1`，再按难度缩放 |
+| `engineerSkills` | `true` | 正式工程兵的 TNT、流体控制与近身点燃总开关 |
+| `engineerSpawnChance` | `0.08` | 合格高智力空手候选中的基础工程兵占比；桶兵直接并入，普通候选再按难度缩放 |
 | `engineerTntSkill` | `true` | 工程兵是否把 TNT 爆破加入可执行技能池；仍服从两个原版游戏规则 |
+| `engineerFluidSkills` | `true` | 所有工程兵是否可投放并回收水/岩浆源；仍服从 `mobGriefing` |
+| `engineerIgnitionSkill` | `true` | 工程兵是否可近身用打火石点燃目标 5 秒 |
 | `squadSpeedBonus` | `0.10` | 组队期间全员移速加成，范围 `0～0.5`，`0` 关闭 |
 | `armedSquads` | `false` | 武装小队总开关 |
 | `weaponCombatTactics` | `true` | 所有普通持剑/斧僵尸启用武器 CD、周旋和斧手跳劈 |
@@ -460,7 +478,9 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   概率共享一次随机数；有效总和超过 1 时按二者相对权重归一化，困难/区域难度只提高有效概率；主手掉落率默认
   `DropChances.DEFAULT_EQUIPMENT_DROP_CHANCE=0.085`。水桶兵保留已有合法鞋具，否则补铁靴，
   并通过原版附魔注册表保证 `DEPTH_STRIDER III`（该附魔槽位仅为 `FEET`）；导航器同时
-  `setCanFloat(true)`，生成、读档和桶回收都会修复这项水下机动契约；
+  `setCanFloat(true)`，生成、读档和桶回收都会修复这项水下机动契约。若工程兵系统开启，
+  水/岩浆桶出生变体会被 `ZombieEngineerProfile` 直接标记为工程兵并至少提升到地形智力门槛；
+  普通空手工程兵同样开启浮水导航，避免自己投放的水阻断后续回收；
 - `ALLOW_DAMAGE` 在攻击者为合法存活生物时调用协调器（创造/旁观玩家排除）。协调器遍历受害者所在单队，
   仅向水桶成员写入 100 tick 求援快照；水桶兵平时保持 4.5～8 格支援距离，收到信号
   才尝试在攻击者脚下或攻击者到被保护成员之间放水；
@@ -625,7 +645,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 - JUnit：效用选择、配置边界、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
   四格上限、IQ 8～10 拆柱概率、
   觅食半血边界、个体声线映射、难度属性均值、特殊桶概率分区与原版掉落率、智力
-  概率和换手选择、智力名字结构、盾卫随机观察与反击窗口边界、首领选举优先级、
+  概率和换手选择、工程兵 6～10 秒调度边界、水/岩浆保留时间与五秒点燃常量、智力名字结构、
+  盾卫随机观察与反击窗口边界、首领选举优先级、
   低/高智力职位规划、武器攻速冷却换算与圆弧目的地、空手软方块破坏时长以及
   草方块到泥土的采集语义；
 - Minecraft 服务端 GameTest：生产 Mixin 安装、智力经过真实实体存读链保持不变、
@@ -646,8 +667,9 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   留下水源后抵达可达阴影；本轮新增近期受击的着火僵尸真实进入附近水体、水桶兵必得
   深海探索者 III 靴子与浮水导航、撤退确定性水幕和同队水桶兵脚下灭火；另用真实 Brigadier
   入口逐条验证九种指定兵种子命令；工程兵另覆盖真实放置/点燃 TNT、owner 与 80 tick
-  引信、技能后手持装备恢复、真实装备耐久维修、只给盟友加固、正式身份存读，以及九兵种
-  样本中只有 `builder` 带工程兵标记；当前共 49 项
+  引信、真实水/岩浆源投放—等待—BucketPickup 回收、五秒近身点燃、临时工具后的双手恢复、
+  流体事务与正式身份存读，以及九兵种样本中 `builder`、`water_support`、`lava_harasser`
+  恰好三种带工程兵标记；当前共 50 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
