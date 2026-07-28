@@ -1,0 +1,86 @@
+package com.wjz.mobsthinknow.ai.skeleton;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.HorizontalLead;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
+import org.junit.jupiter.api.Test;
+
+class SkeletonCombatMathTest {
+	@Test
+	void distanceBandsPreferEscapeThenStrafeThenApproach() {
+		assertEquals(MovementMode.RETREAT, SkeletonCombatMath.chooseMovement(5.9 * 5.9, true, 10.0, false));
+		assertEquals(MovementMode.STRAFE, SkeletonCombatMath.chooseMovement(6.0 * 6.0, true, 10.0, false));
+		assertEquals(MovementMode.STRAFE, SkeletonCombatMath.chooseMovement(13.5 * 13.5, true, 10.0, false));
+		assertEquals(MovementMode.APPROACH, SkeletonCombatMath.chooseMovement(13.6 * 13.6, true, 10.0, false));
+		assertEquals(MovementMode.APPROACH, SkeletonCombatMath.chooseMovement(10.0 * 10.0, false, 10.0, false));
+	}
+
+	@Test
+	void dodgeAlwaysOverridesOrdinaryDistanceSelection() {
+		for (double distanceSquared : new double[]{1.0, 100.0, 1000.0, Double.NaN}) {
+			assertEquals(
+				MovementMode.DODGE,
+				SkeletonCombatMath.chooseMovement(distanceSquared, false, 10.0, true)
+			);
+		}
+	}
+
+	@Test
+	void directIncomingArrowIsDetectedButMissAndOutgoingArrowAreRejected() {
+		assertTrue(SkeletonCombatMath.isIncomingProjectile(
+			0.0, 0.0, 5.0,
+			0.0, 0.0, 1.0,
+			8.0, 1.15
+		));
+		assertFalse(SkeletonCombatMath.isIncomingProjectile(
+			2.0, 0.0, 5.0,
+			0.0, 0.0, 1.0,
+			8.0, 1.15
+		));
+		assertFalse(SkeletonCombatMath.isIncomingProjectile(
+			0.0, 0.0, 5.0,
+			0.0, 0.0, -1.0,
+			8.0, 1.15
+		));
+	}
+
+	@Test
+	void arrowOutsideEightTickHorizonDoesNotTriggerEarlyDodge() {
+		assertFalse(SkeletonCombatMath.isIncomingProjectile(
+			0.0, 0.0, 10.0,
+			0.0, 0.0, 1.0,
+			8.0, 1.15
+		));
+		assertEquals(
+			Double.POSITIVE_INFINITY,
+			SkeletonCombatMath.closestApproachTime(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 8.0)
+		);
+	}
+
+	@Test
+	void horizontalLeadUsesTravelTimeStrengthAndHardDistanceCap() {
+		HorizontalLead ordinary = SkeletonCombatMath.horizontalLead(0.30, 0.0, 16.0, 0.65);
+		assertEquals(1.56, ordinary.x(), 1.0E-12);
+		assertEquals(0.0, ordinary.z(), 1.0E-12);
+
+		HorizontalLead capped = SkeletonCombatMath.horizontalLead(10.0, 10.0, 100.0, 1.0);
+		assertEquals(3.0, Math.sqrt(capped.x() * capped.x() + capped.z() * capped.z()), 1.0E-12);
+		assertEquals(HorizontalLead.ZERO, SkeletonCombatMath.horizontalLead(Double.NaN, 0.0, 10.0, 1.0));
+		assertEquals(HorizontalLead.ZERO, SkeletonCombatMath.horizontalLead(0.3, 0.0, 10.0, 0.0));
+	}
+
+	@Test
+	void predictionAccuracyRisesMonotonicallyWithDifficulty() {
+		assertEquals(0.0, SkeletonCombatMath.difficultyPredictionFactor(0));
+		assertEquals(0.65, SkeletonCombatMath.difficultyPredictionFactor(1));
+		assertEquals(0.82, SkeletonCombatMath.difficultyPredictionFactor(2));
+		assertEquals(1.0, SkeletonCombatMath.difficultyPredictionFactor(3));
+		assertTrue(
+			SkeletonCombatMath.difficultyPredictionFactor(1)
+				< SkeletonCombatMath.difficultyPredictionFactor(2)
+		);
+	}
+}

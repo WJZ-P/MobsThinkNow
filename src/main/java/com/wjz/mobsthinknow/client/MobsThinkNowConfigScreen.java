@@ -25,6 +25,55 @@ public final class MobsThinkNowConfigScreen {
 			Component.translatable("mobsthinknow.config.category.squad")
 		);
 		ConfigEntryBuilder entries = builder.entryBuilder();
+		ConfigCategory skeletonCategory = builder.getOrCreateCategory(
+			Component.translatable("mobsthinknow.config.category.skeleton")
+		);
+		skeletonCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.skeleton_ai_enabled"),
+			config.skeletonAiEnabled
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_ai_enabled.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonAiEnabled = value))
+			.build());
+		skeletonCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.skeleton_preferred_range"),
+			(int)Math.round(config.skeletonPreferredRange),
+			(int)MobsThinkNowConfig.MINIMUM_SKELETON_PREFERRED_RANGE,
+			(int)MobsThinkNowConfig.MAXIMUM_SKELETON_PREFERRED_RANGE
+		)
+			.setDefaultValue((int)MobsThinkNowConfig.DEFAULT_SKELETON_PREFERRED_RANGE)
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_preferred_range.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonPreferredRange = value))
+			.build());
+		skeletonCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.skeleton_projectile_dodging"),
+			config.skeletonProjectileDodging
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_projectile_dodging.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonProjectileDodging = value))
+			.build());
+		skeletonCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.skeleton_predictive_aim"),
+			config.skeletonPredictiveAim
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_predictive_aim.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonPredictiveAim = value))
+			.build());
+		skeletonCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.skeleton_aim_prediction_strength"),
+			(int)Math.round(config.skeletonAimPredictionStrength * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SKELETON_AIM_PREDICTION_STRENGTH * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_aim_prediction_strength.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(
+				updated -> updated.skeletonAimPredictionStrength = value / 100.0
+			))
+			.build());
 
 		// Mod Menu 位于客户端；这段提示避免玩家误以为它可以直接修改远程服务器规则。
 		squadCategory.addEntry(entries.startTextDescription(

@@ -3,6 +3,7 @@
 	"package": "com.wjz.mobsthinknow.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
+		"AbstractSkeletonMixin",
 		"FireworkRocketEntityMixin",
 		"LivingEntityMixin",
 		"ZombieMixin"

@@ -15,6 +15,11 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.engineerTntSkill);
 		assertEquals(true, config.engineerFluidSkills);
 		assertEquals(true, config.engineerIgnitionSkill);
+		assertEquals(true, config.skeletonAiEnabled);
+		assertEquals(true, config.skeletonProjectileDodging);
+		assertEquals(true, config.skeletonPredictiveAim);
+		assertEquals(10.0, config.skeletonPreferredRange);
+		assertEquals(0.65, config.skeletonAimPredictionStrength);
 	}
 
 	@Test
@@ -168,5 +173,23 @@ class MobsThinkNowConfigTest {
 		config.spearRocketEfficiency = -2.0;
 		config.validate();
 		assertEquals(0.0, config.spearRocketEfficiency);
+	}
+
+	@Test
+	void clampsSkeletonRangedTactics() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.skeletonPreferredRange = 100.0;
+		config.skeletonAimPredictionStrength = 3.0;
+
+		config.validate();
+
+		assertEquals(16.0, config.skeletonPreferredRange);
+		assertEquals(1.0, config.skeletonAimPredictionStrength);
+
+		config.skeletonPreferredRange = Double.NaN;
+		config.skeletonAimPredictionStrength = -1.0;
+		config.validate();
+		assertEquals(6.0, config.skeletonPreferredRange);
+		assertEquals(0.0, config.skeletonAimPredictionStrength);
 	}
 }

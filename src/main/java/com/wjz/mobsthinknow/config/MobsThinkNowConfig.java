@@ -27,9 +27,21 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_SPEAR_ROCKET_EFFICIENCY = 0.50;
 	public static final double MINIMUM_SPEAR_ROCKET_EFFICIENCY = 0.0;
 	public static final double MAXIMUM_SPEAR_ROCKET_EFFICIENCY = 1.0;
+	public static final double DEFAULT_SKELETON_PREFERRED_RANGE = 10.0;
+	public static final double MINIMUM_SKELETON_PREFERRED_RANGE = 6.0;
+	public static final double MAXIMUM_SKELETON_PREFERRED_RANGE = 16.0;
+	public static final double DEFAULT_SKELETON_AIM_PREDICTION_STRENGTH = 0.65;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
+	/** 普通持弓骷髅使用距离分带、持续侧移与近身脱离状态机；关闭后委托原版弓箭 Goal。 */
+	public boolean skeletonAiEnabled = true;
+	/** 每三 tick 查询七格内来箭，并只对八 tick 内会穿过碰撞安全半径的箭执行侧闪。 */
+	public boolean skeletonProjectileDodging = true;
+	/** 保留原版散布，只在水平方向对移动目标加入有上限的速度提前量。 */
+	public boolean skeletonPredictiveAim = true;
+	public double skeletonPreferredRange = DEFAULT_SKELETON_PREFERRED_RANGE;
+	public double skeletonAimPredictionStrength = DEFAULT_SKELETON_AIM_PREDICTION_STRENGTH;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public boolean squadVisualEffects = true;
@@ -194,6 +206,12 @@ public final class MobsThinkNowConfig {
 			MINIMUM_SPEAR_ROCKET_EFFICIENCY,
 			MAXIMUM_SPEAR_ROCKET_EFFICIENCY
 		);
+		this.skeletonPreferredRange = clamp(
+			this.skeletonPreferredRange,
+			MINIMUM_SKELETON_PREFERRED_RANGE,
+			MAXIMUM_SKELETON_PREFERRED_RANGE
+		);
+		this.skeletonAimPredictionStrength = clamp(this.skeletonAimPredictionStrength, 0.0, 1.0);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);
 		this.specialEquipmentDropChance = clamp(this.specialEquipmentDropChance, 0.0, 1.0);

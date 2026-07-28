@@ -4,6 +4,7 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -66,7 +67,8 @@ public final class MtnCommands {
 	private static int status(final CommandContext<CommandSourceStack> context) {
 		MobsThinkNowConfig config = ConfigManager.get();
 		SmartZombieMetrics.Snapshot metrics = SmartZombieMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d"
+		SmartSkeletonMetrics.Snapshot skeletonMetrics = SmartSkeletonMetrics.snapshot();
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonRetreats=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -90,7 +92,13 @@ public final class MtnCommands {
 				metrics.engineerTntCharges(),
 				metrics.engineerWaterDeployments(),
 				metrics.engineerLavaDeployments(),
-				metrics.engineerIgnitions()
+				metrics.engineerIgnitions(),
+				config.skeletonAiEnabled,
+				skeletonMetrics.installedGoals(),
+				skeletonMetrics.retreats(),
+				skeletonMetrics.projectileDodges(),
+				skeletonMetrics.shots(),
+				skeletonMetrics.predictiveShots()
 			);
 		context.getSource().sendSuccess(() -> Component.literal(message), false);
 		return Command.SINGLE_SUCCESS;
