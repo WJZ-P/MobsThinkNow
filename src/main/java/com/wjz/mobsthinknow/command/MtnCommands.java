@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.command;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
@@ -46,7 +47,17 @@ public final class MtnCommands {
 			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
 			command.then(
 				Commands.literal(archetype.commandId())
-					.executes(context -> spawnOne(context, archetype))
+					.executes(context -> spawnSpecific(context, archetype, 1))
+					.then(
+						Commands.argument(
+							"count",
+							IntegerArgumentType.integer(1, ZombieShowcaseSpawner.MAX_BATCH_SIZE)
+						).executes(context -> spawnSpecific(
+							context,
+							archetype,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+					)
 			);
 		}
 		return command;
@@ -144,7 +155,8 @@ public final class MtnCommands {
 		context.getSource().sendSuccess(
 			() -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.types",
-				"Available tactical zombie types: %s",
+				"Available tactical zombie types (usage: /mtn spawn <type> [count], count 1-%s): %s",
+				ZombieShowcaseSpawner.MAX_BATCH_SIZE,
 				types
 			),
 			false
@@ -152,44 +164,54 @@ public final class MtnCommands {
 		return Command.SINGLE_SUCCESS;
 	}
 
-	private static int spawnOne(
+	private static int spawnSpecific(
 		final CommandContext<CommandSourceStack> context,
-		final ZombieShowcaseSpawner.ShowcaseArchetype archetype
+		final ZombieShowcaseSpawner.ShowcaseArchetype archetype,
+		final int requestedCount
 	) {
-		ZombieShowcaseSpawner.SpawnResult result = ZombieShowcaseSpawner.spawnOne(context.getSource(), archetype);
+		ZombieShowcaseSpawner.SpawnResult result = ZombieShowcaseSpawner.spawnBatch(
+			context.getSource(),
+			archetype,
+			requestedCount
+		);
 		if (result.success()) {
+			int spawnedCount = result.spawned().size();
 			context.getSource().sendSuccess(
 				() -> Component.translatableWithFallback(
 					"mobsthinknow.command.spawn.success",
-					"Spawned %s (%s).",
+					"Spawned %s × %s (%s).",
+					spawnedCount,
 					archetype.displayName(),
 					archetype.commandId()
 				),
 				true
 			);
-			return Command.SINGLE_SUCCESS;
+			return spawnedCount;
 		}
 
-		ErrorMessage error = switch (result.failure()) {
-			case PEACEFUL -> new ErrorMessage(
+		Component error = switch (result.failure()) {
+			case PEACEFUL -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn_all.peaceful",
 				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
 			);
-			case NO_SPACE -> new ErrorMessage(
+			case NO_SPACE -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.no_space",
-				"No safe nearby ground was found for this tactical zombie."
+				"No safe nearby ground was found for all %s requested zombies; nothing was spawned.",
+				requestedCount
 			);
-			case CREATE_FAILED -> new ErrorMessage(
+			case CREATE_FAILED -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.create_failed",
-				"Creating the selected zombie entity failed."
+				"Preparing the requested batch of %s zombies failed; nothing was spawned.",
+				requestedCount
 			);
-			case ADD_FAILED -> new ErrorMessage(
+			case ADD_FAILED -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.add_failed",
-				"Adding the selected zombie to the world failed."
+				"Adding the requested batch of %s zombies failed; the entire batch was rolled back.",
+				requestedCount
 			);
-			case NONE -> throw new IllegalStateException("Successful single spawn reached the failure branch.");
+			case NONE -> throw new IllegalStateException("Successful specific spawn reached the failure branch.");
 		};
-		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		context.getSource().sendFailure(error);
 		return 0;
 	}
 

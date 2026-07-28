@@ -74,6 +74,50 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 		maxTicks = 20,
 		padding = 4
 	)
+	public void spawnSpecificCommandAcceptsBatchCountAndSeparatesEveryZombie(final GameTestHelper helper) {
+		BlockPos sourceBlock = helper.absolutePos(new BlockPos(32, 1, 8));
+		var source = helper.getLevel()
+			.getServer()
+			.createCommandSourceStack()
+			.withLevel(helper.getLevel())
+			.withPosition(Vec3.atBottomCenterOf(sourceBlock))
+			.withRotation(Vec2.ZERO)
+			.withSuppressedOutput();
+
+		helper.getLevel().getServer().getCommands().performPrefixedCommand(
+			source,
+			"mtn spawn swordsman 5"
+		);
+		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
+			Zombie.class,
+			new AABB(sourceBlock).inflate(14.0, 8.0, 14.0),
+			zombie -> zombie.getType() == EntityType.ZOMBIE && zombie.isAlive()
+		);
+
+		helper.assertTrue(zombies.size() == 5, "The requested batch did not create exactly five zombies.");
+		helper.assertTrue(
+			zombies.stream().map(Zombie::blockPosition).distinct().count() == 5,
+			"Two zombies in one requested batch were placed on the same feet position."
+		);
+		helper.assertTrue(
+			zombies.stream().allMatch(zombie ->
+				zombie.getMainHandItem().is(Items.IRON_SWORD)
+					&& zombie.getOffhandItem().isEmpty()
+					&& zombie.getCustomName() != null
+					&& zombie.getCustomName().getString().contains(
+						ZombieShowcaseSpawner.ShowcaseArchetype.SWORDSMAN.displayName().getString()
+					)
+			),
+			"At least one batch member did not retain the requested swordsman archetype."
+		);
+		helper.succeed();
+	}
+
+	@GameTest(
+		structure = "mobsthinknow-gametest:air_assault_arena",
+		maxTicks = 20,
+		padding = 4
+	)
 	public void spawnAllCommandCreatesOneOfEveryTacticalArchetype(final GameTestHelper helper) {
 		BlockPos sourceBlock = helper.absolutePos(new BlockPos(32, 1, 8));
 		Vec3 sourcePosition = Vec3.atBottomCenterOf(sourceBlock);

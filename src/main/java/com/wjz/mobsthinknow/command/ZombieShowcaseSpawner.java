@@ -13,6 +13,7 @@ import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.ChatFormatting;
@@ -45,9 +46,9 @@ import org.jspecify.annotations.Nullable;
  * 因此也不会为了凑数重复生成一个静态样本。</p>
  */
 public final class ZombieShowcaseSpawner {
-	private static final int GRID_SIDE = 3;
+	public static final int MAX_BATCH_SIZE = 100;
 	private static final double GRID_SPACING = 3.0;
-	private static final double GRID_CENTER_DISTANCE = 8.0;
+	private static final double FORMATION_FRONT_DISTANCE = 5.0;
 	private static final double SINGLE_SPAWN_DISTANCE = 4.0;
 	private static final int[] VERTICAL_SEARCH = {0, 1, -1, 2, -2, 3, -3, 4, -4};
 	private static final int[][] LOCAL_OFFSETS = {
@@ -83,11 +84,67 @@ public final class ZombieShowcaseSpawner {
 			return SpawnResult.failed(Failure.NO_SPACE);
 		}
 
+		return prepareAndSpawn(level, source.getPosition(), archetypes, positions);
+	}
+
+	/**
+	 * 在命令源正前方生成一个指定兵种。落点仍经过地基、碰撞、流体、世界边界与区块加载检查，
+	 * 因此单兵指令不会把僵尸塞进墙内或为了寻找地面强制加载新区块。
+	 */
+	public static SpawnResult spawnOne(final CommandSourceStack source, final ShowcaseArchetype archetype) {
+		return spawnBatch(source, archetype, 1);
+	}
+
+	/**
+	 * 批量生成同一兵种。数量为一时保持原来的单兵落点；数量更大时按近似正方形阵型排开。
+	 * 所有落点与实体都会先准备完毕，任一步失败便整批取消，避免只生成请求数量的一部分。
+	 */
+	public static SpawnResult spawnBatch(
+		final CommandSourceStack source,
+		final ShowcaseArchetype archetype,
+		final int count
+	) {
+		if (count < 1 || count > MAX_BATCH_SIZE) {
+			throw new IllegalArgumentException("Batch count must be between 1 and " + MAX_BATCH_SIZE + ".");
+		}
+
+		ServerLevel level = source.getLevel();
+		if (level.getDifficulty() == Difficulty.PEACEFUL) {
+			return SpawnResult.failed(Failure.PEACEFUL);
+		}
+
+		List<BlockPos> positions;
+		if (count == 1) {
+			double radians = Math.toRadians(source.getRotation().y);
+			Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
+			Vec3 preferred = source.getPosition().add(forward.scale(SINGLE_SPAWN_DISTANCE));
+			@Nullable BlockPos feet = findSafeFeet(level, preferred, source.getPosition().y, List.of());
+			positions = feet == null ? List.of() : List.of(feet);
+		} else {
+			positions = findFormation(level, source.getPosition(), source.getRotation().y, count);
+		}
+		if (positions.size() != count) {
+			return SpawnResult.failed(Failure.NO_SPACE);
+		}
+
+		return prepareAndSpawn(
+			level,
+			source.getPosition(),
+			Collections.nCopies(count, archetype),
+			positions
+		);
+	}
+
+	private static SpawnResult prepareAndSpawn(
+		final ServerLevel level,
+		final Vec3 faceToward,
+		final List<ShowcaseArchetype> archetypes,
+		final List<BlockPos> positions
+	) {
 		List<PreparedZombie> prepared = new ArrayList<>(archetypes.size());
 		for (int index = 0; index < archetypes.size(); index++) {
 			ShowcaseArchetype archetype = archetypes.get(index);
-			BlockPos feet = positions.get(index);
-			Zombie zombie = createZombie(level, feet, source.getPosition(), archetype);
+			Zombie zombie = createZombie(level, positions.get(index), faceToward, archetype);
 			if (zombie == null) {
 				discardPrepared(prepared);
 				return SpawnResult.failed(Failure.CREATE_FAILED);
@@ -106,35 +163,6 @@ public final class ZombieShowcaseSpawner {
 		return SpawnResult.succeeded(spawned);
 	}
 
-	/**
-	 * 在命令源正前方生成一个指定兵种。落点仍经过地基、碰撞、流体、世界边界与区块加载检查，
-	 * 因此单兵指令不会把僵尸塞进墙内或为了寻找地面强制加载新区块。
-	 */
-	public static SpawnResult spawnOne(final CommandSourceStack source, final ShowcaseArchetype archetype) {
-		ServerLevel level = source.getLevel();
-		if (level.getDifficulty() == Difficulty.PEACEFUL) {
-			return SpawnResult.failed(Failure.PEACEFUL);
-		}
-
-		double radians = Math.toRadians(source.getRotation().y);
-		Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
-		Vec3 preferred = source.getPosition().add(forward.scale(SINGLE_SPAWN_DISTANCE));
-		@Nullable BlockPos feet = findSafeFeet(level, preferred, source.getPosition().y, List.of());
-		if (feet == null) {
-			return SpawnResult.failed(Failure.NO_SPACE);
-		}
-
-		Zombie zombie = createZombie(level, feet, source.getPosition(), archetype);
-		if (zombie == null) {
-			return SpawnResult.failed(Failure.CREATE_FAILED);
-		}
-		if (!level.tryAddFreshEntityWithPassengers(zombie)) {
-			zombie.discard();
-			return SpawnResult.failed(Failure.ADD_FAILED);
-		}
-		return SpawnResult.succeeded(List.of(new SpawnedZombie(archetype, zombie)));
-	}
-
 	private static List<BlockPos> findFormation(
 		final ServerLevel level,
 		final Vec3 origin,
@@ -144,16 +172,19 @@ public final class ZombieShowcaseSpawner {
 		double radians = Math.toRadians(yaw);
 		Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
 		Vec3 lateral = new Vec3(Math.cos(radians), 0.0, Math.sin(radians));
-		Vec3 center = origin.add(forward.scale(GRID_CENTER_DISTANCE));
+		int columns = (int)Math.ceil(Math.sqrt(count));
 		List<BlockPos> positions = new ArrayList<>(count);
 		List<AABB> reservedBoxes = new ArrayList<>(count);
 
 		for (int index = 0; index < count; index++) {
-			int row = index / GRID_SIDE - 1;
-			int column = index % GRID_SIDE - 1;
-			Vec3 preferred = center
-				.add(forward.scale(row * GRID_SPACING))
-				.add(lateral.scale(column * GRID_SPACING));
+			int row = index / columns;
+			int rowStart = row * columns;
+			int rowSize = Math.min(columns, count - rowStart);
+			int column = index - rowStart;
+			double lateralOffset = (column - (rowSize - 1) * 0.5) * GRID_SPACING;
+			Vec3 preferred = origin
+				.add(forward.scale(FORMATION_FRONT_DISTANCE + row * GRID_SPACING))
+				.add(lateral.scale(lateralOffset));
 			@Nullable BlockPos safe = findSafeFeet(level, preferred, origin.y, reservedBoxes);
 			if (safe == null) {
 				return List.of();
