@@ -1,11 +1,13 @@
 package com.wjz.mobsthinknow.command;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import java.util.Arrays;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -26,12 +28,28 @@ public final class MtnCommands {
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAll)
 				)
+				.then(spawnSpecificCommand())
 				.then(
 					Commands.literal("reload")
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::reload)
 				)
 		));
+	}
+
+	/** 每个兵种都注册成真实 literal，因此客户端按 Tab 就能直接看到完整可选列表。 */
+	private static LiteralArgumentBuilder<CommandSourceStack> spawnSpecificCommand() {
+		LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("spawn")
+			.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+			.executes(MtnCommands::listSpawnTypes);
+		for (ZombieShowcaseSpawner.ShowcaseArchetype archetype
+			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
+			command.then(
+				Commands.literal(archetype.commandId())
+					.executes(context -> spawnOne(context, archetype))
+			);
+		}
+		return command;
 	}
 
 	private static int status(final CommandContext<CommandSourceStack> context) {
@@ -107,6 +125,65 @@ public final class MtnCommands {
 				"Adding the formation to the world failed; this spawn attempt was rolled back."
 			);
 			case NONE -> throw new IllegalStateException("Successful spawn result reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private static int listSpawnTypes(final CommandContext<CommandSourceStack> context) {
+		String types = String.join(
+			", ",
+			Arrays.stream(ZombieShowcaseSpawner.ShowcaseArchetype.values())
+				.map(ZombieShowcaseSpawner.ShowcaseArchetype::commandId)
+				.toList()
+		);
+		context.getSource().sendSuccess(
+			() -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.types",
+				"Available tactical zombie types: %s",
+				types
+			),
+			false
+		);
+		return Command.SINGLE_SUCCESS;
+	}
+
+	private static int spawnOne(
+		final CommandContext<CommandSourceStack> context,
+		final ZombieShowcaseSpawner.ShowcaseArchetype archetype
+	) {
+		ZombieShowcaseSpawner.SpawnResult result = ZombieShowcaseSpawner.spawnOne(context.getSource(), archetype);
+		if (result.success()) {
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn.success",
+					"Spawned %s (%s).",
+					archetype.displayName(),
+					archetype.commandId()
+				),
+				true
+			);
+			return Command.SINGLE_SUCCESS;
+		}
+
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn.no_space",
+				"No safe nearby ground was found for this tactical zombie."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn.create_failed",
+				"Creating the selected zombie entity failed."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn.add_failed",
+				"Adding the selected zombie to the world failed."
+			);
+			case NONE -> throw new IllegalStateException("Successful single spawn reached the failure branch.");
 		};
 		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
 		return 0;

@@ -29,6 +29,50 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 		maxTicks = 20,
 		padding = 4
 	)
+	public void spawnSpecificCommandRoutesEveryLiteralToItsRequestedArchetype(final GameTestHelper helper) {
+		BlockPos sourceBlock = helper.absolutePos(new BlockPos(32, 1, 8));
+		var source = helper.getLevel()
+			.getServer()
+			.createCommandSourceStack()
+			.withLevel(helper.getLevel())
+			.withPosition(Vec3.atBottomCenterOf(sourceBlock))
+			.withRotation(Vec2.ZERO)
+			.withSuppressedOutput();
+
+		for (ZombieShowcaseSpawner.ShowcaseArchetype archetype
+			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
+			helper.getLevel().getServer().getCommands().performPrefixedCommand(
+				source,
+				"mtn spawn " + archetype.commandId()
+			);
+		}
+
+		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
+			Zombie.class,
+			new AABB(sourceBlock).inflate(12.0, 8.0, 12.0),
+			zombie -> zombie.getType() == EntityType.ZOMBIE && zombie.isAlive()
+		);
+		helper.assertTrue(zombies.size() == 9, "Specific spawn commands did not create exactly nine zombies.");
+		for (ZombieShowcaseSpawner.ShowcaseArchetype archetype
+			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
+			String expectedName = archetype.displayName().getString();
+			long matchingNames = zombies.stream()
+				.filter(zombie -> zombie.getCustomName() != null)
+				.filter(zombie -> zombie.getCustomName().getString().contains(expectedName))
+				.count();
+			helper.assertTrue(
+				matchingNames == 1,
+				"Command literal " + archetype.commandId() + " did not route to exactly one named archetype."
+			);
+		}
+		helper.succeed();
+	}
+
+	@GameTest(
+		structure = "mobsthinknow-gametest:air_assault_arena",
+		maxTicks = 20,
+		padding = 4
+	)
 	public void spawnAllCommandCreatesOneOfEveryTacticalArchetype(final GameTestHelper helper) {
 		BlockPos sourceBlock = helper.absolutePos(new BlockPos(32, 1, 8));
 		Vec3 sourcePosition = Vec3.atBottomCenterOf(sourceBlock);

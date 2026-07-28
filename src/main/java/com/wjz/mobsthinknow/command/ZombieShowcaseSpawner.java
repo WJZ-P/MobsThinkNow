@@ -12,6 +12,7 @@ import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
@@ -45,6 +46,7 @@ public final class ZombieShowcaseSpawner {
 	private static final int GRID_SIDE = 3;
 	private static final double GRID_SPACING = 3.0;
 	private static final double GRID_CENTER_DISTANCE = 8.0;
+	private static final double SINGLE_SPAWN_DISTANCE = 4.0;
 	private static final int[] VERTICAL_SEARCH = {0, 1, -1, 2, -2, 3, -3, 4, -4};
 	private static final int[][] LOCAL_OFFSETS = {
 		{0, 0},
@@ -100,6 +102,35 @@ public final class ZombieShowcaseSpawner {
 			spawned.add(new SpawnedZombie(entry.archetype(), entry.zombie()));
 		}
 		return SpawnResult.succeeded(spawned);
+	}
+
+	/**
+	 * 在命令源正前方生成一个指定兵种。落点仍经过地基、碰撞、流体、世界边界与区块加载检查，
+	 * 因此单兵指令不会把僵尸塞进墙内或为了寻找地面强制加载新区块。
+	 */
+	public static SpawnResult spawnOne(final CommandSourceStack source, final ShowcaseArchetype archetype) {
+		ServerLevel level = source.getLevel();
+		if (level.getDifficulty() == Difficulty.PEACEFUL) {
+			return SpawnResult.failed(Failure.PEACEFUL);
+		}
+
+		double radians = Math.toRadians(source.getRotation().y);
+		Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
+		Vec3 preferred = source.getPosition().add(forward.scale(SINGLE_SPAWN_DISTANCE));
+		@Nullable BlockPos feet = findSafeFeet(level, preferred, source.getPosition().y, List.of());
+		if (feet == null) {
+			return SpawnResult.failed(Failure.NO_SPACE);
+		}
+
+		Zombie zombie = createZombie(level, feet, source.getPosition(), archetype);
+		if (zombie == null) {
+			return SpawnResult.failed(Failure.CREATE_FAILED);
+		}
+		if (!level.tryAddFreshEntityWithPassengers(zombie)) {
+			zombie.discard();
+			return SpawnResult.failed(Failure.ADD_FAILED);
+		}
+		return SpawnResult.succeeded(List.of(new SpawnedZombie(archetype, zombie)));
 	}
 
 	private static List<BlockPos> findFormation(
@@ -329,6 +360,11 @@ public final class ZombieShowcaseSpawner {
 
 		public Component displayName() {
 			return Component.translatableWithFallback(this.translationKey, this.fallback).withStyle(this.color);
+		}
+
+		/** Brigadier 子命令使用稳定、纯 ASCII 的小写枚举名，方便输入、补全和命令方块调用。 */
+		public String commandId() {
+			return this.name().toLowerCase(Locale.ROOT);
 		}
 
 		public int intelligence() {
