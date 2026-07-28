@@ -88,5 +88,9 @@
 	"mobsthinknow.showcase.lava_harasser": "Lava Harasser Zombie",
 	"mobsthinknow.showcase.air_assault": "Spear Air-Assault Zombie",
 	"mobsthinknow.config.spear_rocket_efficiency": "Zombie Rocket Thrust Efficiency (%)",
-	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% matches vanilla attached fireworks; default 50%. Stable boost speed is about half vanilla, which also lowers kinetic spear damage. Each launched rocket synchronizes this value to clients."
+	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% matches vanilla attached fireworks; default 50%. Stable boost speed is about half vanilla, which also lowers kinetic spear damage. Each launched rocket synchronizes this value to clients.",
+	"item.mobsthinknow.zombie_guard_shield": "Zombie Guard Shield",
+	"block.mobsthinknow.banner.zombie_head.green": "Green Zombie Head",
+	"block.mobsthinknow.banner.zombie_face.black": "Black Zombie Face",
+	"block.mobsthinknow.banner.zombie_eyes.purple": "Purple Zombie Eyes"
 }

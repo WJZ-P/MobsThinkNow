@@ -72,7 +72,7 @@ public final class ZombieArmory {
 		if (zombie.getOffhandItem().isEmpty()
 			&& !zombie.getMainHandItem().has(DataComponents.KINETIC_WEAPON)
 			&& random.nextDouble() < shieldChance) {
-			zombie.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+			zombie.setItemSlot(EquipmentSlot.OFFHAND, ZombieShieldDesign.create(zombie.registryAccess()));
 		}
 	}
 

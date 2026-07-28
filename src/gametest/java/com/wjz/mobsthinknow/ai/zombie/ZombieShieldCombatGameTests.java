@@ -53,6 +53,11 @@ public final class ZombieShieldCombatGameTests implements CustomTestMethodInvoke
 				ZombieShieldMemory.wasHurtSoundSuppressedAt(fixture.zombie(), helper.getLevel().getGameTime()),
 				"A fully blocked hit still reached the zombie hurt-sound call."
 			);
+			helper.assertTrue(
+				ZombieShieldDesign.hasZombieHead(fixture.zombie().getOffhandItem()),
+				"The shield combatant did not receive the zombie-head shield pattern."
+			);
+
 			// 若上一笔真实伤害尚有动画，则新的格挡只是不重播，而不是粗暴截断旧动画。
 			fixture.zombie().invulnerableTime = 0;
 			fixture.zombie().hurtDuration = 7;

@@ -88,5 +88,9 @@
 	"mobsthinknow.showcase.lava_harasser": "岩浆骚扰兵",
 	"mobsthinknow.showcase.air_assault": "持矛空袭兵",
 	"mobsthinknow.config.spear_rocket_efficiency": "僵尸烟花推进效率（%）",
-	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% 与原版附着烟花一致，默认 50%。稳定推进速度约为原版的一半，也会降低长矛动能伤害；每枚发射物都会把服务端设定同步给客户端。"
+	"mobsthinknow.config.spear_rocket_efficiency.tooltip": "100% 与原版附着烟花一致，默认 50%。稳定推进速度约为原版的一半，也会降低长矛动能伤害；每枚发射物都会把服务端设定同步给客户端。",
+	"item.mobsthinknow.zombie_guard_shield": "僵尸卫士盾牌",
+	"block.mobsthinknow.banner.zombie_head.green": "绿色僵尸头颅",
+	"block.mobsthinknow.banner.zombie_face.black": "黑色僵尸面孔",
+	"block.mobsthinknow.banner.zombie_eyes.purple": "紫色僵尸眼睛"
 }

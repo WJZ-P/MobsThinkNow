@@ -41,6 +41,8 @@ final class ZombieShieldCombat {
 		final MobsThinkNowConfig config,
 		final boolean hasLineOfSight
 	) {
+		// 新生成的盾卫立即带图案；旧存档中的普通原版盾也在首次进入盾牌状态机时平滑升级。
+		ZombieShieldDesign.decorateIfPlain(this.zombie);
 		long now = this.zombie.level().getGameTime();
 		if (!this.isEligible(target, config, hasLineOfSight)) {
 			this.deactivate();

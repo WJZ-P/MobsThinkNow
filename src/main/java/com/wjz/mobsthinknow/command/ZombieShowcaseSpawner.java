@@ -7,6 +7,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieFlightAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierState;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.ZombieShieldDesign;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -280,11 +281,11 @@ public final class ZombieShowcaseSpawner {
 			case AXEMAN -> equip(zombie, EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
 			case SWORD_SHIELD -> {
 				equip(zombie, EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
-				equip(zombie, EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+				equip(zombie, EquipmentSlot.OFFHAND, ZombieShieldDesign.create(zombie.registryAccess()));
 			}
 			case AXE_SHIELD -> {
 				equip(zombie, EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
-				equip(zombie, EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+				equip(zombie, EquipmentSlot.OFFHAND, ZombieShieldDesign.create(zombie.registryAccess()));
 			}
 			case BUILDER -> {
 				int blocks = Math.max(1, config.terrainBlockInventoryLimit);
