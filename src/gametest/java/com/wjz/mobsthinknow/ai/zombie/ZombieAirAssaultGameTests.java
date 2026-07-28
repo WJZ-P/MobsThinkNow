@@ -10,6 +10,7 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.npc.villager.Villager;
@@ -72,6 +73,13 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 		helper.assertTrue(!goal.canUse(), "The ground spear Goal started while the air-assault zombie still had rockets.");
 		zombie.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
 		helper.assertTrue(goal.canUse(), "The original ground spear Goal did not return after ammunition was exhausted.");
+		zombie.setDeltaMovement(new Vec3(0.4, 0.0, 0.0));
+		ZombieSpearAirAssaultGoal airGoal = new ZombieSpearAirAssaultGoal(zombie);
+		helper.assertTrue(!airGoal.canUse(), "The air-assault Goal restarted on the ground after ammunition was exhausted.");
+		helper.assertTrue(
+			Math.abs(zombie.getDeltaMovement().x - 0.4) < 1.0E-12,
+			"Ground-combat movement was damped even though no landing pose was being settled."
+		);
 		helper.succeed();
 	}
 
@@ -95,6 +103,17 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 			status(zombie).mobsthinknow$getAirAssaultPhase() == ZombieSpearAirAssaultGoal.Phase.IDLE,
 			"The targetless zombie left the idle air-assault phase."
 		);
+
+		// 再模拟旧版本或碰撞顺序遗留的“已落地但滑翔位仍为 true”。canUse 必须一次清掉，
+		// 后续重复轮询不能再把共享位写 true，避免客户端模型在站立/滑翔之间闪烁。
+		zombie.setOnGround(true);
+		((ZombieFlightAccess)zombie).mobsthinknow$startFallFlying();
+		helper.assertTrue(zombie.isFallFlying(), "The stale grounded flight fixture was not established.");
+		for (int check = 0; check < 5; check++) {
+			helper.assertTrue(!goal.canUse(), "A grounded targetless zombie restarted the air-assault Goal.");
+			helper.assertTrue(!zombie.isFallFlying(), "Repeated canUse polling restored the stale fall-flying flag.");
+			helper.assertTrue(!zombie.hasPose(Pose.FALL_FLYING), "The grounded zombie retained the fall-flying pose.");
+		}
 		helper.succeed();
 	}
 
@@ -166,7 +185,9 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 		int[] firstOrbitObservedLaunches = {-1};
 		int[] firstOrbitLastRocketAt = {-1};
 		int[] secondOrbitRocketBaseline = {-1};
+		int[] secondOrbitObservedLaunches = {-1};
 		int[] elapsedTicks = {0};
+		ZombieSpearAirAssaultGoal.Phase[] previousPhase = {ZombieSpearAirAssaultGoal.Phase.IDLE};
 
 		zombie.setInvulnerable(true);
 		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SPEAR));
@@ -194,10 +215,15 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 				sawFallFlying.set(true);
 			}
 			ZombieSpearAirAssaultGoal.Phase phase = status(zombie).mobsthinknow$getAirAssaultPhase();
-			if (phase == ZombieSpearAirAssaultGoal.Phase.ORBITING && firstOrbitAt[0] < 0) {
+			if (phase == ZombieSpearAirAssaultGoal.Phase.ORBITING
+				&& previousPhase[0] != ZombieSpearAirAssaultGoal.Phase.ORBITING
+				&& firstDiveAt[0] < 0) {
+				// 若蓄力前被地形打断并回到恢复阶段，新一轮盘旋会重新抽取独立的 1～2 枚预算；
+				// 因此断言紧邻本次俯冲的这一轮，而不是把多个中止航线错误累加。
 				firstOrbitAt[0] = elapsedTicks[0];
 				firstOrbitRocketBaseline[0] = status(zombie).mobsthinknow$getRocketsLaunched();
 				firstOrbitObservedLaunches[0] = firstOrbitRocketBaseline[0];
+				firstOrbitLastRocketAt[0] = -1;
 			}
 			if (phase == ZombieSpearAirAssaultGoal.Phase.ORBITING && firstDiveAt[0] < 0) {
 				int launches = status(zombie).mobsthinknow$getRocketsLaunched();
@@ -225,11 +251,19 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 						firstDiveAt[0] - firstOrbitAt[0] >= ZombieSpearAirAssaultGoal.MINIMUM_ORBIT_TICKS,
 						"The first dive started before the randomized minimum orbit duration elapsed."
 					);
-					int orbitRockets = status(zombie).mobsthinknow$getRocketsLaunched()
-						- firstOrbitRocketBaseline[0];
+					helper.assertTrue(
+						firstDiveAt[0] - firstOrbitAt[0] <= ZombieSpearAirAssaultGoal.MAXIMUM_ORBIT_TO_DIVE_TICKS,
+						"The first orbit exceeded the hard attack deadline instead of starting a dive."
+					);
+					int orbitRockets = firstOrbitObservedLaunches[0] - firstOrbitRocketBaseline[0];
 					helper.assertTrue(
 						orbitRockets >= 1 && orbitRockets <= 2,
 						"The initial orbit did not use its one-to-two rocket budget: " + orbitRockets
+					);
+					helper.assertTrue(
+						zombie.getDeltaMovement().lengthSqr()
+							>= ZombieSpearAirAssaultGoal.MINIMUM_DIVE_ENTRY_SPEED_SQUARED,
+						"The first dive entered below the guaranteed attack speed."
 					);
 				}
 				minimumDiveDistance[0] = Math.min(minimumDiveDistance[0], Math.sqrt(zombie.distanceToSqr(target)));
@@ -272,6 +306,17 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 				helper.assertTrue(!zombie.isUsingItem(), "The zombie kept its spear raised after returning to orbit.");
 				postAttackOrbitAt[0] = elapsedTicks[0];
 				secondOrbitRocketBaseline[0] = status(zombie).mobsthinknow$getRocketsLaunched();
+				secondOrbitObservedLaunches[0] = secondOrbitRocketBaseline[0];
+			}
+			if (postAttackOrbitAt[0] >= 0 && phase == ZombieSpearAirAssaultGoal.Phase.ORBITING) {
+				secondOrbitObservedLaunches[0] = status(zombie).mobsthinknow$getRocketsLaunched();
+			}
+			if (postAttackOrbitAt[0] >= 0
+				&& phase == ZombieSpearAirAssaultGoal.Phase.ORBITING
+				&& previousPhase[0] != ZombieSpearAirAssaultGoal.Phase.ORBITING) {
+				postAttackOrbitAt[0] = elapsedTicks[0];
+				secondOrbitRocketBaseline[0] = status(zombie).mobsthinknow$getRocketsLaunched();
+				secondOrbitObservedLaunches[0] = secondOrbitRocketBaseline[0];
 			}
 			if (postAttackOrbitAt[0] >= 0
 				&& phase == ZombieSpearAirAssaultGoal.Phase.DIVING
@@ -280,15 +325,24 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 					elapsedTicks[0] - postAttackOrbitAt[0] >= ZombieSpearAirAssaultGoal.MINIMUM_ORBIT_TICKS,
 					"The second attack skipped the post-pass randomized orbit delay."
 				);
-				int orbitRockets = status(zombie).mobsthinknow$getRocketsLaunched()
-					- secondOrbitRocketBaseline[0];
+				helper.assertTrue(
+					elapsedTicks[0] - postAttackOrbitAt[0] <= ZombieSpearAirAssaultGoal.MAXIMUM_ORBIT_TO_DIVE_TICKS,
+					"The post-pass orbit exceeded the hard attack deadline instead of starting another dive."
+				);
+				int orbitRockets = secondOrbitObservedLaunches[0] - secondOrbitRocketBaseline[0];
 				helper.assertTrue(
 					orbitRockets >= 1 && orbitRockets <= 2,
 					"The post-pass orbit did not use its one-to-two rocket budget: " + orbitRockets
 				);
+				helper.assertTrue(
+					zombie.getDeltaMovement().lengthSqr()
+						>= ZombieSpearAirAssaultGoal.MINIMUM_DIVE_ENTRY_SPEED_SQUARED,
+					"The second dive entered below the guaranteed attack speed."
+				);
 				helper.succeed();
 				return;
 			}
+			previousPhase[0] = phase;
 			if (elapsedTicks[0] == 860) {
 				helper.fail(
 					flightDiagnostic("A full orbit-dive-pass-recovery cycle did not finish", zombie, target, maximumAltitude[0])
@@ -300,6 +354,120 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 						+ ", postAttackOrbitAt=" + postAttackOrbitAt[0]
 						+ ", maxDistanceAfterHit=" + maximumDistanceAfterHit[0]
 						+ ", lineOfSight=" + zombie.hasLineOfSight(target)
+				);
+			}
+		});
+	}
+
+	@GameTest(
+		structure = "mobsthinknow-gametest:air_assault_arena",
+		maxTicks = 320,
+		skyAccess = true,
+		padding = 8
+	)
+	public void lostTargetGlidesToAFixedLandingAndKeepsStandingPose(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 24, 10, 16);
+		Villager target = helper.spawn(EntityType.VILLAGER, 32, 3, 16);
+		AtomicBoolean removedTarget = new AtomicBoolean();
+		AtomicBoolean sawLandingPhase = new AtomicBoolean();
+		AtomicBoolean sawTouchdown = new AtomicBoolean();
+		double[] heightAtTargetLoss = {Double.NaN};
+		double[] minimumHeightAfterLoss = {Double.POSITIVE_INFINITY};
+		double[] touchdownHeight = {Double.NaN};
+		int[] stableStandingTicks = {0};
+		int[] elapsedTicks = {0};
+		int[] recordedTransitions = {0};
+		ZombieSpearAirAssaultGoal.Phase[] lastPhase = {null};
+		StringBuilder phaseTrace = new StringBuilder();
+
+		zombie.setInvulnerable(true);
+		zombie.setPersistenceRequired();
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SPEAR));
+		zombie.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.ELYTRA));
+		zombie.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.FIREWORK_ROCKET, 16));
+		zombie.setOnGround(false);
+		zombie.setDeltaMovement(new Vec3(0.48, -0.01, 0.0));
+		((ZombieFlightAccess)zombie).mobsthinknow$startFallFlying();
+		zombie.setTarget(target);
+		target.setNoAi(true);
+		target.setNoGravity(true);
+
+		helper.onEachTick(() -> {
+			elapsedTicks[0]++;
+			zombie.clearFire();
+			if (!removedTarget.get()) {
+				zombie.setTarget(target);
+				if (elapsedTicks[0] >= 6 && zombie.isFallFlying()) {
+					heightAtTargetLoss[0] = zombie.getY();
+					target.discard();
+					zombie.setTarget(null);
+					removedTarget.set(true);
+				}
+			} else {
+				zombie.setTarget(null);
+				minimumHeightAfterLoss[0] = Math.min(minimumHeightAfterLoss[0], zombie.getY());
+			}
+
+			ZombieSpearAirAssaultGoal.Phase phase = status(zombie).mobsthinknow$getAirAssaultPhase();
+			if (phase != lastPhase[0] && recordedTransitions[0] < 16) {
+				phaseTrace.append("[t=").append(elapsedTicks[0])
+					.append(", phase=").append(phase)
+					.append(", pos=").append(zombie.position())
+					.append(", movement=").append(zombie.getDeltaMovement())
+					.append(", target=").append(zombie.getTarget())
+					.append(", onGround=").append(zombie.onGround())
+					.append(", belowCollision=").append(zombie.verticalCollisionBelow)
+					.append(", fallFlying=").append(zombie.isFallFlying())
+					.append(", onFire=").append(zombie.isOnFire())
+					.append(", glider=").append(ZombieAirAssault.hasUsableGlider(zombie))
+					.append(", rockets=").append(zombie.getOffhandItem().getCount())
+					.append("]");
+				recordedTransitions[0]++;
+				if (recordedTransitions[0] == 16) {
+					phaseTrace.append("[further transitions omitted]");
+				}
+			}
+			lastPhase[0] = phase;
+			if (phase == ZombieSpearAirAssaultGoal.Phase.LANDING) {
+				sawLandingPhase.set(true);
+			}
+			if (removedTarget.get() && (zombie.onGround() || zombie.verticalCollisionBelow)) {
+				if (!sawTouchdown.get()) {
+					touchdownHeight[0] = zombie.getY();
+				}
+				sawTouchdown.set(true);
+			}
+			if (removedTarget.get()
+				&& sawTouchdown.get()
+				&& !zombie.isFallFlying()
+				&& !zombie.hasPose(Pose.FALL_FLYING)
+				&& phase == ZombieSpearAirAssaultGoal.Phase.IDLE
+				&& Math.abs(zombie.getY() - touchdownHeight[0]) <= 0.25) {
+				stableStandingTicks[0]++;
+			} else if (stableStandingTicks[0] > 0) {
+				helper.fail("The landed air-assault zombie re-entered a flying pose after target loss.");
+			}
+
+			if (stableStandingTicks[0] >= 40) {
+				helper.assertTrue(sawLandingPhase.get(), "Target loss skipped the controlled landing phase.");
+				helper.assertTrue(
+					minimumHeightAfterLoss[0] <= heightAtTargetLoss[0] - 3.0,
+					"The targetless zombie did not descend from its old flight line."
+				);
+				helper.succeed();
+				return;
+			}
+			if (elapsedTicks[0] == 290) {
+				helper.fail(
+					"Target-loss landing did not settle: position=" + zombie.position()
+						+ ", movement=" + zombie.getDeltaMovement()
+						+ ", phase=" + phase
+						+ ", fallFlying=" + zombie.isFallFlying()
+						+ ", pose=" + zombie.getPose()
+						+ ", onGround=" + zombie.onGround()
+						+ ", verticalCollisionBelow=" + zombie.verticalCollisionBelow
+						+ ", trace=" + phaseTrace
 				);
 			}
 		});
@@ -372,6 +540,13 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 		helper.assertTrue(goal.canUse(), "The airborne one-rocket fixture did not qualify for air assault.");
 		goal.start();
 		helper.assertTrue(zombie.isFallFlying(), "Starting the airborne Goal did not set the vanilla fall-flying flag.");
+		helper.assertTrue(
+			zombie.getXRot() <= -74.0F
+				&& zombie.getLookAngle().y >= 0.95
+				&& zombie.getLookAngle().horizontalDistance() <= 0.27,
+			"The first attached rocket was not aimed along the near-vertical takeoff vector: pitch="
+				+ zombie.getXRot() + ", look=" + zombie.getLookAngle()
+		);
 		helper.assertTrue(zombie.getOffhandItem().isEmpty(), "Launching an attached firework did not consume the final rocket.");
 		helper.assertTrue(
 			!helper.getLevel().getEntitiesOfClass(

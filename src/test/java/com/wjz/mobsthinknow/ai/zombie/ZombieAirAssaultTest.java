@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import net.minecraft.world.Difficulty;
@@ -76,13 +77,13 @@ class ZombieAirAssaultTest {
 	}
 
 	@Test
-	void orbitDelayAlwaysStaysInsideThreeToSixSeconds() {
-		assertEquals(60, ZombieSpearAirAssaultGoal.orbitDurationTicks(0.0));
-		assertEquals(120, ZombieSpearAirAssaultGoal.orbitDurationTicks(1.0));
-		assertEquals(60, ZombieSpearAirAssaultGoal.orbitDurationTicks(Double.NaN));
+	void orbitDelayAlwaysStaysInsideTheShortOnePointTwoToTwoSecondWindow() {
+		assertEquals(24, ZombieSpearAirAssaultGoal.orbitDurationTicks(0.0));
+		assertEquals(40, ZombieSpearAirAssaultGoal.orbitDurationTicks(1.0));
+		assertEquals(24, ZombieSpearAirAssaultGoal.orbitDurationTicks(Double.NaN));
 		for (int sample = 0; sample <= 1000; sample++) {
 			int duration = ZombieSpearAirAssaultGoal.orbitDurationTicks(sample / 1000.0);
-			assertTrue(duration >= 60 && duration <= 120);
+			assertTrue(duration >= 24 && duration <= 40);
 		}
 	}
 
@@ -99,19 +100,59 @@ class ZombieAirAssaultTest {
 
 	@Test
 	void orbitRocketTimingLeavesARealInertiaWindow() {
-		assertEquals(12, ZombieSpearAirAssaultGoal.orbitFirstRocketDelayTicks(0.0));
-		assertEquals(24, ZombieSpearAirAssaultGoal.orbitFirstRocketDelayTicks(1.0));
-		assertEquals(48, ZombieSpearAirAssaultGoal.orbitRocketGapTicks(0.0));
-		assertEquals(68, ZombieSpearAirAssaultGoal.orbitRocketGapTicks(1.0));
-		assertEquals(40, ZombieSpearAirAssaultGoal.rocketCooldownTicks(0.0));
-		assertEquals(60, ZombieSpearAirAssaultGoal.rocketCooldownTicks(1.0));
+		assertEquals(10, ZombieSpearAirAssaultGoal.orbitFirstRocketDelayTicks(0.0));
+		assertEquals(18, ZombieSpearAirAssaultGoal.orbitFirstRocketDelayTicks(1.0));
+		assertEquals(32, ZombieSpearAirAssaultGoal.orbitRocketGapTicks(0.0));
+		assertEquals(44, ZombieSpearAirAssaultGoal.orbitRocketGapTicks(1.0));
+		assertEquals(28, ZombieSpearAirAssaultGoal.rocketCooldownTicks(0.0));
+		assertEquals(40, ZombieSpearAirAssaultGoal.rocketCooldownTicks(1.0));
 		for (int sample = 0; sample <= 1000; sample++) {
 			double roll = sample / 1000.0;
 			int gap = ZombieSpearAirAssaultGoal.orbitRocketGapTicks(roll);
 			int cooldown = ZombieSpearAirAssaultGoal.rocketCooldownTicks(roll);
-			assertTrue(gap >= 48 && gap <= 68);
-			assertTrue(cooldown >= 40 && cooldown <= 60);
-			assertTrue(gap > 40, "Orbit rockets must leave more glide time than the old maximum cooldown.");
+			assertTrue(gap >= 32 && gap <= 44);
+			assertTrue(cooldown >= 28 && cooldown <= 40);
+			assertTrue(gap >= 32, "Orbit rockets must retain at least 1.6 seconds of inertial glide.");
 		}
+	}
+
+	@Test
+	void orbitHardDeadlineAlwaysHandsControlToTheAttack() {
+		assertFalse(ZombieSpearAirAssaultGoal.shouldBeginArming(120L, 100L, 172L, false, false));
+		assertFalse(ZombieSpearAirAssaultGoal.shouldBeginArming(120L, 100L, 172L, true, false));
+		assertTrue(ZombieSpearAirAssaultGoal.shouldBeginArming(120L, 100L, 172L, true, true));
+		assertTrue(
+			ZombieSpearAirAssaultGoal.shouldBeginArming(172L, 100L, 172L, false, false),
+			"The hard deadline must defeat both an unfinished rocket plan and stale line-of-sight."
+		);
+	}
+
+	@Test
+	void visualRotationUsesTheShortestArcWithoutSnapping() {
+		float firstStep = ZombieSpearAirAssaultGoal.approachRotation(179.0F, -179.0F, 1.0F);
+		assertEquals(180.0F, firstStep, 1.0E-6F);
+		// 181° 与 -179° 是同一朝向；保留连续角度可避免跨越边界时让渲染插值走长弧。
+		assertEquals(181.0F, ZombieSpearAirAssaultGoal.approachRotation(firstStep, -179.0F, 1.0F), 1.0E-6F);
+		assertEquals(15.0F, ZombieSpearAirAssaultGoal.approachRotation(0.0F, 90.0F, 15.0F), 1.0E-6F);
+	}
+
+	@Test
+	void velocitySteeringPreservesSpeedAndObeysItsAngularLimit() {
+		Vec3 current = new Vec3(2.0, 0.0, 0.0);
+		Vec3 desired = new Vec3(0.0, 0.0, 3.0);
+		Vec3 turned = ZombieSpearAirAssaultGoal.turnDirectionToward(current, desired, 5.0);
+		double turnAngle = Math.toDegrees(Math.acos(Math.clamp(current.normalize().dot(turned), -1.0, 1.0)));
+
+		assertEquals(1.0, turned.length(), 1.0E-12);
+		assertEquals(5.0, turnAngle, 1.0E-9);
+		assertTrue(turned.dot(desired.normalize()) > current.normalize().dot(desired.normalize()));
+
+		Vec3 opposite = ZombieSpearAirAssaultGoal.turnDirectionToward(
+			new Vec3(1.0, 0.0, 0.0),
+			new Vec3(-1.0, 0.0, 0.0),
+			5.0
+		);
+		assertTrue(Double.isFinite(opposite.x) && Double.isFinite(opposite.y) && Double.isFinite(opposite.z));
+		assertEquals(1.0, opposite.length(), 1.0E-12);
 	}
 }
