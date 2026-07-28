@@ -19,12 +19,21 @@ class ZombieShieldCombatTest {
 	}
 
 	@Test
-	void strikeOpensForAnAttackOrExpiredBluffOnlyWhenWeaponIsReady() {
-		assertFalse(ZombieShieldCombat.shouldOpenStrike(false, 19L, 20L, true));
-		assertTrue(ZombieShieldCombat.shouldOpenStrike(false, 20L, 20L, true));
-		assertTrue(ZombieShieldCombat.shouldOpenStrike(true, 10L, 20L, true));
-		assertFalse(ZombieShieldCombat.shouldOpenStrike(true, 10L, 20L, false));
-		assertFalse(ZombieShieldCombat.shouldOpenStrike(false, 20L, 20L, false));
+	void strikeRespectsCounterDelayOrExpiredBluffAndWeaponCooldown() {
+		assertFalse(ZombieShieldCombat.shouldOpenStrike(false, 19L, Long.MIN_VALUE, 20L, true));
+		assertTrue(ZombieShieldCombat.shouldOpenStrike(false, 20L, Long.MIN_VALUE, 20L, true));
+		assertFalse(ZombieShieldCombat.shouldOpenStrike(true, 101L, 102L, 20L, true));
+		assertTrue(ZombieShieldCombat.shouldOpenStrike(true, 102L, 102L, 20L, true));
+		assertFalse(ZombieShieldCombat.shouldOpenStrike(true, 102L, 102L, 20L, false));
+		assertFalse(ZombieShieldCombat.shouldOpenStrike(false, 20L, Long.MIN_VALUE, 20L, false));
+	}
+
+	@Test
+	void counterDelayRollMapsToTwoThroughFourTicks() {
+		assertEquals(2, ZombieShieldCombat.counterDelayTicks(0));
+		assertEquals(4, ZombieShieldCombat.counterDelayTicks(2));
+		assertThrows(IllegalArgumentException.class, () -> ZombieShieldCombat.counterDelayTicks(-1));
+		assertThrows(IllegalArgumentException.class, () -> ZombieShieldCombat.counterDelayTicks(3));
 	}
 
 	@Test

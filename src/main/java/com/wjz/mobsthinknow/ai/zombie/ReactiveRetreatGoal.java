@@ -34,6 +34,7 @@ public final class ReactiveRetreatGoal extends Goal {
 	private @Nullable Vec3 retreatDestination;
 	private long retreatDeadline;
 	private long nextPathUpdateAt;
+	private long nextWaterScreenAttemptAt;
 
 	public ReactiveRetreatGoal(final Zombie zombie) {
 		this.zombie = zombie;
@@ -88,11 +89,14 @@ public final class ReactiveRetreatGoal extends Goal {
 		this.retreatDeadline = now + config.retreatMaximumTicks;
 		this.retreatDestination = null;
 		this.nextPathUpdateAt = now;
+		this.nextWaterScreenAttemptAt = now;
 		this.zombie.getNavigation().stop();
 		this.zombie.stopUsingItem();
 		SmartZombieMetrics.retreatTriggered();
 
 		if (this.zombie.level() instanceof ServerLevel serverLevel) {
+			// 水桶辅助兵把撤退视作应急支援窗口：存在合法落点就确定性地先放水，不再叠加低概率判定。
+			this.tryDeployRetreatWater(serverLevel, config, now);
 			// 受惊短叫让玩家能读出“它开始脱离接触”这一状态变化。
 			serverLevel.playSound(
 				null,
@@ -130,6 +134,11 @@ public final class ReactiveRetreatGoal extends Goal {
 			return;
 		}
 
+		if (this.zombie.level() instanceof ServerLevel serverLevel
+			&& now >= this.nextWaterScreenAttemptAt) {
+			// 起步格不允许放水时，每半秒随位置变化再试；成功后真实空桶会自然终止后续尝试。
+			this.tryDeployRetreatWater(serverLevel, config, now);
+		}
 		this.maintainSquadHeartbeat(config, now);
 		this.updateEscapePath(config, now);
 	}
@@ -141,6 +150,7 @@ public final class ReactiveRetreatGoal extends Goal {
 		this.attacker = null;
 		this.retreatDestination = null;
 		this.retreatDeadline = 0L;
+		this.nextWaterScreenAttemptAt = 0L;
 	}
 
 	@Override
@@ -242,6 +252,18 @@ public final class ReactiveRetreatGoal extends Goal {
 			hasLineOfSight ? combatTarget.position() : null,
 			hasLineOfSight ? now : Long.MIN_VALUE
 		);
+	}
+
+	private void tryDeployRetreatWater(
+		final ServerLevel level,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		this.nextWaterScreenAttemptAt = now + 10L;
+		if (!config.specialEquipment || !config.fluidTactics || this.attacker == null) {
+			return;
+		}
+		ZombieFluidActions.tryDeployRetreatWater(level, this.zombie, this.attacker, now);
 	}
 
 	private static boolean isEnabled(final MobsThinkNowConfig config) {

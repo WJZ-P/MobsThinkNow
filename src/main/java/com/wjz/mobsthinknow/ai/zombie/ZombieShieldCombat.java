@@ -9,15 +9,17 @@ import net.minecraft.world.entity.monster.zombie.Zombie;
  * 单只盾卫的“举盾接近—观察—单次出手—重新举盾”状态机。
  *
  * <p>盾牌始终优先于进攻：进入六格交战带后先举盾，只有贴身且武器冷却完成时才会
- * 打开一次短攻击窗口。窗口来自两种博弈事件：目标刚刚攻击过，或目标在随机观察期内
- * 一直没有出手。一次挥击发生后立即回到守势；目标临时退开时也保持举盾追近，而不是
- * 放下盾牌盲目贴脸。</p>
+ * 打开一次短攻击窗口。成功格挡不会在同一 tick 瞬间反击，而是继续举盾随机等待 2～4 tick，
+ * 随后明确放下盾牌再出手。挥击后同样保留 2～4 tick 的无盾恢复间隙，再回到守势；目标
+ * 临时退开时仍保持举盾追近，而不是放下盾牌盲目贴脸。</p>
  */
 final class ZombieShieldCombat {
 	private static final double SHIELD_RAISE_DISTANCE_SQUARED = 6.0 * 6.0;
 	private static final double SHIELD_LOWER_DISTANCE_SQUARED = 7.5 * 7.5;
 	private static final int MINIMUM_GUARD_TICKS = 12;
 	private static final int MAXIMUM_GUARD_TICKS = 28;
+	private static final int MINIMUM_COUNTER_DELAY_TICKS = 2;
+	private static final int MAXIMUM_COUNTER_DELAY_TICKS = 4;
 	private static final int STRIKE_WINDOW_TICKS = 10;
 	private static final long ATTACK_SIGNAL_MAX_AGE_TICKS = 20L;
 
@@ -25,6 +27,7 @@ final class ZombieShieldCombat {
 	private Phase phase = Phase.INACTIVE;
 	private int targetId = Integer.MIN_VALUE;
 	private long guardDeadline = Long.MIN_VALUE;
+	private long counterStrikeAt = Long.MIN_VALUE;
 	private long strikeDeadline = Long.MIN_VALUE;
 	private long nextStrikeAt;
 	private boolean counterPending;
@@ -60,10 +63,12 @@ final class ZombieShieldCombat {
 			return;
 		}
 
-		this.captureIncomingAttack(target, now);
-		if (this.phase == Phase.STRIKING) {
+		this.captureSuccessfulBlock(target, now);
+		if (this.phase == Phase.STRIKING || this.phase == Phase.RECOVERING) {
+			// 攻击窗口和攻击后的恢复间隙都强制放盾，避免同一 tick 内“挥剑后立刻重举”被客户端合并掉。
+			this.lowerShield();
 			if (now >= this.strikeDeadline) {
-				// 目标在十 tick 窗口内躲开时收招重举盾，避免持续裸奔追击。
+				// 攻击落空时由十 tick 窗口兜底；已经出手时则等待短恢复间隙结束。
 				this.resumeDefense(target, now);
 			}
 			return;
@@ -84,7 +89,13 @@ final class ZombieShieldCombat {
 		}
 
 		boolean weaponReady = now >= this.nextStrikeAt;
-		if (shouldOpenStrike(this.counterPending, now, this.guardDeadline, weaponReady)) {
+		if (shouldOpenStrike(
+			this.counterPending,
+			now,
+			this.counterStrikeAt,
+			this.guardDeadline,
+			weaponReady
+		)) {
 			this.beginStrike(now);
 		}
 	}
@@ -101,7 +112,7 @@ final class ZombieShieldCombat {
 			this.deactivate();
 			return;
 		}
-		this.resumeDefense(target, now);
+		this.beginRecovery(now);
 	}
 
 	boolean hasIntent() {
@@ -113,7 +124,9 @@ final class ZombieShieldCombat {
 	}
 
 	boolean blocksAttack() {
-		return this.phase == Phase.APPROACHING || this.phase == Phase.GUARDING;
+		return this.phase == Phase.APPROACHING
+			|| this.phase == Phase.GUARDING
+			|| this.phase == Phase.RECOVERING;
 	}
 
 	boolean isStrikeWindow() {
@@ -138,19 +151,25 @@ final class ZombieShieldCombat {
 			&& !ZombieArmory.isShieldDisabled(this.zombie);
 	}
 
-	private void captureIncomingAttack(final LivingEntity target, final long now) {
-		ZombieShieldMemory.AttackSignal signal = ZombieShieldMemory.consume(this.zombie);
+	private void captureSuccessfulBlock(final LivingEntity target, final long now) {
+		ZombieShieldMemory.BlockSignal signal = ZombieShieldMemory.consume(this.zombie);
 		if (signal == null
 			|| signal.attacker().getId() != target.getId()
 			|| !isFreshAttackSignal(now, signal.gameTime())) {
 			return;
 		}
+		if (this.counterPending) {
+			return;
+		}
 		this.counterPending = true;
+		// 从真实格挡发生的 tick 起算，而不是从 AI 下一次消费信号时起算，确保视觉延迟严格为 2～4 tick。
+		this.counterStrikeAt = signal.gameTime() + this.randomCounterDelay();
 	}
 
 	private void beginApproach() {
 		this.phase = Phase.APPROACHING;
 		this.guardDeadline = Long.MIN_VALUE;
+		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = Long.MIN_VALUE;
 		this.counterPending = false;
 		this.raiseShield();
@@ -160,12 +179,24 @@ final class ZombieShieldCombat {
 		this.lowerShield();
 		this.phase = Phase.STRIKING;
 		this.guardDeadline = Long.MIN_VALUE;
+		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = now + STRIKE_WINDOW_TICKS;
+		this.counterPending = false;
+	}
+
+	private void beginRecovery(final long now) {
+		this.lowerShield();
+		this.phase = Phase.RECOVERING;
+		this.guardDeadline = Long.MIN_VALUE;
+		this.counterStrikeAt = Long.MIN_VALUE;
+		// 复用同一 2～4 tick 分布，让客户端至少看到数帧明确的“已放盾、正在收招”状态。
+		this.strikeDeadline = now + this.randomCounterDelay();
 		this.counterPending = false;
 	}
 
 	private void resumeDefense(final LivingEntity target, final long now) {
 		this.counterPending = false;
+		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = Long.MIN_VALUE;
 		this.raiseShield();
 		if (this.zombie.isWithinMeleeAttackRange(target)) {
@@ -183,6 +214,7 @@ final class ZombieShieldCombat {
 		this.phase = Phase.INACTIVE;
 		this.targetId = Integer.MIN_VALUE;
 		this.guardDeadline = Long.MIN_VALUE;
+		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = Long.MIN_VALUE;
 		this.counterPending = false;
 		ZombieShieldMemory.discard(this.zombie);
@@ -210,13 +242,22 @@ final class ZombieShieldCombat {
 		);
 	}
 
+	private int randomCounterDelay() {
+		int range = MAXIMUM_COUNTER_DELAY_TICKS - MINIMUM_COUNTER_DELAY_TICKS + 1;
+		return counterDelayTicks(this.zombie.getRandom().nextInt(range));
+	}
+
 	static boolean shouldOpenStrike(
 		final boolean counterPending,
 		final long now,
+		final long counterStrikeAt,
 		final long guardDeadline,
 		final boolean attackReady
 	) {
-		return attackReady && (counterPending || now >= guardDeadline);
+		if (!attackReady) {
+			return false;
+		}
+		return counterPending ? now >= counterStrikeAt : now >= guardDeadline;
 	}
 
 	static boolean isFreshAttackSignal(final long now, final long signalTime) {
@@ -231,10 +272,18 @@ final class ZombieShieldCombat {
 		return minimum + zeroBasedRoll;
 	}
 
+	static int counterDelayTicks(final int zeroBasedRoll) {
+		if (zeroBasedRoll < 0 || zeroBasedRoll > MAXIMUM_COUNTER_DELAY_TICKS - MINIMUM_COUNTER_DELAY_TICKS) {
+			throw new IllegalArgumentException("Shield counter delay roll is outside the configured range");
+		}
+		return MINIMUM_COUNTER_DELAY_TICKS + zeroBasedRoll;
+	}
+
 	private enum Phase {
 		INACTIVE,
 		APPROACHING,
 		GUARDING,
-		STRIKING
+		STRIKING,
+		RECOVERING
 	}
 }

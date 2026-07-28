@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.ZombieRetreatMemory;
@@ -33,6 +34,7 @@ public final class MobsThinkNow implements ModInitializer {
 		ServerTickEvents.END_LEVEL_TICK.register(ZombieSquadCoordinator::tickLevel);
 		ServerLevelEvents.UNLOAD.register((server, level) -> {
 			ZombieSquadCoordinator.unloadLevel(level);
+			ZombieFireSupportMemory.clearLevel(level);
 			ZombieFluidThreatMemory.clearLevel(level);
 		});
 		// 关服保存前结束最多几十 tick 的临时换手，确保存档里永远是原武器/盾牌。
@@ -43,6 +45,7 @@ public final class MobsThinkNow implements ModInitializer {
 			ZombieFoodEquipment.clear();
 			ZombieRetreatMemory.clear();
 			ZombieShieldMemory.clear();
+			ZombieFireSupportMemory.clear();
 			ZombieFluidThreatMemory.clear();
 		});
 		// 在 die() 记录“Named entity died”日志之前恢复职业名牌；只做表现清理，不改变死亡结果。
@@ -50,6 +53,7 @@ public final class MobsThinkNow implements ModInitializer {
 			if (entity instanceof Zombie zombie) {
 				ZombieRetreatMemory.discard(zombie);
 				ZombieShieldMemory.discard(zombie);
+				ZombieFireSupportMemory.discard(zombie);
 				ZombieFluidThreatMemory.discard(zombie);
 				ZombieSquadCoordinator.onZombieDying(zombie);
 				ZombieFoodEquipment.restore(zombie, true);
@@ -74,8 +78,8 @@ public final class MobsThinkNow implements ModInitializer {
 				MobsThinkNowConfig config = ConfigManager.get();
 				// 必须先快照生命值：ZombieArmory 可能因斧击收盾，随后原版才会结算实际扣血。
 				ZombieRetreatMemory.beginDamage(zombie);
-				// 先记录攻击意图：盾牌随后即使完全挡住伤害，盾卫也能识别并安排一次反击。
-				ZombieShieldMemory.recordAttack(zombie, damageSource, config);
+				// 原版会给“伤害被盾牌完全归零”的实体也写入十 tick 受击动画，先保存本次伤害前的计时。
+				ZombieShieldMemory.beginDamageAnimation(zombie);
 				ZombieArmory.onZombieAttacked(zombie, damageSource, config);
 				// 事件驱动地通知至多一支小队；水桶兵因此无需逐 tick 扫描“谁正在挨打”。
 				if (damageSource.getEntity() instanceof LivingEntity attacker) {
@@ -86,6 +90,16 @@ public final class MobsThinkNow implements ModInitializer {
 		});
 		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, damageSource, baseDamage, damage, blocked) -> {
 			if (entity instanceof Zombie zombie) {
+				// 仅在盾牌成功把最终伤害完全挡为零时恢复旧动画；真实受伤继续使用原版反馈。
+				ZombieShieldMemory.finishDamageAnimation(zombie, damage, blocked);
+				// 等原版结算确认“盾牌参与且零实伤”后再发反击信号，背刺与破盾不冒充成功格挡。
+				ZombieShieldMemory.recordSuccessfulBlock(
+					zombie,
+					damageSource,
+					damage,
+					blocked,
+					ConfigManager.get()
+				);
 				ZombieRetreatMemory.finishDamage(zombie, damageSource);
 			}
 		});

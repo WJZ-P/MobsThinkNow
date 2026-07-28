@@ -1,11 +1,16 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.lang.reflect.Method;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.Difficulty;
+import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -13,14 +18,91 @@ import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.pathfinder.PathfindingContext;
+import net.minecraft.world.phys.Vec3;
 
-/** 日晒自救、开放机关承重判定和单格跨沟的端到端回归。 */
+/** 着火/日晒自救、水桶兵水下机动、开放机关承重判定和单格跨沟的端到端回归。 */
 public final class ZombieEnvironmentalTacticsGameTests implements CustomTestMethodInvoker {
+	@GameTest(maxTicks = 180, skyAccess = true, padding = 10)
+	public void burningZombieIgnoresRecentCombatAndEntersNearbyWater(final GameTestHelper helper) {
+		for (int x = 1; x <= 8; x++) {
+			for (int z = 1; z <= 5; z++) {
+				helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.AIR);
+				helper.setBlock(new BlockPos(x, 2, z), Blocks.AIR);
+			}
+		}
+		BlockPos water = new BlockPos(6, 1, 3);
+		helper.setBlock(water, Blocks.WATER);
+
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 3);
+		Villager attacker = helper.spawn(EntityType.VILLAGER, 8, 1, 3);
+		attacker.setNoAi(true);
+		attacker.setInvulnerable(true);
+		zombie.setInvulnerable(true);
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+		zombie.setTarget(attacker);
+		zombie.setLastHurtByMob(attacker);
+		zombie.igniteForSeconds(15.0F);
+		helper.assertTrue(zombie.isOnFire(), "The fire-water search test zombie was not burning.");
+
+		helper.onEachTick(() -> {
+			zombie.setTarget(attacker);
+			if (!zombie.isOnFire()) {
+				helper.assertTrue(
+					zombie.isInWater()
+						|| zombie.position().distanceToSqr(Vec3.atCenterOf(helper.absolutePos(water))) <= 2.25,
+					"The zombie extinguished without reaching the selected nearby water."
+				);
+				helper.succeed();
+			}
+		});
+	}
+
+	@GameTest
+	public void generatedWaterCarrierAlwaysGetsDepthStriderThreeBoots(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		zombie.setNoAi(true);
+		zombie.setBaby(false);
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+		zombie.setItemSlot(EquipmentSlot.FEET, ItemStack.EMPTY);
+
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.waterBucketChance = 1.0;
+		config.lavaBucketChance = 0.0;
+		DifficultyInstance hardRegionalDifficulty = new DifficultyInstance(
+			Difficulty.HARD,
+			2_000_000L,
+			4_000_000L,
+			1.0F
+		);
+		ZombieSpecialEquipment.maybeEquip(
+			zombie,
+			hardRegionalDifficulty,
+			RandomSource.create(0x5EEDL),
+			config
+		);
+
+		helper.assertTrue(zombie.getMainHandItem().is(Items.WATER_BUCKET), "The forced water-carrier spawn did not receive its bucket.");
+		ItemStack boots = zombie.getItemBySlot(EquipmentSlot.FEET);
+		helper.assertTrue(!boots.isEmpty(), "The water carrier spawned without boots.");
+		var enchantment = zombie.registryAccess()
+			.lookupOrThrow(Registries.ENCHANTMENT)
+			.getOrThrow(Enchantments.DEPTH_STRIDER);
+		helper.assertTrue(
+			EnchantmentHelper.getItemEnchantmentLevel(enchantment, boots) == 3,
+			"The water carrier's boots were not guaranteed Depth Strider III."
+		);
+		helper.assertTrue(zombie.getNavigation().canFloat(), "The water carrier navigation was not configured to float.");
+		helper.succeed();
+	}
 	@GameTest(skyAccess = true, padding = 6)
 	public void daylightWaterCarrierDeploysSourceUnderfoot(final GameTestHelper helper) {
 		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
@@ -34,7 +116,7 @@ public final class ZombieEnvironmentalTacticsGameTests implements CustomTestMeth
 		);
 		zombie.igniteForSeconds(4.0F);
 
-		ZombieSunlightSurvivalGoal goal = new ZombieSunlightSurvivalGoal(zombie);
+		ZombieFireSurvivalGoal goal = new ZombieFireSurvivalGoal(zombie);
 		helper.assertTrue(goal.canUse(), "A daylight-exposed water carrier did not start its survival Goal.");
 		goal.start();
 
@@ -42,13 +124,13 @@ public final class ZombieEnvironmentalTacticsGameTests implements CustomTestMeth
 		ZombieFluidCarrierState state = ZombieSpecialEquipment.state(zombie);
 		helper.assertTrue(helper.getLevel().getFluidState(source).isSource(), "The water bucket did not create a source under the zombie.");
 		helper.assertTrue(zombie.getMainHandItem().is(Items.BUCKET), "Deploying sunlight water did not leave a real empty bucket.");
-		helper.assertTrue(state.isDeployed() && state.isSunProtection(), "The water source was not persisted as a sunlight transaction.");
+		helper.assertTrue(state.isDeployed() && state.isSurvivalProtection(), "The water source was not persisted as a survival transaction.");
 		helper.assertTrue(!zombie.isOnFire(), "Successful underfoot water deployment did not extinguish the zombie immediately.");
 		Zombie restored = EntityType.ZOMBIE.create(helper.getLevel(), EntitySpawnReason.STRUCTURE);
 		restored.restoreFrom(zombie);
 		ZombieFluidCarrierState restoredState = ZombieSpecialEquipment.state(restored);
 		helper.assertTrue(
-			restoredState.isSunProtection() && source.equals(restoredState.source()),
+			restoredState.isSurvivalProtection() && source.equals(restoredState.source()),
 			"The sunlight purpose/source did not survive the vanilla entity save/load path."
 		);
 		goal.stop();
@@ -70,7 +152,7 @@ public final class ZombieEnvironmentalTacticsGameTests implements CustomTestMeth
 		);
 		zombie.setLastHurtByMob(attacker);
 
-		ZombieSunlightSurvivalGoal sunlightGoal = new ZombieSunlightSurvivalGoal(zombie);
+		ZombieFireSurvivalGoal sunlightGoal = new ZombieFireSurvivalGoal(zombie);
 		helper.assertTrue(!sunlightGoal.canUse(), "Sun escape retained priority after a fresh living-entity attack.");
 
 		BlockPos source = new BlockPos(3, 1, 2);
@@ -81,7 +163,7 @@ public final class ZombieEnvironmentalTacticsGameTests implements CustomTestMeth
 			helper.absolutePos(source),
 			0L,
 			0L,
-			FluidDeploymentPurpose.SUN_PROTECTION
+			FluidDeploymentPurpose.SURVIVAL
 		));
 		ZombieFluidTacticsGoal fluidGoal = new ZombieFluidTacticsGoal(zombie);
 		helper.assertTrue(!fluidGoal.canUse(), "Sun-water recovery attempted to override a fresh combat response.");
@@ -215,7 +297,7 @@ public final class ZombieEnvironmentalTacticsGameTests implements CustomTestMeth
 			if (ZombieSunlightRules.isShaded(zombie, helper.getLevel())) {
 				ZombieFluidCarrierState state = ZombieSpecialEquipment.state(zombie);
 				helper.assertTrue(helper.getLevel().getFluidState(originalFeet).isSource(), "The emergency source vanished before shade was reached.");
-				helper.assertTrue(state.isSunProtection(), "The shade escape lost its sunlight deployment purpose.");
+				helper.assertTrue(state.isSurvivalProtection(), "The shade escape lost its survival deployment purpose.");
 				helper.assertTrue(zombie.getMainHandItem().is(Items.BUCKET), "The carrier recovered exposed water during daylight.");
 				ZombieSunlightRules.forceExposureForTesting(zombie, false);
 				helper.succeed();

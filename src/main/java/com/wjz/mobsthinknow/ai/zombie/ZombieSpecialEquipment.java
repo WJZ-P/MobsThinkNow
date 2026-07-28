@@ -1,8 +1,11 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
+import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.DifficultyInstance;
@@ -11,6 +14,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
@@ -56,6 +60,9 @@ public final class ZombieSpecialEquipment {
 			new ZombieFluidCarrierState(selected, null, 0L, 0L)
 		);
 		zombie.setDropChance(EquipmentSlot.MAINHAND, (float)config.specialEquipmentDropChance);
+		if (selected == UtilityClass.WATER) {
+			ensureWaterMobility(zombie, config.specialEquipmentDropChance);
+		}
 	}
 
 	/** 当前仍具有辅助兵身份的类别；流体丢失且只剩空桶时返回 NONE，使普通攻击重新接管。 */
@@ -89,6 +96,16 @@ public final class ZombieSpecialEquipment {
 		final BlockPos source,
 		final long retrieveAt
 	) {
+		markDeployed(zombie, utility, source, retrieveAt, FluidDeploymentPurpose.COMBAT);
+	}
+
+	public static void markDeployed(
+		final Zombie zombie,
+		final UtilityClass utility,
+		final BlockPos source,
+		final long retrieveAt,
+		final FluidDeploymentPurpose purpose
+	) {
 		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BUCKET));
 		stateAccess(zombie).mobsthinknow$setFluidCarrierState(
 			new ZombieFluidCarrierState(
@@ -96,27 +113,18 @@ public final class ZombieSpecialEquipment {
 				source.immutable(),
 				retrieveAt,
 				0L,
-				FluidDeploymentPurpose.COMBAT
+				purpose
 			)
 		);
 	}
 
-	/** 日光自救水会保留来源标记，避免随后把回收任务误当作战斗支援。 */
-	public static void markSunProtectionDeployed(
+	/** 着火/日光自救水会保留用途，避免随后被当成普通战斗投放立即回收。 */
+	public static void markSurvivalDeployed(
 		final Zombie zombie,
 		final BlockPos source,
 		final long retrieveAt
 	) {
-		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BUCKET));
-		stateAccess(zombie).mobsthinknow$setFluidCarrierState(
-			new ZombieFluidCarrierState(
-				UtilityClass.WATER,
-				source.immutable(),
-				retrieveAt,
-				0L,
-				FluidDeploymentPurpose.SUN_PROTECTION
-			)
-		);
+		markDeployed(zombie, UtilityClass.WATER, source, retrieveAt, FluidDeploymentPurpose.SURVIVAL);
 	}
 
 	public static void markRecovered(
@@ -129,6 +137,9 @@ public final class ZombieSpecialEquipment {
 		stateAccess(zombie).mobsthinknow$setFluidCarrierState(
 			new ZombieFluidCarrierState(utility, null, 0L, cooldownUntil)
 		);
+		if (utility == UtilityClass.WATER) {
+			ensureWaterMobility(zombie, ConfigManager.get().specialEquipmentDropChance);
+		}
 	}
 
 	/** 玩家移走源方块后保留真实的空桶，但清除辅助身份，后续由普通战斗 Goal 接手。 */
@@ -170,6 +181,25 @@ public final class ZombieSpecialEquipment {
 			loaded = ZombieFluidCarrierState.NONE;
 		}
 		stateAccess(zombie).mobsthinknow$setFluidCarrierState(loaded);
+		if (loaded.utility() == UtilityClass.WATER) {
+			ensureWaterMobility(zombie, ConfigManager.get().specialEquipmentDropChance);
+		}
+	}
+
+	/**
+	 * 深海探索者只支持脚部护甲。水桶兵保留已有合法靴子，否则补铁靴，并强制升到 III；
+	 * 同时允许节点分类器在水中浮行，使附魔的水下移速真正服务于投放后的撤离与回收。
+	 */
+	public static void ensureWaterMobility(final Zombie zombie, final double dropChance) {
+		ItemStack boots = zombie.getItemBySlot(EquipmentSlot.FEET);
+		boots = boots.is(ItemTags.FOOT_ARMOR_ENCHANTABLE)
+			? boots.copy()
+			: new ItemStack(Items.IRON_BOOTS);
+		var enchantments = zombie.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+		boots.enchant(enchantments.getOrThrow(Enchantments.DEPTH_STRIDER), 3);
+		zombie.setItemSlot(EquipmentSlot.FEET, boots);
+		zombie.setDropChance(EquipmentSlot.FEET, (float)Math.max(0.0, Math.min(1.0, dropChance)));
+		zombie.getNavigation().setCanFloat(true);
 	}
 
 	static UtilityClass selectUtility(

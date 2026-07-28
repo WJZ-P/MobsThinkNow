@@ -14,6 +14,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventoryAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFoodSearchGoal;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFireSurvivalGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierState;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidTacticsGoal;
@@ -24,7 +25,6 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpearAirAssaultGoal;
-import com.wjz.mobsthinknow.ai.zombie.ZombieSunlightSurvivalGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieTerrainTacticsGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
@@ -113,12 +113,14 @@ public abstract class ZombieMixin extends Monster implements
 
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == ZombieAttackGoal.class);
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == SpearUseGoal.class);
+		// 真实着火时生存高于战斗和空袭；仅日晒时一旦受击，下一拍就把控制权交回战斗系统。
+		this.goalSelector.addGoal(0, new ZombieFireSurvivalGoal(zombie, true));
 		// 空袭 Goal 是持矛套装有弹药时唯一的 MOVE/LOOK 决策者；弹尽后先落地，再让原版地面长矛逻辑接手。
 		this.goalSelector.addGoal(0, new ZombieSpearAirAssaultGoal(zombie));
 		// 独立的高优先级撤退 Goal 不依赖近战追击能否启动；MOVE/LOOK 冲突会自然暂停攻击与小队机动。
 		this.goalSelector.addGoal(1, new ReactiveRetreatGoal(zombie));
-		// 日晒生存仅在未受近期攻击时接管；一旦受击，战斗/撤退会在下一拍重新竞争控制权。
-		this.goalSelector.addGoal(1, new ZombieSunlightSurvivalGoal(zombie));
+		// 非着火的日晒生存保持 priority 1；它不会压住 priority 0 的持矛空袭。
+		this.goalSelector.addGoal(1, new ZombieFireSurvivalGoal(zombie, false));
 		// 对目标方向存在严格的一格宽安全落点时，以真实跳跃越沟；失败后仍回到普通寻路。
 		this.goalSelector.addGoal(2, new SmartZombieGapJumpGoal(zombie));
 		// 地面武器是永久战力升级，优先于同级的流体、觅食、采集与战斗；没有可达升级时立即让出 MOVE/LOOK。
@@ -275,7 +277,11 @@ public abstract class ZombieMixin extends Monster implements
 
 	@Override
 	public void mobsthinknow$stopFallFlying() {
-		this.stopFallFlying();
+		// LivingEntity#stopFallFlying 会先把共享位写 true 再写 false；已落地时反复调用会制造一帧
+		// 假滑翔状态。只在该位真实为 true 时走原版关闭链路，姿态则独立兜底归正。
+		if (this.isFallFlying()) {
+			this.stopFallFlying();
+		}
 		if (this.hasPose(Pose.FALL_FLYING)) {
 			this.setPose(Pose.STANDING);
 		}

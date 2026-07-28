@@ -1,7 +1,9 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import java.lang.reflect.Method;
+import java.util.List;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
@@ -23,6 +25,107 @@ import net.minecraft.world.phys.Vec3;
 
 /** 真实流体源、BucketPickup 与实体持久状态共同参与的集成测试。 */
 public final class ZombieFluidTacticsGameTests implements CustomTestMethodInvoker {
+	@GameTest
+	public void retreatingWaterCarrierDeterministicallyBuildsWaterScreen(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		Villager attacker = helper.spawn(EntityType.VILLAGER, 3, 1, 2);
+		zombie.setNoAi(true);
+		attacker.setNoAi(true);
+		attacker.setInvulnerable(true);
+		zombie.setHealth(4.0F);
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.WATER_BUCKET));
+		((ZombieFluidCarrierAccess)zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.WATER, null, 0L, 0L
+		));
+
+		boolean hurt = zombie.hurtServer(
+			helper.getLevel(),
+			zombie.damageSources().mobAttack(attacker),
+			1.0F
+		);
+		helper.assertTrue(hurt, "The retreat-water test attack was not applied.");
+		ReactiveRetreatGoal goal = new ReactiveRetreatGoal(zombie);
+		helper.assertTrue(goal.canUse(), "The low-health water carrier did not begin retreating.");
+		goal.start();
+
+		ZombieFluidCarrierState state = ZombieSpecialEquipment.state(zombie);
+		helper.assertTrue(state.isDeployed(), "The retreat began without a deterministic water-screen attempt.");
+		helper.assertTrue(
+			helper.getLevel().getFluidState(state.source()).is(FluidTags.WATER),
+			"The retreat screen did not create a real water source."
+		);
+		helper.assertTrue(zombie.getMainHandItem().is(Items.BUCKET), "The retreat screen did not consume the filled bucket.");
+		goal.stop();
+		helper.succeed();
+	}
+
+	@GameTest(maxTicks = 120, padding = 8)
+	public void squadWaterCarrierExtinguishesBurningTeammate(final GameTestHelper helper) {
+		Zombie carrier = helper.spawn(EntityType.ZOMBIE, 1, 2, 1);
+		Zombie victim = helper.spawn(EntityType.ZOMBIE, 2, 2, 1);
+		Zombie third = helper.spawn(EntityType.ZOMBIE, 3, 2, 1);
+		Villager target = helper.spawn(EntityType.VILLAGER, 10, 2, 1);
+		List<Zombie> squad = List.of(carrier, victim, third);
+		for (Zombie zombie : squad) {
+			zombie.setNoAi(true);
+			zombie.setNoGravity(true);
+			zombie.setInvulnerable(true);
+			zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
+			zombie.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+			zombie.setTarget(target);
+		}
+		target.setNoAi(true);
+		target.setNoGravity(true);
+		carrier.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.WATER_BUCKET));
+		((ZombieFluidCarrierAccess)carrier).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			UtilityClass.WATER, null, 0L, 0L
+		));
+
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		boolean[] supportTriggered = {false};
+		int[] elapsed = {0};
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			long now = helper.getLevel().getGameTime();
+			for (Zombie zombie : squad) {
+				zombie.setTarget(target);
+				coordinator.heartbeat(zombie, target, true, target.position(), now);
+			}
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			if (supportTriggered[0] || coordinator.viewFor(victim) == null) {
+				if (elapsed[0] == 110) {
+					helper.fail(
+						"Squad fire-support setup did not form: activeSquads="
+							+ ZombieSquadCoordinator.activeSquadCount()
+							+ ", carrierTarget=" + (carrier.getTarget() == target)
+							+ ", victimTarget=" + (victim.getTarget() == target)
+							+ ", thirdTarget=" + (third.getTarget() == target)
+							+ ", now=" + now
+					);
+				}
+				return;
+			}
+
+			supportTriggered[0] = true;
+			victim.igniteForSeconds(10.0F);
+			helper.assertTrue(victim.isOnFire(), "The squad support victim was not burning.");
+			ZombieSquadCoordinator.onSquadMemberBurning(victim);
+			ZombieFluidTacticsGoal goal = new ZombieFluidTacticsGoal(carrier);
+			helper.assertTrue(goal.canUse(), "The selected squad water carrier did not consume the fire-support order.");
+			goal.start();
+			goal.tick();
+
+			ZombieFluidCarrierState state = ZombieSpecialEquipment.state(carrier);
+			helper.assertTrue(state.isDeployed(), "The squad helper reached its teammate without deploying water.");
+			helper.assertTrue(
+				helper.getLevel().getFluidState(state.source()).is(FluidTags.WATER),
+				"The squad fire-support order did not create a water source."
+			);
+			helper.assertTrue(!victim.isOnFire(), "Water placed at the teammate's feet did not extinguish it.");
+			goal.stop();
+			helper.succeed();
+		});
+	}
 	@GameTest(maxTicks = 80)
 	public void installedGoalDeploysLavaAgainstIronGolemTarget(final GameTestHelper helper) {
 		BlockPos targetFeet = new BlockPos(4, 1, 2);

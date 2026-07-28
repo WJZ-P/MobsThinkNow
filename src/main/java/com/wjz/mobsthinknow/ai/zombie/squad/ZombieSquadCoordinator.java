@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
@@ -148,6 +149,45 @@ public final class ZombieSquadCoordinator {
 				&& ZombieSpecialEquipment.utilityClassOf(helper.zombie) == UtilityClass.WATER) {
 				ZombieFluidThreatMemory.record(helper.zombie, attacker, victim.position());
 			}
+		}
+	}
+
+	/**
+	 * 一次着火阶段只做一次 O(K) 小队内选择（K 为该队人数上限），把请求交给最近的满水桶队友；
+	 * 后续接近、投放与回收都由该水桶兵自己的 Goal 完成，不产生全局实体扫描。
+	 */
+	public static void onSquadMemberBurning(final Zombie victim) {
+		if (!(victim.level() instanceof ServerLevel serverLevel) || !victim.isAlive() || !victim.isOnFire()) {
+			return;
+		}
+		ZombieSquadCoordinator coordinator = COORDINATORS.get(serverLevel);
+		if (coordinator == null) {
+			return;
+		}
+		MemberRecord member = coordinator.members.get(victim.getId());
+		ZombieSquad squad = member == null ? null : coordinator.squads.get(member.squadId);
+		if (squad == null) {
+			return;
+		}
+
+		Zombie selected = null;
+		double bestDistance = Double.POSITIVE_INFINITY;
+		for (int memberId : squad.memberIds) {
+			MemberRecord candidate = coordinator.members.get(memberId);
+			if (candidate == null
+				|| candidate.zombie == victim
+				|| !candidate.zombie.isAlive()
+				|| !ZombieSpecialEquipment.hasFullBucket(candidate.zombie, UtilityClass.WATER)) {
+				continue;
+			}
+			double distance = candidate.zombie.distanceToSqr(victim);
+			if (distance < bestDistance) {
+				bestDistance = distance;
+				selected = candidate.zombie;
+			}
+		}
+		if (selected != null) {
+			ZombieFireSupportMemory.record(selected, victim);
 		}
 	}
 

@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
  * @param source 自己放出的源方块；为空表示桶当前在手中
  * @param retrieveAt 最早回收时刻
  * @param cooldownUntil 下次允许投放的时刻
- * @param purpose 投放用途；日光自救水源会等到夜晚、降雨或水源被遮蔽后再回收
+	 * @param purpose 投放用途；生存自救水源会在安全后再回收
  */
 public record ZombieFluidCarrierState(
 	UtilityClass utility,
@@ -46,7 +46,7 @@ public record ZombieFluidCarrierState(
 		return this.utility != UtilityClass.NONE && this.source != null;
 	}
 
-	public boolean isSunProtection() {
-		return this.purpose == FluidDeploymentPurpose.SUN_PROTECTION;
+	public boolean isSurvivalProtection() {
+		return this.purpose == FluidDeploymentPurpose.SURVIVAL;
 	}
 }

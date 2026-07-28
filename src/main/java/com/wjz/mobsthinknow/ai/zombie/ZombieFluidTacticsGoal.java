@@ -16,21 +16,20 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.util.LandRandomPos;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.BucketPickup;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gamerules.GameRules;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
  * 水桶辅助兵与岩浆骚扰兵的完整“投放—拉开—回收—冷却”状态机。
  *
- * <p>水桶兵在没有求援时保持支援距离；自己或队友被合法战斗目标攻击后才把水放到追击路径上。岩浆兵则主动
+ * <p>水桶兵在没有求援时保持支援距离；自己或队友被合法战斗目标攻击后把水放到追击路径上，收到同队着火
+ * 请求时则忽略普通冷却并优先在队友脚下灭火。岩浆兵主动
  * 接近到合法交互距离，把岩浆放到当前目标脚下或相邻安全格，短暂拉开后回收。源方块由实体 NBT 记录：保存/重载不会
  * 遗忘；若玩家提前收走或堵掉流体，僵尸真实保留空桶并立即降级成普通近战。</p>
  */
@@ -50,6 +49,7 @@ public final class ZombieFluidTacticsGoal extends Goal {
 	private final Zombie zombie;
 	private Phase phase = Phase.IDLE;
 	private UtilityClass utility = UtilityClass.NONE;
+	private @Nullable Zombie burningAlly;
 	private @Nullable LivingEntity threat;
 	private @Nullable Vec3 defendedPosition;
 	private long nextPathAt;
@@ -73,6 +73,7 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			}
 			// 配置被热关闭时仍完成已经开始的回收事务，避免世界中遗留无限流体源。
 			this.utility = state.utility();
+			this.captureFireSupport();
 			this.captureThreat();
 			return true;
 		}
@@ -86,8 +87,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			return false;
 		}
 
+		this.captureFireSupport();
 		this.captureThreat();
-		return this.threat != null;
+		return this.burningAlly != null || this.threat != null;
 	}
 
 	@Override
@@ -101,7 +103,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		}
 		return isEnabled(ConfigManager.get())
 			&& ZombieSpecialEquipment.hasFullBucket(this.zombie, this.utility)
-			&& (this.threat != null || this.currentCombatTarget() != null)
+			&& (isUsableBurningAlly(this.burningAlly)
+				|| this.threat != null
+				|| this.currentCombatTarget() != null)
 			&& this.phase != Phase.DONE;
 	}
 
@@ -121,6 +125,7 @@ public final class ZombieFluidTacticsGoal extends Goal {
 	@Override
 	public void tick() {
 		this.zombie.setAggressive(false);
+		this.captureFireSupport();
 		this.captureThreat();
 		this.maintainSquadHeartbeat();
 
@@ -136,6 +141,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		}
 
 		long now = this.zombie.level().getGameTime();
+		if (this.utility == UtilityClass.WATER && this.tickFireSupport((ServerLevel)this.zombie.level(), now)) {
+			return;
+		}
 		if (this.phase == Phase.DISENGAGING && now < this.disengageUntil) {
 			this.moveAwayFromThreat(DISENGAGE_SPEED);
 			return;
@@ -177,6 +185,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		this.zombie.getNavigation().stop();
 		this.zombie.setAggressive(false);
 		this.phase = Phase.IDLE;
+		if (!isUsableBurningAlly(this.burningAlly)) {
+			this.burningAlly = null;
+		}
 		this.threat = null;
 		this.defendedPosition = null;
 		this.nextPathAt = 0L;
@@ -199,6 +210,21 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			this.threat = this.currentCombatTarget();
 			this.defendedPosition = null;
 		}
+	}
+
+	private void captureFireSupport() {
+		if (this.utility != UtilityClass.WATER
+			|| !ZombieSpecialEquipment.hasFullBucket(this.zombie, UtilityClass.WATER)) {
+			if (!isUsableBurningAlly(this.burningAlly)) {
+				this.burningAlly = null;
+			}
+			return;
+		}
+		if (isUsableBurningAlly(this.burningAlly)) {
+			return;
+		}
+		ZombieFireSupportMemory.Request request = ZombieFireSupportMemory.consume(this.zombie);
+		this.burningAlly = request == null ? null : request.burningMember();
 	}
 
 	/** 辅助 Goal 长期占用 MOVE 时仍提交 O(1) 心跳，使工具兵真正参与选举、开会和职位展示。 */
@@ -237,6 +263,75 @@ public final class ZombieFluidTacticsGoal extends Goal {
 	private @Nullable LivingEntity currentCombatTarget() {
 		LivingEntity target = this.zombie.getTarget();
 		return isUsableTarget(target) ? target : null;
+	}
+
+	/**
+	 * 队友救火优先于普通攻击支援和流体冷却。请求已经由协调器限定在同一小队，因此这里只做
+	 * O(1) 的目标跟随与最多五个落点判定，不再查询附近实体。
+	 */
+	private boolean tickFireSupport(final ServerLevel level, final long now) {
+		Zombie ally = this.burningAlly;
+		if (!isUsableBurningAlly(ally)) {
+			this.burningAlly = null;
+			return false;
+		}
+
+		this.phase = Phase.APPROACHING;
+		this.zombie.getLookControl().setLookAt(ally, 30.0F, 30.0F);
+		BlockPos placement = this.findFireSupportPlacement(level, ally);
+		if (placement == null) {
+			if (now >= this.nextPathAt) {
+				this.zombie.getNavigation().moveTo(ally, SUPPORT_SPEED);
+				this.nextPathAt = now + PATH_REFRESH_TICKS;
+			}
+			return true;
+		}
+
+		if (Vec3.atCenterOf(placement).distanceToSqr(this.zombie.getEyePosition()) > BUCKET_REACH_SQUARED) {
+			this.approachPlacement(placement, now);
+			return true;
+		}
+		long retrieveAt = now + WATER_HOLD_TICKS + Math.floorMod(this.zombie.getId(), 16);
+		if (!ZombieFluidActions.tryDeploy(
+			level,
+			this.zombie,
+			UtilityClass.WATER,
+			placement,
+			retrieveAt,
+			FluidDeploymentPurpose.COMBAT
+		)) {
+			this.nextPathAt = now + 2L;
+			return true;
+		}
+
+		// 水直接落在队友脚部时立即播放原版熄火反馈；相邻落点则让流动水和队友自己的寻水 Goal 接力。
+		if (placement.equals(ZombieFluidActions.feetPosition(ally))) {
+			ally.extinguishFire();
+		}
+		this.burningAlly = null;
+		this.defendedPosition = null;
+		this.zombie.getNavigation().stop();
+		this.phase = Phase.DEPLOYED;
+		this.nextPathAt = now;
+		return true;
+	}
+
+	private @Nullable BlockPos findFireSupportPlacement(final ServerLevel level, final Zombie ally) {
+		BlockPos feet = ZombieFluidActions.feetPosition(ally);
+		Direction towardCarrier = horizontalDirection(ally, this.zombie.position());
+		BlockPos[] candidates = {
+			feet,
+			feet.relative(towardCarrier),
+			feet.relative(towardCarrier.getClockWise()),
+			feet.relative(towardCarrier.getCounterClockWise()),
+			feet.relative(towardCarrier.getOpposite())
+		};
+		for (BlockPos candidate : candidates) {
+			if (ZombieFluidActions.canDeployAt(level, this.zombie, UtilityClass.WATER, candidate)) {
+				return candidate.immutable();
+			}
+		}
+		return null;
 	}
 
 	private void tickDeployed(final ZombieFluidCarrierState state) {
@@ -300,23 +395,19 @@ public final class ZombieFluidTacticsGoal extends Goal {
 	}
 
 	private boolean tryDeploy(final ServerLevel level, final BlockPos placement, final long now) {
-		if (this.utility == UtilityClass.LAVA && hasFriendlyOccupying(level, placement, this.zombie)) {
-			return false;
-		}
-		ItemStack held = this.zombie.getMainHandItem();
-		if (!(held.getItem() instanceof BucketItem bucketItem)
-			|| !bucketItem.emptyContents(this.zombie, level, placement, null)) {
-			return false;
-		}
-		// BucketItem.emptyContents 负责播放与内容对应的原版声效：水桶为 BUCKET_EMPTY，岩浆桶为
-		// BUCKET_EMPTY_LAVA，同时广播 FLUID_PLACE。这里再同步主手挥动，让玩家能读出使用动作。
-		this.zombie.swing(InteractionHand.MAIN_HAND);
-
 		int holdTicks = this.utility == UtilityClass.WATER
 			? WATER_HOLD_TICKS + Math.floorMod(this.zombie.getId(), 16)
 			: LAVA_HOLD_TICKS + Math.floorMod(this.zombie.getId(), 10);
-		ZombieSpecialEquipment.markDeployed(this.zombie, this.utility, placement, now + holdTicks);
-		SmartZombieMetrics.fluidDeployed(this.utility);
+		if (!ZombieFluidActions.tryDeploy(
+			level,
+			this.zombie,
+			this.utility,
+			placement,
+			now + holdTicks,
+			FluidDeploymentPurpose.COMBAT
+		)) {
+			return false;
+		}
 		// 一次求援只触发一次投放；回收后必须等新的受击事件，水桶兵不会无休止倒水。
 		this.defendedPosition = null;
 		this.zombie.getNavigation().stop();
@@ -346,15 +437,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 				feet.relative(towardCarrier.getClockWise()),
 				feet.relative(towardCarrier.getCounterClockWise()),
 				feet.relative(towardCarrier.getOpposite())
-			};
+		};
 		for (BlockPos candidate : candidates) {
-			BlockState state = level.getBlockState(candidate);
-			boolean safeForSquad = this.utility != UtilityClass.LAVA
-				|| !hasFriendlyOccupying(level, candidate, this.zombie);
-			if (safeForSquad
-				&& (state.isAir() || state.canBeReplaced())
-				&& state.getFluidState().isEmpty()
-				&& !state.hasBlockEntity()) {
+			if (ZombieFluidActions.canDeployAt(level, this.zombie, this.utility, candidate)) {
 				return candidate.immutable();
 			}
 		}
@@ -430,17 +515,17 @@ public final class ZombieFluidTacticsGoal extends Goal {
 	}
 
 	/**
-	 * 日光自救水不能在正午立刻把已经躲进阴影的僵尸重新拖回露天水源；等待夜晚、下雨或水源被
+	 * 生存自救水不能在正午立刻把已经躲进阴影的僵尸重新拖回露天水源；等待夜晚、下雨或水源被
 	 * 遮住后再回收。若刚受生物攻击，同样立即让出 MOVE/LOOK，让战斗或撤退 Goal 接管。
 	 */
 	private boolean shouldResumeDeployedTransaction(
 		final ServerLevel level,
 		final ZombieFluidCarrierState state
 	) {
-		if (!state.isSunProtection()) {
+		if (!state.isSurvivalProtection()) {
 			return true;
 		}
-		// 日光自救的所有后续事务都服从“近期受击时战斗优先”，包括源被玩家拿走后的清理。
+		// 生存水的后续回收服从“近期受击时战斗优先”，包括源被玩家拿走后的清理。
 		if (ZombieCombatUrgency.wasRecentlyAttacked(this.zombie)) {
 			return false;
 		}
@@ -450,17 +535,6 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			return true;
 		}
 		return !ZombieSunlightRules.isDangerousSource(this.zombie, level, source);
-	}
-
-	private static boolean hasFriendlyOccupying(final ServerLevel level, final BlockPos pos, final Zombie source) {
-		// 只阻止把岩浆直接倒进队友碰撞箱。旧版把半径扩大到 1.25 格，尸群一旦贴近目标便没有
-		// 任何合法落点，并且 findPlacement 总会在第一个候选处重复失败，表现为永远不用桶。
-		AABB danger = new AABB(pos).inflate(0.15, 0.25, 0.15);
-		return !level.getEntitiesOfClass(
-			Zombie.class,
-			danger,
-			zombie -> zombie != source && zombie.isAlive()
-		).isEmpty();
 	}
 
 	private static Direction horizontalDirection(final LivingEntity target, final Vec3 destination) {
@@ -476,6 +550,13 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			&& target.isAlive()
 			&& (!(target instanceof Player player)
 				|| (!player.isCreative() && !player.isSpectator()));
+	}
+
+	private boolean isUsableBurningAlly(final @Nullable Zombie ally) {
+		return ally != null
+			&& ally.isAlive()
+			&& ally.isOnFire()
+			&& ally.level() == this.zombie.level();
 	}
 
 	private static boolean isEnabled(final MobsThinkNowConfig config) {
