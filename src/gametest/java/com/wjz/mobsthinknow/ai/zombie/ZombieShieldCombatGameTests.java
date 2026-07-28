@@ -49,7 +49,10 @@ public final class ZombieShieldCombatGameTests implements CustomTestMethodInvoke
 				fixture.zombie().hurtTime == 0 && fixture.zombie().hurtDuration == 0,
 				"A fully blocked hit started the zombie hurt animation."
 			);
-
+			helper.assertTrue(
+				ZombieShieldMemory.wasHurtSoundSuppressedAt(fixture.zombie(), helper.getLevel().getGameTime()),
+				"A fully blocked hit still reached the zombie hurt-sound call."
+			);
 			// 若上一笔真实伤害尚有动画，则新的格挡只是不重播，而不是粗暴截断旧动画。
 			fixture.zombie().invulnerableTime = 0;
 			fixture.zombie().hurtDuration = 7;
@@ -102,6 +105,10 @@ public final class ZombieShieldCombatGameTests implements CustomTestMethodInvoke
 			helper.assertTrue(
 				fixture.zombie().hurtTime > 0 && fixture.zombie().hurtDuration > 0,
 				"The shield animation filter swallowed a real hurt animation."
+			);
+			helper.assertTrue(
+				!ZombieShieldMemory.wasHurtSoundSuppressedAt(fixture.zombie(), helper.getLevel().getGameTime()),
+				"A real rear hit incorrectly suppressed the zombie hurt sound."
 			);
 			helper.succeed();
 		});

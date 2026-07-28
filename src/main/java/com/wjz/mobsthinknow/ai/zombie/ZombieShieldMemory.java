@@ -19,6 +19,8 @@ import org.jspecify.annotations.Nullable;
 public final class ZombieShieldMemory {
 	private static final Map<Zombie, BlockSignal> PENDING_BLOCKS = new WeakHashMap<>();
 	private static final Map<Zombie, HurtAnimationSnapshot> PENDING_HURT_ANIMATIONS = new WeakHashMap<>();
+	private static final Map<Zombie, DamageSource> PENDING_HURT_SOUND_SUPPRESSIONS = new WeakHashMap<>();
+	private static final Map<Zombie, Long> LAST_SUPPRESSED_HURT_SOUND_AT = new WeakHashMap<>();
 
 	private ZombieShieldMemory() {
 	}
@@ -62,6 +64,48 @@ public final class ZombieShieldMemory {
 		zombie.hurtDuration = snapshot.hurtDuration();
 	}
 
+	/**
+	 * 记录 {@code LivingEntity.applyItemBlocking} 的真实结算结果，供同一伤害调用栈里的声音分支读取。
+	 *
+	 * <p>原版 26.1.2 在完全格挡后仍会无条件调用 {@code playHurtSound}。这里必须使用
+	 * “被挡数值等于本次输入伤害”作为判据，而不是仅检查正在举盾；这样背刺、穿透和部分格挡
+	 * 仍然保留真实受伤音效。每次格挡计算都会先覆盖旧信号，避免伤害冷却提前返回时留下脏状态。</p>
+	 */
+	public static void recordItemBlockingResolution(
+		final Zombie zombie,
+		final DamageSource source,
+		final float incomingDamage,
+		final float blockedDamage
+	) {
+		PENDING_HURT_SOUND_SUPPRESSIONS.remove(zombie);
+		if (incomingDamage <= 0.0F || blockedDamage < incomingDamage) {
+			return;
+		}
+		if (!ZombieArmory.hasShield(zombie) || zombie.getItemBlockingWith() == null) {
+			return;
+		}
+
+		PENDING_HURT_SOUND_SUPPRESSIONS.put(zombie, source);
+	}
+
+	/** 仅供原版 hurtServer 的声音调用点查询；盾牌自己的格挡声不会经过这里。 */
+	public static boolean shouldSuppressHurtSound(final Zombie zombie, final DamageSource source) {
+		if (PENDING_HURT_SOUND_SUPPRESSIONS.get(zombie) != source) {
+			return false;
+		}
+		LAST_SUPPRESSED_HURT_SOUND_AT.put(zombie, zombie.level().getGameTime());
+		return true;
+	}
+
+	/** 每条伤害调用栈结束时清掉瞬时声音判据，包括中途被伤害冷却拦下的路径。 */
+	public static void finishDamageSoundResolution(final Zombie zombie) {
+		PENDING_HURT_SOUND_SUPPRESSIONS.remove(zombie);
+	}
+
+	static boolean wasHurtSoundSuppressedAt(final Zombie zombie, final long gameTime) {
+		return LAST_SUPPRESSED_HURT_SOUND_AT.getOrDefault(zombie, Long.MIN_VALUE) == gameTime;
+	}
+
 	/** 在伤害后事件中把一次零实伤格挡登记为可消费的单次反击信号。 */
 	public static void recordSuccessfulBlock(
 		final Zombie zombie,
@@ -93,11 +137,15 @@ public final class ZombieShieldMemory {
 	public static void discard(final Zombie zombie) {
 		PENDING_BLOCKS.remove(zombie);
 		PENDING_HURT_ANIMATIONS.remove(zombie);
+		PENDING_HURT_SOUND_SUPPRESSIONS.remove(zombie);
+		LAST_SUPPRESSED_HURT_SOUND_AT.remove(zombie);
 	}
 
 	public static void clear() {
 		PENDING_BLOCKS.clear();
 		PENDING_HURT_ANIMATIONS.clear();
+		PENDING_HURT_SOUND_SUPPRESSIONS.clear();
+		LAST_SUPPRESSED_HURT_SOUND_AT.clear();
 	}
 
 	record BlockSignal(LivingEntity attacker, long gameTime) {
