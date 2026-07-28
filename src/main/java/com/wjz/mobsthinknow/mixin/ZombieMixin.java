@@ -12,6 +12,10 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieAirAssaultStatusAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventoryAccess;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerAccess;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerEquipment;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerSkillGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFoodSearchGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFireSurvivalGoal;
@@ -59,6 +63,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class ZombieMixin extends Monster implements
 	ZombieIntelligenceAccess,
 	ZombieBuilderInventoryAccess,
+	ZombieEngineerAccess,
 	ZombieVoiceAccess,
 	ZombieFluidCarrierAccess,
 	ZombieFlightAccess,
@@ -72,6 +77,9 @@ public abstract class ZombieMixin extends Monster implements
 	/** 独立于双手装备的持久化建筑材料槽；普通生成始终为空。 */
 	@Unique
 	private ItemStack mobsthinknow$buildingBlocks = ItemStack.EMPTY;
+	/** 工程兵是独立于智力门槛的稀有持久职业；只有它会运行周期技能调度器。 */
+	@Unique
+	private boolean mobsthinknow$engineer;
 	/** 每只僵尸的固定声线中心，0 表示旧存档尚未生成。 */
 	@Unique
 	private float mobsthinknow$voiceFactor;
@@ -123,7 +131,9 @@ public abstract class ZombieMixin extends Monster implements
 		this.goalSelector.addGoal(1, new ZombieFireSurvivalGoal(zombie, false));
 		// 对目标方向存在严格的一格宽安全落点时，以真实跳跃越沟；失败后仍回到普通寻路。
 		this.goalSelector.addGoal(2, new SmartZombieGapJumpGoal(zombie));
-		// 地面武器是永久战力升级，优先于同级的流体、觅食、采集与战斗；没有可达升级时立即让出 MOVE/LOOK。
+		// 工程兵仅在 6～10 秒技能窗口到期且存在合法技能时接管；着火和受击撤退仍可立即打断。
+		this.goalSelector.addGoal(2, new ZombieEngineerSkillGoal(zombie));
+		// 地面武器是永久战力升级；工程技能未到期时，它优先于流体、觅食、采集与普通战斗。
 		this.goalSelector.addGoal(2, new ZombieWeaponPickupGoal(zombie));
 		// 特殊桶兵优先承担支援/骚扰；已放出的源方块即使热关配置也会先完成回收事务。
 		this.goalSelector.addGoal(2, new ZombieFluidTacticsGoal(zombie));
@@ -151,6 +161,8 @@ public abstract class ZombieMixin extends Monster implements
 		// 智力是个体特征，必须持久化；小队归属和命令刻意不保存，避免重载世界后引用失效实体。
 		output.putInt(mobsthinknow$INTELLIGENCE_TAG, this.mobsthinknow$getIntelligence());
 		ZombieBuilderInventory.save((Zombie)(Object)this, output);
+		ZombieEngineerProfile.save((Zombie)(Object)this, output);
+		ZombieEngineerEquipment.saveTemporaryEquipment((Zombie)(Object)this, output);
 		ZombieVoiceProfile.save((Zombie)(Object)this, output);
 		ZombieSpecialEquipment.save((Zombie)(Object)this, output);
 		// 自动保存若恰好发生在进食换手的 1～2 秒内，额外保存真正的武器/盾牌供读档恢复。
@@ -165,7 +177,9 @@ public abstract class ZombieMixin extends Monster implements
 		Zombie zombie = (Zombie)(Object)this;
 		SquadTheatrics.stripLeftoverRoleTag(zombie);
 		ZombieFoodEquipment.restoreSavedEquipment(zombie, input);
+		ZombieEngineerEquipment.restoreSavedEquipment(zombie, input);
 		ZombieBuilderInventory.load(zombie, input);
+		ZombieEngineerProfile.load(zombie, input);
 		ZombieVoiceProfile.load(zombie, input);
 		ZombieSpecialEquipment.load(zombie, input);
 		if (zombie.getType() == EntityType.ZOMBIE) {
@@ -182,6 +196,7 @@ public abstract class ZombieMixin extends Monster implements
 		// 原版转化会把 CustomName 原样复制给新实体（僵尸→溺尸等）；转化前剥掉职业名牌，
 		// 避免溺尸顶着本 Mod 的名牌继续存在。
 		Zombie zombie = (Zombie)(Object)this;
+		ZombieEngineerEquipment.restore(zombie, false);
 		SquadTheatrics.stripLeftoverRoleTag(zombie);
 		ZombieIntelligenceName.removeSyntheticMarker(zombie);
 	}
@@ -209,6 +224,8 @@ public abstract class ZombieMixin extends Monster implements
 		ZombieSpecialEquipment.maybeEquip(zombie, difficulty, this.random, config);
 		ZombieArmory.maybeEquipForSquad(zombie, difficulty, this.random, config);
 		ZombieAirAssault.equipForSpawn(zombie, difficulty.getDifficulty(), this.random, config);
+		// 最后掷工程兵身份，确保不会与前面已经确定的桶兵、武装兵或空袭兵叠职。
+		ZombieEngineerProfile.maybeAssignOnSpawn(zombie, difficulty, this.random, config);
 	}
 
 	@Inject(method = "wantsToPickUp", at = @At("HEAD"), cancellable = true)
@@ -246,6 +263,16 @@ public abstract class ZombieMixin extends Monster implements
 	@Override
 	public void mobsthinknow$setBuildingBlocks(final ItemStack stack) {
 		this.mobsthinknow$buildingBlocks = stack.isEmpty() ? ItemStack.EMPTY : stack.copy();
+	}
+
+	@Override
+	public boolean mobsthinknow$isEngineer() {
+		return this.mobsthinknow$engineer;
+	}
+
+	@Override
+	public void mobsthinknow$setEngineer(final boolean engineer) {
+		this.mobsthinknow$engineer = engineer;
 	}
 
 	@Override

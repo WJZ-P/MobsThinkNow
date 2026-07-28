@@ -14,6 +14,7 @@
 			"com.wjz.mobsthinknow.ai.zombie.ZombieWeaponPickupGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieAirAssaultGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieEnvironmentalTacticsGameTests",
+			"com.wjz.mobsthinknow.ai.zombie.ZombieEngineerSkillGameTests",
 			"com.wjz.mobsthinknow.command.ZombieShowcaseCommandGameTests"
 		]
 	},

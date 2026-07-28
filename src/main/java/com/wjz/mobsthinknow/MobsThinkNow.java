@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow;
 
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
@@ -38,11 +39,15 @@ public final class MobsThinkNow implements ModInitializer {
 			ZombieFluidThreatMemory.clearLevel(level);
 		});
 		// 关服保存前结束最多几十 tick 的临时换手，确保存档里永远是原武器/盾牌。
-		ServerLifecycleEvents.SERVER_STOPPING.register(server -> ZombieFoodEquipment.restoreAll());
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			ZombieEngineerEquipment.restoreAll();
+			ZombieFoodEquipment.restoreAll();
+		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			ZombieSquadCoordinator.clearAll();
 			ZombieArmory.clearShieldState();
 			ZombieFoodEquipment.clear();
+			ZombieEngineerEquipment.clear();
 			ZombieRetreatMemory.clear();
 			ZombieShieldMemory.clear();
 			ZombieFireSupportMemory.clear();
@@ -57,6 +62,7 @@ public final class MobsThinkNow implements ModInitializer {
 				ZombieFluidThreatMemory.discard(zombie);
 				ZombieSquadCoordinator.onZombieDying(zombie);
 				ZombieFoodEquipment.restore(zombie, true);
+				ZombieEngineerEquipment.restore(zombie, true);
 				ZombieIntelligenceName.removeSyntheticMarker(zombie);
 			}
 			return true;

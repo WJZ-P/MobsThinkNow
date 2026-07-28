@@ -22,6 +22,7 @@ public final class MobsThinkNowConfig {
 	public static final int DEFAULT_TERRAIN_BLOCK_INVENTORY_LIMIT = 8;
 	public static final int MINIMUM_TERRAIN_BLOCK_INVENTORY_LIMIT = 3;
 	public static final int MAXIMUM_TERRAIN_BLOCK_INVENTORY_LIMIT = 16;
+	public static final double DEFAULT_ENGINEER_SPAWN_CHANCE = 0.08;
 	public static final double DEFAULT_SPECIAL_EQUIPMENT_DROP_CHANCE = 0.085;
 	public static final double DEFAULT_SPEAR_ROCKET_EFFICIENCY = 0.50;
 	public static final double MINIMUM_SPEAR_ROCKET_EFFICIENCY = 0.0;
@@ -61,6 +62,12 @@ public final class MobsThinkNowConfig {
 	public int terrainMinimumIntelligence = DEFAULT_TERRAIN_MINIMUM_INTELLIGENCE;
 	/** 隐藏建筑材料槽的容量；每次只采集一块，死亡时会完整掉出。 */
 	public int terrainBlockInventoryLimit = DEFAULT_TERRAIN_BLOCK_INVENTORY_LIMIT;
+	/** 少量合格高智力僵尸是否成为正式工程兵，并周期性使用爆破、维修和加固技能。 */
+	public boolean engineerSkills = true;
+	/** 在高智力、成年、双手为空且未占用其他特殊职业的候选中，成为工程兵的基础概率。 */
+	public double engineerSpawnChance = DEFAULT_ENGINEER_SPAWN_CHANCE;
+	/** 工程兵技能池是否包含真实 TNT 放置、点燃与撤离；仍同时服从 mobGriefing 和 tntExplodes。 */
+	public boolean engineerTntSkill = true;
 	/** 组队期间的全员移速加成（ADD_MULTIPLIED_TOTAL），离队自动移除，0 关闭。 */
 	public double squadSpeedBonus = 0.10;
 	/** 武装小队总开关。默认关闭：持械概率、兵种职位、破盾和包抄加速全部由它统一控制。 */
@@ -171,6 +178,7 @@ public final class MobsThinkNowConfig {
 			MINIMUM_TERRAIN_BLOCK_INVENTORY_LIMIT,
 			MAXIMUM_TERRAIN_BLOCK_INVENTORY_LIMIT
 		);
+		this.engineerSpawnChance = clamp(this.engineerSpawnChance, 0.0, 1.0);
 		this.armedChanceEasy = clamp(this.armedChanceEasy, 0.0, 1.0);
 		this.armedChanceNormal = clamp(this.armedChanceNormal, 0.0, 1.0);
 		this.armedChanceHard = clamp(this.armedChanceHard, 0.0, 1.0);

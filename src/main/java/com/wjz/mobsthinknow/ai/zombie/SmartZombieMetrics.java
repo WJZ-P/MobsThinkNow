@@ -23,6 +23,9 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong LAVA_DEPLOYMENTS = new AtomicLong();
 	private static final AtomicLong FLUID_RECOVERIES = new AtomicLong();
 	private static final AtomicLong FLUID_SOURCES_LOST = new AtomicLong();
+	private static final AtomicLong ENGINEER_TNT_CHARGES = new AtomicLong();
+	private static final AtomicLong ENGINEER_REPAIRS = new AtomicLong();
+	private static final AtomicLong ENGINEER_FORTIFICATIONS = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -99,6 +102,18 @@ public final class SmartZombieMetrics {
 		FLUID_SOURCES_LOST.incrementAndGet();
 	}
 
+	public static void engineerTntCharge() {
+		ENGINEER_TNT_CHARGES.incrementAndGet();
+	}
+
+	public static void engineerRepair() {
+		ENGINEER_REPAIRS.incrementAndGet();
+	}
+
+	public static void engineerFortification() {
+		ENGINEER_FORTIFICATIONS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -119,7 +134,10 @@ public final class SmartZombieMetrics {
 			WATER_DEPLOYMENTS.get(),
 			LAVA_DEPLOYMENTS.get(),
 			FLUID_RECOVERIES.get(),
-			FLUID_SOURCES_LOST.get()
+			FLUID_SOURCES_LOST.get(),
+			ENGINEER_TNT_CHARGES.get(),
+			ENGINEER_REPAIRS.get(),
+			ENGINEER_FORTIFICATIONS.get()
 		);
 	}
 
@@ -142,7 +160,10 @@ public final class SmartZombieMetrics {
 		long waterDeployments,
 		long lavaDeployments,
 		long fluidRecoveries,
-		long fluidSourcesLost
+		long fluidSourcesLost,
+		long engineerTntCharges,
+		long engineerRepairs,
+		long engineerFortifications
 	) {
 	}
 }

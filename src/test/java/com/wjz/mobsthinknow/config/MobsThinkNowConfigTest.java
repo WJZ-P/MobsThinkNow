@@ -2,9 +2,19 @@ package com.wjz.mobsthinknow.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.google.gson.Gson;
 import org.junit.jupiter.api.Test;
 
 class MobsThinkNowConfigTest {
+	@Test
+	void missingEngineerFieldsInOlderJsonKeepCodeDefaults() {
+		MobsThinkNowConfig config = new Gson().fromJson("{\"enabled\":true}", MobsThinkNowConfig.class);
+
+		assertEquals(true, config.engineerSkills);
+		assertEquals(0.08, config.engineerSpawnChance);
+		assertEquals(true, config.engineerTntSkill);
+	}
+
 	@Test
 	void defaultsToTwentyCoordinatedZombies() {
 		assertEquals(20, new MobsThinkNowConfig().maximumCoordinatedZombies);
@@ -73,6 +83,9 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.smartTraversal);
 		assertEquals(8, config.terrainMinimumIntelligence);
 		assertEquals(8, config.terrainBlockInventoryLimit);
+		assertEquals(true, config.engineerSkills);
+		assertEquals(0.08, config.engineerSpawnChance);
+		assertEquals(true, config.engineerTntSkill);
 		assertEquals(0.10, config.squadSpeedBonus);
 		assertEquals(0.85, config.armedChanceHard);
 		assertEquals(0.25, config.armedShieldChance);
@@ -94,6 +107,7 @@ class MobsThinkNowConfigTest {
 		config.foodMinimumIntelligence = 99;
 		config.terrainMinimumIntelligence = 1;
 		config.terrainBlockInventoryLimit = 99;
+		config.engineerSpawnChance = 9.0;
 		config.waterBucketChance = 4.0;
 		config.lavaBucketChance = -2.0;
 		config.specialEquipmentDropChance = Double.NaN;
@@ -108,6 +122,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(10, config.foodMinimumIntelligence);
 		assertEquals(6, config.terrainMinimumIntelligence);
 		assertEquals(16, config.terrainBlockInventoryLimit);
+		assertEquals(1.0, config.engineerSpawnChance);
 		assertEquals(1.0, config.waterBucketChance);
 		assertEquals(0.0, config.lavaBucketChance);
 		assertEquals(0.0, config.specialEquipmentDropChance);

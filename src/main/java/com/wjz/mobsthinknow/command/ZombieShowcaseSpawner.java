@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.command;
 
 import com.wjz.mobsthinknow.ai.zombie.ZombieAirAssault;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventoryAccess;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFlightAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierState;
@@ -265,6 +266,8 @@ public final class ZombieShowcaseSpawner {
 		}
 		((ZombieFluidCarrierAccess)zombie).mobsthinknow$setFluidCarrierState(ZombieFluidCarrierState.NONE);
 		((ZombieBuilderInventoryAccess)zombie).mobsthinknow$setBuildingBlocks(ItemStack.EMPTY);
+		// finalizeSpawn 可能自然掷中工程兵；展示命令必须把职业重置为确定结果。
+		ZombieEngineerProfile.setEngineer(zombie, false);
 		zombie.setBaby(false);
 		zombie.setPersistenceRequired();
 		zombie.setHealth(zombie.getMaxHealth());
@@ -286,6 +289,7 @@ public final class ZombieShowcaseSpawner {
 			case BUILDER -> {
 				int blocks = Math.max(1, config.terrainBlockInventoryLimit);
 				((ZombieBuilderInventoryAccess)zombie).mobsthinknow$setBuildingBlocks(new ItemStack(Items.DIRT, blocks));
+				ZombieEngineerProfile.setEngineer(zombie, true);
 			}
 			case WATER_SUPPORT -> {
 				ZombieSpecialEquipment.markRecovered(

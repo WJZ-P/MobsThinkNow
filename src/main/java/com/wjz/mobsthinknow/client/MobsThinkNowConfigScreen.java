@@ -178,6 +178,32 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.terrain_block_inventory_limit.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.terrainBlockInventoryLimit = value))
 			.build());
+		terrainCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.engineer_skills"),
+			config.engineerSkills
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.engineer_skills.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.engineerSkills = value))
+			.build());
+		terrainCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.engineer_spawn_chance"),
+			(int)Math.round(config.engineerSpawnChance * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_ENGINEER_SPAWN_CHANCE * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.engineer_spawn_chance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.engineerSpawnChance = value / 100.0))
+			.build());
+		terrainCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.engineer_tnt_skill"),
+			config.engineerTntSkill
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.engineer_tnt_skill.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.engineerTntSkill = value))
+			.build());
 		ConfigCategory armedCategory = builder.getOrCreateCategory(
 			Component.translatable("mobsthinknow.config.category.armed")
 		);

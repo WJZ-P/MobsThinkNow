@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.command;
 
 import com.wjz.mobsthinknow.ai.zombie.ZombieAirAssault;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
@@ -126,8 +127,13 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 		assertExactlyOne(helper, zombies, zombie ->
 			zombie.getMainHandItem().isEmpty()
 				&& zombie.getOffhandItem().isEmpty()
-				&& ZombieBuilderInventory.count(zombie) > 0,
+				&& ZombieBuilderInventory.count(zombie) > 0
+				&& ZombieEngineerProfile.isEngineer(zombie),
 			"engineer"
+		);
+		helper.assertTrue(
+			zombies.stream().filter(ZombieEngineerProfile::isEngineer).count() == 1,
+			"Showcase loadout reset left an unintended second engineer identity."
 		);
 		assertExactlyOne(helper, zombies, zombie ->
 			ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.WATER,

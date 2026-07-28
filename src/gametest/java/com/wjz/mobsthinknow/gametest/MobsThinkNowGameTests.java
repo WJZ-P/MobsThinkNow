@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.gametest;
 import com.wjz.mobsthinknow.ai.zombie.ReactiveRetreatGoal;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import java.lang.reflect.Method;
@@ -28,6 +29,7 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 1, 2, 1);
 		long installedAfter = SmartZombieMetrics.snapshot().installedGoals();
 		ZombieIntelligence.set(zombie, 9);
+		ZombieEngineerProfile.setEngineer(zombie, true);
 		float voiceFactor = ZombieVoiceProfile.factor(zombie);
 		double movementSpeed = zombie.getAttributeValue(Attributes.MOVEMENT_SPEED);
 		Zombie restored = EntityType.ZOMBIE.create(helper.getLevel(), EntitySpawnReason.STRUCTURE);
@@ -41,6 +43,10 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(
 			ZombieIntelligence.get(restored) == 9,
 			"Zombie intelligence did not survive the vanilla entity save/load path."
+		);
+		helper.assertTrue(
+			ZombieEngineerProfile.isEngineer(restored),
+			"The formal engineer identity did not survive the vanilla entity save/load path."
 		);
 		helper.assertTrue(
 			Math.abs(ZombieVoiceProfile.factor(restored) - voiceFactor) < 0.0001F,
