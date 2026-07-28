@@ -29,6 +29,26 @@ class SkeletonCombatMathTest {
 	}
 
 	@Test
+	void emergencyDisengageUsesSeparateTriggerAndSafeThresholds() {
+		assertEquals(6.0, SkeletonCombatMath.emergencyDisengageTriggerRange(10.0));
+		assertEquals(9.0, SkeletonCombatMath.emergencyDisengageSafeRange(10.0));
+		assertTrue(SkeletonCombatMath.shouldStartEmergencyDisengage(5.99 * 5.99, 10.0));
+		assertFalse(SkeletonCombatMath.shouldStartEmergencyDisengage(6.0 * 6.0, 10.0));
+
+		// 已经开始的脱离行为穿过六格后仍继续，直到真正抵达九格安全线。
+		assertTrue(SkeletonCombatMath.shouldContinueEmergencyDisengage(8.99 * 8.99, 10.0));
+		assertFalse(SkeletonCombatMath.shouldContinueEmergencyDisengage(9.0 * 9.0, 10.0));
+	}
+
+	@Test
+	void emergencyDisengageRejectsInvalidDistancesAndFallsBackToDefaultRange() {
+		assertEquals(6.0, SkeletonCombatMath.emergencyDisengageTriggerRange(Double.NaN));
+		assertEquals(9.0, SkeletonCombatMath.emergencyDisengageSafeRange(-10.0));
+		assertFalse(SkeletonCombatMath.shouldStartEmergencyDisengage(Double.NaN, 10.0));
+		assertFalse(SkeletonCombatMath.shouldContinueEmergencyDisengage(-1.0, 10.0));
+	}
+
+	@Test
 	void directIncomingArrowIsDetectedButMissAndOutgoingArrowAreRejected() {
 		assertTrue(SkeletonCombatMath.isIncomingProjectile(
 			0.0, 0.0, 5.0,

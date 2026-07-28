@@ -36,6 +36,8 @@ public final class MobsThinkNowConfig {
 	public boolean zombieAiEnabled = true;
 	/** 普通持弓骷髅使用距离分带、持续侧移与近身脱离状态机；关闭后委托原版弓箭 Goal。 */
 	public boolean skeletonAiEnabled = true;
+	/** 玩家贴脸时使用优先级 1 的独立 Goal 强制脱离，拉到安全射程后再恢复射击。 */
+	public boolean skeletonEmergencyDisengage = true;
 	/** 每三 tick 查询七格内来箭，并只对八 tick 内会穿过碰撞安全半径的箭执行侧闪。 */
 	public boolean skeletonProjectileDodging = true;
 	/** 保留原版散布，只在水平方向对移动目标加入有上限的速度提前量。 */

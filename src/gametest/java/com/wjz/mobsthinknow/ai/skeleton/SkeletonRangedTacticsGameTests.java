@@ -5,19 +5,23 @@ import java.lang.reflect.Method;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
 
 public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInvoker {
 	@GameTest
 	public void regularSkeletonReceivesSmartBowGoal(final GameTestHelper helper) {
 		long installedBefore = SmartSkeletonMetrics.snapshot().installedGoals();
+		long emergencyInstalledBefore = SmartSkeletonMetrics.snapshot().installedEmergencyGoals();
 		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 2, 2, 2);
 		// helper.spawn 不执行自然生成的默认装备流程；显式模拟 finalizeSpawn 末尾的武器重评。
 		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
@@ -28,6 +32,42 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 			SmartSkeletonMetrics.snapshot().installedGoals() > installedBefore,
 			"Creating a regular skeleton did not install the smart bow goal."
 		);
+		helper.assertTrue(
+			SmartSkeletonMetrics.snapshot().installedEmergencyGoals() > emergencyInstalledBefore,
+			"Creating a regular bow skeleton did not install its emergency disengage goal."
+		);
+		helper.succeed();
+	}
+
+	@GameTest
+	public void closePlayerCancelsBowDrawUntilSafeRange(final GameTestHelper helper) {
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 2, 2, 2);
+		skeleton.setNoAi(true);
+		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+
+		Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+		player.snapTo(skeleton.getX() + 3.0, skeleton.getY(), skeleton.getZ(), 0.0F, 0.0F);
+		helper.assertTrue(helper.getLevel().addFreshEntity(player), "The close-player fixture was not added.");
+		skeleton.setTarget(player);
+		helper.assertTrue(skeleton.getTarget() == player, "The survival player was not accepted as a target.");
+
+		skeleton.startUsingItem(InteractionHand.MAIN_HAND);
+		helper.assertTrue(skeleton.isUsingItem(), "The bow-draw fixture did not start.");
+		long disengagesBefore = SmartSkeletonMetrics.snapshot().emergencyDisengages();
+		SkeletonEmergencyDisengageGoal goal = new SkeletonEmergencyDisengageGoal(skeleton);
+		helper.assertTrue(goal.canUse(), "A player three blocks away did not trigger emergency disengage.");
+		goal.start();
+		helper.assertTrue(!skeleton.isUsingItem(), "Emergency disengage did not cancel the current bow draw.");
+		helper.assertTrue(goal.canContinueToUse(), "The disengage ended before reaching its safe threshold.");
+		helper.assertTrue(
+			SmartSkeletonMetrics.snapshot().emergencyDisengages() > disengagesBefore,
+			"Starting the emergency goal did not record its state transition."
+		);
+
+		player.snapTo(skeleton.getX() + 9.0, skeleton.getY(), skeleton.getZ(), 0.0F, 0.0F);
+		helper.assertTrue(!goal.canContinueToUse(), "The disengage still owned movement at the nine-block safe line.");
+		goal.stop();
+		player.discard();
 		helper.succeed();
 	}
 

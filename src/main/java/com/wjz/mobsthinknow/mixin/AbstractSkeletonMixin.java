@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonEmergencyDisengageGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -35,6 +36,10 @@ public abstract class AbstractSkeletonMixin extends Monster {
 	private @Nullable SmartSkeletonBowAttackGoal mobsthinknow$smartBowGoal;
 	@Unique
 	private boolean mobsthinknow$smartBowGoalCounted;
+	@Unique
+	private @Nullable SkeletonEmergencyDisengageGoal mobsthinknow$emergencyDisengageGoal;
+	@Unique
+	private boolean mobsthinknow$emergencyDisengageGoalCounted;
 
 	protected AbstractSkeletonMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
@@ -63,9 +68,20 @@ public abstract class AbstractSkeletonMixin extends Monster {
 		} else {
 			this.goalSelector.removeGoal(this.mobsthinknow$smartBowGoal);
 		}
+		if (this.mobsthinknow$emergencyDisengageGoal == null) {
+			this.mobsthinknow$emergencyDisengageGoal = new SkeletonEmergencyDisengageGoal(skeleton);
+		} else {
+			this.goalSelector.removeGoal(this.mobsthinknow$emergencyDisengageGoal);
+		}
 
 		if (skeleton.isHolding(Items.BOW)) {
+			// 原版避日是优先级 2、避狼是 3、弓术是 4；贴脸脱离必须先于它们抢占 MOVE/LOOK。
+			this.goalSelector.addGoal(1, this.mobsthinknow$emergencyDisengageGoal);
 			this.goalSelector.addGoal(4, this.mobsthinknow$smartBowGoal);
+			if (!this.mobsthinknow$emergencyDisengageGoalCounted) {
+				this.mobsthinknow$emergencyDisengageGoalCounted = true;
+				SmartSkeletonMetrics.emergencyGoalInstalled();
+			}
 			if (!this.mobsthinknow$smartBowGoalCounted) {
 				this.mobsthinknow$smartBowGoalCounted = true;
 				SmartSkeletonMetrics.goalInstalled();

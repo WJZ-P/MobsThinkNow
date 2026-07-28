@@ -8,6 +8,8 @@
 	"mobsthinknow.config.skeleton_ai_enabled.tooltip": "Regular bow skeletons maintain range, strafe continuously, and seek a retreat path when rushed. Turning this off delegates the complete lifecycle to the vanilla bow goal.",
 	"mobsthinknow.config.skeleton_preferred_range": "Preferred Skeleton Range (blocks)",
 	"mobsthinknow.config.skeleton_preferred_range.tooltip": "Default: 10. Retreat below roughly 60%, approach beyond roughly 135% or without sight, and strafe throughout the middle band.",
+	"mobsthinknow.config.skeleton_emergency_disengage": "Forced Point-blank Disengage",
+	"mobsthinknow.config.skeleton_emergency_disengage.tooltip": "When a player enters 60% of preferred range, cancel the bow draw and retreat at the highest movement priority. Shooting resumes after reaching 90%. Each attempt lasts at most four seconds, followed by a one-second counterattack window on timeout.",
 	"mobsthinknow.config.skeleton_projectile_dodging": "Local Incoming-arrow Dodging",
 	"mobsthinknow.config.skeleton_projectile_dodging.tooltip": "Every three ticks, query arrows within seven blocks and dodge only trajectories predicted to cross the safety radius within eight ticks. No world-wide projectile scan is used.",
 	"mobsthinknow.config.skeleton_predictive_aim": "Moving-target Prediction",

@@ -11,6 +11,10 @@ public final class SkeletonCombatMath {
 	public static final double PROJECTILE_SPEED = 1.6;
 	public static final double MAXIMUM_LEAD_TICKS = 8.0;
 	public static final double MAXIMUM_LEAD_DISTANCE = 3.0;
+	/** 玩家进入偏好射程的 60% 时，由高优先级 Goal 强制接管移动。 */
+	public static final double EMERGENCY_DISENGAGE_TRIGGER_RATIO = 0.60;
+	/** 接管后必须拉到偏好射程的 90% 才释放，避免在临界点逐 tick 抖动。 */
+	public static final double EMERGENCY_DISENGAGE_SAFE_RATIO = 0.90;
 
 	private SkeletonCombatMath() {
 	}
@@ -36,6 +40,36 @@ public final class SkeletonCombatMath {
 			return MovementMode.APPROACH;
 		}
 		return MovementMode.STRAFE;
+	}
+
+	public static double emergencyDisengageTriggerRange(final double preferredRange) {
+		return validPreferredRange(preferredRange) * EMERGENCY_DISENGAGE_TRIGGER_RATIO;
+	}
+
+	public static double emergencyDisengageSafeRange(final double preferredRange) {
+		return validPreferredRange(preferredRange) * EMERGENCY_DISENGAGE_SAFE_RATIO;
+	}
+
+	/**
+	 * 启动阈值与结束阈值故意分离：进入六格触发后要真正拉到九格才结束，形成迟滞区，
+	 * 防止玩家和骷髅在阈值边缘移动时两个 Goal 反复抢占 MOVE/LOOK。
+	 */
+	public static boolean shouldStartEmergencyDisengage(
+		final double horizontalDistanceSquared,
+		final double preferredRange
+	) {
+		double triggerRange = emergencyDisengageTriggerRange(preferredRange);
+		return isValidSquaredDistance(horizontalDistanceSquared)
+			&& horizontalDistanceSquared < triggerRange * triggerRange;
+	}
+
+	public static boolean shouldContinueEmergencyDisengage(
+		final double horizontalDistanceSquared,
+		final double preferredRange
+	) {
+		double safeRange = emergencyDisengageSafeRange(preferredRange);
+		return isValidSquaredDistance(horizontalDistanceSquared)
+			&& horizontalDistanceSquared < safeRange * safeRange;
 	}
 
 	/**
@@ -137,6 +171,10 @@ public final class SkeletonCombatMath {
 		return Double.isFinite(preferredRange) && preferredRange > 0.0
 			? preferredRange
 			: DEFAULT_PREFERRED_RANGE;
+	}
+
+	private static boolean isValidSquaredDistance(final double distanceSquared) {
+		return Double.isFinite(distanceSquared) && distanceSquared >= 0.0;
 	}
 
 	public enum MovementMode {

@@ -47,6 +47,14 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonPreferredRange = value))
 			.build());
 		skeletonCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.skeleton_emergency_disengage"),
+			config.skeletonEmergencyDisengage
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_emergency_disengage.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonEmergencyDisengage = value))
+			.build());
+		skeletonCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.skeleton_projectile_dodging"),
 			config.skeletonProjectileDodging
 		)
