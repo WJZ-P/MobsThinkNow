@@ -10,6 +10,8 @@
 	"mobsthinknow.config.skeleton_preferred_range.tooltip": "默认 10 格。低于约 60% 时主动脱离，高于约 135% 或失去视线时重新接近，中间区域持续侧移。",
 	"mobsthinknow.config.skeleton_emergency_disengage": "贴脸强制脱离",
 	"mobsthinknow.config.skeleton_emergency_disengage.tooltip": "玩家进入偏好射程的 60% 时，以最高移动优先级取消拉弓并撤退；拉到 90% 后才恢复射击。单次最长 4 秒，超时后留出 1 秒反击窗口。",
+	"mobsthinknow.config.skeleton_cover_peeking": "掩体探头射击",
+	"mobsthinknow.config.skeleton_cover_peeking.tooltip": "在固定预算内搜索四格附近的真实掩体：进入遮蔽格拉弓，蓄满后移动到相邻射界格，稳定探头两 tick 再射击并缩回。闪箭与贴脸脱离始终优先。",
 	"mobsthinknow.config.skeleton_projectile_dodging": "局部来箭闪避",
 	"mobsthinknow.config.skeleton_projectile_dodging.tooltip": "每 3 tick 查询周围 7 格内的箭，只闪避预计 8 tick 内会穿过自身安全半径的轨迹，不做全世界投射物扫描。",
 	"mobsthinknow.config.skeleton_predictive_aim": "移动目标预判",

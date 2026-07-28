@@ -10,6 +10,8 @@
 	"mobsthinknow.config.skeleton_preferred_range.tooltip": "Default: 10. Retreat below roughly 60%, approach beyond roughly 135% or without sight, and strafe throughout the middle band.",
 	"mobsthinknow.config.skeleton_emergency_disengage": "Forced Point-blank Disengage",
 	"mobsthinknow.config.skeleton_emergency_disengage.tooltip": "When a player enters 60% of preferred range, cancel the bow draw and retreat at the highest movement priority. Shooting resumes after reaching 90%. Each attempt lasts at most four seconds, followed by a one-second counterattack window on timeout.",
+	"mobsthinknow.config.skeleton_cover_peeking": "Cover Peek Shooting",
+	"mobsthinknow.config.skeleton_cover_peeking.tooltip": "Search nearby cover with a fixed budget: draw from a hidden cell, move to an adjacent clear firing cell, stabilize for two ticks, shoot, and withdraw. Arrow dodging and point-blank disengage always take priority.",
 	"mobsthinknow.config.skeleton_projectile_dodging": "Local Incoming-arrow Dodging",
 	"mobsthinknow.config.skeleton_projectile_dodging.tooltip": "Every three ticks, query arrows within seven blocks and dodge only trajectories predicted to cross the safety radius within eight ticks. No world-wide projectile scan is used.",
 	"mobsthinknow.config.skeleton_predictive_aim": "Moving-target Prediction",

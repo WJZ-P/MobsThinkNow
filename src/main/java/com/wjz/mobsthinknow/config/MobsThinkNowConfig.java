@@ -38,6 +38,8 @@ public final class MobsThinkNowConfig {
 	public boolean skeletonAiEnabled = true;
 	/** 玩家贴脸时使用优先级 1 的独立 Goal 强制脱离，拉到安全射程后再恢复射击。 */
 	public boolean skeletonEmergencyDisengage = true;
+	/** 搜索附近真实掩体，在遮蔽格蓄力后移动到相邻射界格探头射击并缩回。 */
+	public boolean skeletonCoverPeeking = true;
 	/** 每三 tick 查询七格内来箭，并只对八 tick 内会穿过碰撞安全半径的箭执行侧闪。 */
 	public boolean skeletonProjectileDodging = true;
 	/** 保留原版散布，只在水平方向对移动目标加入有上限的速度提前量。 */

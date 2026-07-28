@@ -17,6 +17,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.engineerIgnitionSkill);
 		assertEquals(true, config.skeletonAiEnabled);
 		assertEquals(true, config.skeletonEmergencyDisengage);
+		assertEquals(true, config.skeletonCoverPeeking);
 		assertEquals(true, config.skeletonProjectileDodging);
 		assertEquals(true, config.skeletonPredictiveAim);
 		assertEquals(10.0, config.skeletonPreferredRange);

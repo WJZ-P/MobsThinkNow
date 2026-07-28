@@ -7,6 +7,8 @@ public final class SmartSkeletonMetrics {
 	private static final AtomicLong INSTALLED_GOALS = new AtomicLong();
 	private static final AtomicLong INSTALLED_EMERGENCY_GOALS = new AtomicLong();
 	private static final AtomicLong EMERGENCY_DISENGAGES = new AtomicLong();
+	private static final AtomicLong COVER_PLANS = new AtomicLong();
+	private static final AtomicLong COVER_SHOTS = new AtomicLong();
 	private static final AtomicLong RETREATS = new AtomicLong();
 	private static final AtomicLong PROJECTILE_DODGES = new AtomicLong();
 	private static final AtomicLong SHOTS = new AtomicLong();
@@ -25,6 +27,14 @@ public final class SmartSkeletonMetrics {
 
 	public static void emergencyDisengageStarted() {
 		EMERGENCY_DISENGAGES.incrementAndGet();
+	}
+
+	public static void coverPlanStarted() {
+		COVER_PLANS.incrementAndGet();
+	}
+
+	public static void coverShot() {
+		COVER_SHOTS.incrementAndGet();
 	}
 
 	public static void retreatStarted() {
@@ -48,6 +58,8 @@ public final class SmartSkeletonMetrics {
 			INSTALLED_GOALS.get(),
 			INSTALLED_EMERGENCY_GOALS.get(),
 			EMERGENCY_DISENGAGES.get(),
+			COVER_PLANS.get(),
+			COVER_SHOTS.get(),
 			RETREATS.get(),
 			PROJECTILE_DODGES.get(),
 			SHOTS.get(),
@@ -59,6 +71,8 @@ public final class SmartSkeletonMetrics {
 		long installedGoals,
 		long installedEmergencyGoals,
 		long emergencyDisengages,
+		long coverPlans,
+		long coverShots,
 		long retreats,
 		long projectileDodges,
 		long shots,
