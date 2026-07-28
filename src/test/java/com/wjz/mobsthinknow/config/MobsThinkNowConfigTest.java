@@ -13,6 +13,8 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.engineerSkills);
 		assertEquals(0.08, config.engineerSpawnChance);
 		assertEquals(true, config.engineerTntSkill);
+		assertEquals(true, config.engineerFluidSkills);
+		assertEquals(true, config.engineerIgnitionSkill);
 	}
 
 	@Test
@@ -86,6 +88,8 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.engineerSkills);
 		assertEquals(0.08, config.engineerSpawnChance);
 		assertEquals(true, config.engineerTntSkill);
+		assertEquals(true, config.engineerFluidSkills);
+		assertEquals(true, config.engineerIgnitionSkill);
 		assertEquals(0.10, config.squadSpeedBonus);
 		assertEquals(0.85, config.armedChanceHard);
 		assertEquals(0.25, config.armedShieldChance);

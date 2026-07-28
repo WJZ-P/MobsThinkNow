@@ -299,6 +299,7 @@ public final class ZombieShowcaseSpawner {
 					level.getGameTime()
 				);
 				zombie.setDropChance(EquipmentSlot.MAINHAND, (float)config.specialEquipmentDropChance);
+				ZombieEngineerProfile.setEngineer(zombie, true);
 			}
 			case LAVA_HARASSER -> {
 				ZombieSpecialEquipment.markRecovered(
@@ -308,6 +309,7 @@ public final class ZombieShowcaseSpawner {
 					level.getGameTime()
 				);
 				zombie.setDropChance(EquipmentSlot.MAINHAND, (float)config.specialEquipmentDropChance);
+				ZombieEngineerProfile.setEngineer(zombie, true);
 			}
 			case AIR_ASSAULT -> {
 				equip(zombie, EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SPEAR));

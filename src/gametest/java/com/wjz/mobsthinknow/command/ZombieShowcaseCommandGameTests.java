@@ -132,15 +132,17 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 			"engineer"
 		);
 		helper.assertTrue(
-			zombies.stream().filter(ZombieEngineerProfile::isEngineer).count() == 1,
-			"Showcase loadout reset left an unintended second engineer identity."
+			zombies.stream().filter(ZombieEngineerProfile::isEngineer).count() == 3,
+			"The builder, water, and lava variants were not merged into exactly three engineer identities."
 		);
 		assertExactlyOne(helper, zombies, zombie ->
-			ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.WATER,
+			ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.WATER
+				&& ZombieEngineerProfile.isEngineer(zombie),
 			"water support zombie"
 		);
 		assertExactlyOne(helper, zombies, zombie ->
-			ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.LAVA,
+			ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.LAVA
+				&& ZombieEngineerProfile.isEngineer(zombie),
 			"lava harasser zombie"
 		);
 		assertExactlyOne(helper, zombies, zombie ->

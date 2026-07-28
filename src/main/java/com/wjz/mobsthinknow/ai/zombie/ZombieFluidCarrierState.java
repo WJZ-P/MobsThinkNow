@@ -49,4 +49,8 @@ public record ZombieFluidCarrierState(
 	public boolean isSurvivalProtection() {
 		return this.purpose == FluidDeploymentPurpose.SURVIVAL;
 	}
+
+	public boolean isEngineerDeployment() {
+		return this.isDeployed() && this.purpose == FluidDeploymentPurpose.ENGINEER;
+	}
 }

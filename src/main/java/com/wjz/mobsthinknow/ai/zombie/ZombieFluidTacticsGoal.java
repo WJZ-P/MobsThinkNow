@@ -67,6 +67,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 		}
 
 		ZombieFluidCarrierState state = ZombieSpecialEquipment.state(this.zombie);
+		if (state.isEngineerDeployment()) {
+			return false;
+		}
 		if (state.isDeployed()) {
 			if (!this.shouldResumeDeployedTransaction(level, state)) {
 				return false;
@@ -98,6 +101,9 @@ public final class ZombieFluidTacticsGoal extends Goal {
 			return false;
 		}
 		ZombieFluidCarrierState state = ZombieSpecialEquipment.state(this.zombie);
+		if (state.isEngineerDeployment()) {
+			return false;
+		}
 		if (state.isDeployed()) {
 			return this.shouldResumeDeployedTransaction((ServerLevel)this.zombie.level(), state);
 		}

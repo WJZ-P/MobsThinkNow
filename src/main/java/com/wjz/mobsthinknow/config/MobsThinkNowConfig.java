@@ -62,12 +62,16 @@ public final class MobsThinkNowConfig {
 	public int terrainMinimumIntelligence = DEFAULT_TERRAIN_MINIMUM_INTELLIGENCE;
 	/** 隐藏建筑材料槽的容量；每次只采集一块，死亡时会完整掉出。 */
 	public int terrainBlockInventoryLimit = DEFAULT_TERRAIN_BLOCK_INVENTORY_LIMIT;
-	/** 少量合格高智力僵尸是否成为正式工程兵，并周期性使用爆破、维修和加固技能。 */
+	/** 少量合格高智力僵尸是否成为正式工程兵，并周期性使用环境控制技能。 */
 	public boolean engineerSkills = true;
-	/** 在高智力、成年、双手为空且未占用其他特殊职业的候选中，成为工程兵的基础概率。 */
+	/** 在高智力、成年且未占用空袭职业的候选中，成为工程兵的基础概率；桶兵会直接并入工程兵。 */
 	public double engineerSpawnChance = DEFAULT_ENGINEER_SPAWN_CHANCE;
 	/** 工程兵技能池是否包含真实 TNT 放置、点燃与撤离；仍同时服从 mobGriefing 和 tntExplodes。 */
 	public boolean engineerTntSkill = true;
+	/** 工程兵技能池是否包含真实水源和岩浆源的投放、撤离与回收；仍服从 mobGriefing。 */
+	public boolean engineerFluidSkills = true;
+	/** 工程兵是否可近身用打火石直接点燃当前目标。 */
+	public boolean engineerIgnitionSkill = true;
 	/** 组队期间的全员移速加成（ADD_MULTIPLIED_TOTAL），离队自动移除，0 关闭。 */
 	public double squadSpeedBonus = 0.10;
 	/** 武装小队总开关。默认关闭：持械概率、兵种职位、破盾和包抄加速全部由它统一控制。 */

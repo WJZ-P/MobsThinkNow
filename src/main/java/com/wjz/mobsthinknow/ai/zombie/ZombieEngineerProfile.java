@@ -14,8 +14,8 @@ import net.minecraft.world.level.storage.ValueOutput;
  * 工程兵身份的生成、持久化与查询入口。
  *
  * <p>身份和“智力达到地形战术门槛”是两个不同概念：所有高智力僵尸仍能按需采集、垫高，
- * 只有被标记的少量工程兵才会周期性使用爆破、维修和加固技能。这样既保留聪明个体的通用
- * 地形能力，也避免密集僵尸群同时投放 TNT。</p>
+ * 只有被标记的少量工程兵才会周期性使用 TNT、流体和直接点燃技能。这样既保留聪明个体的
+ * 通用地形能力，也避免密集僵尸群同时改造战场。</p>
  */
 public final class ZombieEngineerProfile {
 	private static final String ENGINEER_TAG = "MobsThinkNowEngineer";
@@ -29,11 +29,16 @@ public final class ZombieEngineerProfile {
 
 	public static void setEngineer(final Zombie zombie, final boolean engineer) {
 		((ZombieEngineerAccess)zombie).mobsthinknow$setEngineer(engineer);
+		if (engineer) {
+			// 所有工程兵都可能投放水；允许原版导航穿过自己制造的水流，避免回收事务被自身阻断。
+			zombie.getNavigation().setCanFloat(true);
+		}
 	}
 
 	/**
-	 * 在其他出生装备全部确定后掷点。工程兵必须是普通成年、高智力且双手为空的僵尸；
-	 * 水/岩浆辅助兵、武装兵和持矛空袭兵因此不会再叠加一个互相争抢双手与 Goal 的职业。
+	 * 在其他出生装备全部确定后掷点。普通空手候选按概率成为工程兵；水/岩浆桶变体直接
+	 * 并入工程兵并提升到地形智力门槛，使同一职业统一调度 TNT、流体和点燃技能。
+	 * 武装兵与持矛空袭兵仍保持独立，避免争抢攻击姿态和双手。
 	 */
 	public static void maybeAssignOnSpawn(
 		final Zombie zombie,
@@ -41,24 +46,31 @@ public final class ZombieEngineerProfile {
 		final RandomSource random,
 		final MobsThinkNowConfig config
 	) {
+		UtilityClass utility = ZombieSpecialEquipment.utilityClassOf(zombie);
+		if (config.enabled
+			&& config.zombieAiEnabled
+			&& config.engineerSkills
+			&& utility != UtilityClass.NONE
+			&& ZombieIntelligence.get(zombie) < config.terrainMinimumIntelligence) {
+			ZombieIntelligence.set(zombie, config.terrainMinimumIntelligence);
+		}
 		boolean eligible = config.enabled
 			&& config.zombieAiEnabled
 			&& config.engineerSkills
 			&& zombie.getType() == EntityType.ZOMBIE
 			&& !zombie.isBaby()
-			&& zombie.getMainHandItem().isEmpty()
+			&& (utility != UtilityClass.NONE || zombie.getMainHandItem().isEmpty())
 			&& zombie.getOffhandItem().isEmpty()
-			&& ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.NONE
 			&& !ZombieAirAssault.isAirAssaultLoadout(zombie)
 			&& ZombieIntelligence.get(zombie) >= config.terrainMinimumIntelligence;
 		setEngineer(
 			zombie,
-			eligible && shouldAssign(
+			eligible && (utility != UtilityClass.NONE || shouldAssign(
 				random.nextDouble(),
 				config.engineerSpawnChance,
 				difficulty.getDifficulty(),
 				difficulty.getSpecialMultiplier()
-			)
+			))
 		);
 	}
 

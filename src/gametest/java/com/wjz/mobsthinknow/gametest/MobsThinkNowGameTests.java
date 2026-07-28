@@ -2,15 +2,19 @@ package com.wjz.mobsthinknow.gametest;
 
 import com.wjz.mobsthinknow.ai.zombie.ReactiveRetreatGoal;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
-import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierState;
+import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
+import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
@@ -30,6 +34,13 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 		long installedAfter = SmartZombieMetrics.snapshot().installedGoals();
 		ZombieIntelligence.set(zombie, 9);
 		ZombieEngineerProfile.setEngineer(zombie, true);
+		BlockPos engineerWaterSource = zombie.blockPosition().offset(2, 0, 0);
+		ZombieSpecialEquipment.markEngineerDeployed(
+			zombie,
+			UtilityClass.WATER,
+			engineerWaterSource,
+			helper.getLevel().getGameTime() + 80L
+		);
 		float voiceFactor = ZombieVoiceProfile.factor(zombie);
 		double movementSpeed = zombie.getAttributeValue(Attributes.MOVEMENT_SPEED);
 		Zombie restored = EntityType.ZOMBIE.create(helper.getLevel(), EntitySpawnReason.STRUCTURE);
@@ -47,6 +58,13 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(
 			ZombieEngineerProfile.isEngineer(restored),
 			"The formal engineer identity did not survive the vanilla entity save/load path."
+		);
+		ZombieFluidCarrierState restoredEngineerFluid = ZombieSpecialEquipment.state(restored);
+		helper.assertTrue(
+			restoredEngineerFluid.isEngineerDeployment()
+				&& restoredEngineerFluid.utility() == UtilityClass.WATER
+				&& engineerWaterSource.equals(restoredEngineerFluid.source()),
+			"The engineer's pending synthetic-bucket source transaction did not survive save/load."
 		);
 		helper.assertTrue(
 			Math.abs(ZombieVoiceProfile.factor(restored) - voiceFactor) < 0.0001F,

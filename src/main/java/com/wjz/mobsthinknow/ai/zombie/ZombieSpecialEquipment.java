@@ -127,6 +127,38 @@ public final class ZombieSpecialEquipment {
 		markDeployed(zombie, UtilityClass.WATER, source, retrieveAt, FluidDeploymentPurpose.SURVIVAL);
 	}
 
+	/**
+	 * 工程技能使用临时可见桶，不消费僵尸真正的主手装备；仍复用同一份持久化源方块事务，
+	 * 使自动保存或高优先级 Goal 打断后可以继续回收。
+	 */
+	public static void markEngineerDeployed(
+		final Zombie zombie,
+		final UtilityClass utility,
+		final BlockPos source,
+		final long retrieveAt
+	) {
+		long existingCooldown = state(zombie).cooldownUntil();
+		stateAccess(zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			utility,
+			source.immutable(),
+			retrieveAt,
+			existingCooldown,
+			FluidDeploymentPurpose.ENGINEER
+		));
+	}
+
+	/** 清除工程技能流体事务，同时保留真正手持桶兵原有的职业类别。 */
+	public static void clearEngineerDeployment(final Zombie zombie) {
+		ZombieFluidCarrierState previous = state(zombie);
+		UtilityClass heldUtility = fullBucketUtility(zombie.getMainHandItem());
+		stateAccess(zombie).mobsthinknow$setFluidCarrierState(new ZombieFluidCarrierState(
+			heldUtility,
+			null,
+			0L,
+			previous.cooldownUntil()
+		));
+	}
+
 	public static void markRecovered(
 		final Zombie zombie,
 		final UtilityClass utility,
@@ -173,7 +205,9 @@ public final class ZombieSpecialEquipment {
 		);
 
 		ItemStack hand = zombie.getMainHandItem();
-		if (hand.is(Items.WATER_BUCKET)) {
+		if (loaded.isEngineerDeployment() && ZombieEngineerProfile.isEngineer(zombie)) {
+			// 工程兵的桶只是技能动画，读档时双手已经恢复；源事务必须独立保留。
+		} else if (hand.is(Items.WATER_BUCKET)) {
 			loaded = new ZombieFluidCarrierState(UtilityClass.WATER, null, 0L, loaded.cooldownUntil());
 		} else if (hand.is(Items.LAVA_BUCKET)) {
 			loaded = new ZombieFluidCarrierState(UtilityClass.LAVA, null, 0L, loaded.cooldownUntil());
@@ -238,6 +272,13 @@ public final class ZombieSpecialEquipment {
 
 	private static ZombieFluidCarrierAccess stateAccess(final Zombie zombie) {
 		return (ZombieFluidCarrierAccess)zombie;
+	}
+
+	private static UtilityClass fullBucketUtility(final ItemStack stack) {
+		if (stack.is(Items.WATER_BUCKET)) {
+			return UtilityClass.WATER;
+		}
+		return stack.is(Items.LAVA_BUCKET) ? UtilityClass.LAVA : UtilityClass.NONE;
 	}
 
 	private static double clamp01(final double value) {

@@ -224,7 +224,7 @@ public abstract class ZombieMixin extends Monster implements
 		ZombieSpecialEquipment.maybeEquip(zombie, difficulty, this.random, config);
 		ZombieArmory.maybeEquipForSquad(zombie, difficulty, this.random, config);
 		ZombieAirAssault.equipForSpawn(zombie, difficulty.getDifficulty(), this.random, config);
-		// 最后掷工程兵身份，确保不会与前面已经确定的桶兵、武装兵或空袭兵叠职。
+		// 最后掷工程兵身份；水/岩浆桶变体会并入工程兵，武装兵和空袭兵仍保持独立。
 		ZombieEngineerProfile.maybeAssignOnSpawn(zombie, difficulty, this.random, config);
 	}
 

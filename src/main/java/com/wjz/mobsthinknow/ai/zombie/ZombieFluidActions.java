@@ -9,6 +9,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.AABB;
@@ -57,6 +58,36 @@ final class ZombieFluidActions {
 		zombie.swing(InteractionHand.MAIN_HAND);
 		ZombieSpecialEquipment.markDeployed(zombie, utility, placement, retrieveAt, purpose);
 		SmartZombieMetrics.fluidDeployed(utility);
+		return true;
+	}
+
+	/**
+	 * 工程兵使用技能工具投放流体：BucketItem 仍执行原版放置、声音和游戏事件，但不要求
+	 * 主手永久携带桶；源位置进入持久事务，之后由工程技能状态机真实回收。
+	 */
+	static boolean tryDeployEngineer(
+		final ServerLevel level,
+		final Zombie zombie,
+		final UtilityClass utility,
+		final BlockPos placement,
+		final long retrieveAt,
+		final InteractionHand visibleHand
+	) {
+		if (utility == UtilityClass.NONE
+			|| ZombieSpecialEquipment.state(zombie).isDeployed()
+			|| !canDeployAt(level, zombie, utility, placement)) {
+			return false;
+		}
+		ItemStack stack = new ItemStack(utility == UtilityClass.WATER ? Items.WATER_BUCKET : Items.LAVA_BUCKET);
+		if (!(stack.getItem() instanceof BucketItem bucketItem)
+			|| !bucketItem.emptyContents(zombie, level, placement, null)) {
+			return false;
+		}
+
+		zombie.swing(visibleHand);
+		ZombieSpecialEquipment.markEngineerDeployed(zombie, utility, placement, retrieveAt);
+		SmartZombieMetrics.fluidDeployed(utility);
+		SmartZombieMetrics.engineerFluidDeployment(utility);
 		return true;
 	}
 

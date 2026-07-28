@@ -204,6 +204,22 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.engineer_tnt_skill.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.engineerTntSkill = value))
 			.build());
+		terrainCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.engineer_fluid_skills"),
+			config.engineerFluidSkills
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.engineer_fluid_skills.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.engineerFluidSkills = value))
+			.build());
+		terrainCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.engineer_ignition_skill"),
+			config.engineerIgnitionSkill
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.engineer_ignition_skill.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.engineerIgnitionSkill = value))
+			.build());
 		ConfigCategory armedCategory = builder.getOrCreateCategory(
 			Component.translatable("mobsthinknow.config.category.armed")
 		);
