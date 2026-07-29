@@ -23,6 +23,7 @@ import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.pathfinder.PathfindingContext;
 import net.minecraft.world.phys.Vec3;
@@ -301,6 +302,101 @@ public final class ZombieEnvironmentalTacticsGameTests implements CustomTestMeth
 				helper.assertTrue(zombie.getMainHandItem().is(Items.BUCKET), "The carrier recovered exposed water during daylight.");
 				ZombieSunlightRules.forceExposureForTesting(zombie, false);
 				helper.succeed();
+			}
+		});
+	}
+
+	@GameTest(maxTicks = 180, skyAccess = true, padding = 10)
+	public void elevatedZombieDescendsTwoBlocksIntoAdjacentShade(final GameTestHelper helper) {
+		// 还原截图里的高度关系：僵尸脚下平台比洞内地面高两格，中间各用一级台阶过渡。
+		for (int x = 1; x <= 8; x++) {
+			for (int z = 1; z <= 5; z++) {
+				for (int y = 0; y <= 6; y++) {
+					helper.setBlock(new BlockPos(x, y, z), Blocks.AIR);
+				}
+			}
+		}
+		for (int z = 1; z <= 5; z++) {
+			for (int x = 1; x <= 2; x++) {
+				helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+				helper.setBlock(new BlockPos(x, 2, z), Blocks.STONE);
+			}
+			helper.setBlock(new BlockPos(3, 0, z), Blocks.STONE);
+			helper.setBlock(new BlockPos(3, 1, z), Blocks.STONE);
+			for (int x = 4; x <= 8; x++) {
+				helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+			}
+		}
+		// 先在洞口侧面降到洞内同层，再水平进入严格两格高的入口，避免把碰撞问题混进搜索回归。
+		helper.setBlock(new BlockPos(3, 1, 4), Blocks.AIR);
+		for (int z = 1; z <= 5; z++) {
+			helper.setBlock(new BlockPos(4, 3, z), Blocks.STONE);
+		}
+
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 3, 3);
+		zombie.setNoAi(true);
+		zombie.setInvulnerable(true);
+		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+
+		int[] elapsed = {0};
+		int[] startingFeetY = {Integer.MAX_VALUE};
+		boolean[] initialized = {false};
+		// 单一 tick 状态机既等待天空光照提交，也避免在 GameTest 正迭代任务表时再注册回调。
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			if (!initialized[0]) {
+				if (elapsed[0] < 3) {
+					return;
+				}
+				zombie.setNoAi(false);
+				zombie.setOnGround(true);
+				zombie.setItemSlot(EquipmentSlot.HEAD, ItemStack.EMPTY);
+				ZombieSunlightRules.forceExposureForTesting(zombie, true);
+				// 相对出生点偏移 (2, -2, 1)，不在旧实现的 3/6/9/12 格十六方向采样点上。
+				BlockPos caveFeet = helper.absolutePos(new BlockPos(4, 1, 4));
+				startingFeetY[0] = zombie.blockPosition().getY();
+
+				helper.assertTrue(
+					ZombieTraversalRules.canStandAt(helper.getLevel(), caveFeet),
+					"The sunken cave did not provide stable support plus two clear body blocks."
+				);
+				helper.assertTrue(
+					ZombieFireSurvivalGoal.isShadeCandidate(helper.getLevel(), caveFeet),
+					"The adjacent cave mouth was not recognized as a valid shaded standing cell."
+				);
+				Path directPath = zombie.getNavigation().createPath(caveFeet, 0);
+				helper.assertTrue(
+					directPath != null && directPath.canReach(),
+					"The vanilla navigator could not reach the isolated cave target."
+				);
+				Path plannedPath = new ZombieFireSurvivalGoal(zombie, false).findShadePath(helper.getLevel());
+				helper.assertTrue(
+					plannedPath != null && plannedPath.canReach(),
+					"No reachable path was found into the adjacent lower shade."
+				);
+				helper.assertTrue(
+					plannedPath.getTarget().getY() <= startingFeetY[0] - 2,
+					"Shade planning ignored the cave floor two blocks below the zombie."
+				);
+				initialized[0] = true;
+			}
+
+			if (ZombieSunlightRules.isShaded(zombie, helper.getLevel())) {
+				helper.assertTrue(
+					zombie.blockPosition().getY() <= startingFeetY[0] - 2,
+					"The zombie reported shade without descending from the upper ledge."
+				);
+				ZombieSunlightRules.forceExposureForTesting(zombie, false);
+				helper.succeed();
+			}
+			if (elapsed[0] == 170) {
+				ZombieSunlightRules.forceExposureForTesting(zombie, false);
+				helper.fail(
+					"Elevated zombie stalled above nearby shade: position=" + zombie.position()
+						+ ", navigationTarget=" + zombie.getNavigation().getTargetPos()
+				);
 			}
 		});
 	}

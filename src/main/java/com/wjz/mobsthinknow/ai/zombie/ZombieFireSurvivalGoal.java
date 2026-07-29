@@ -4,7 +4,12 @@ import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
@@ -35,11 +40,14 @@ public final class ZombieFireSurvivalGoal extends Goal {
 	private static final int FAILED_SEARCH_RETRY_TICKS = 10;
 	private static final int SUPPORT_ALERT_INTERVAL_TICKS = 80;
 	private static final int PATH_REFRESH_TICKS = 12;
-	private static final int MAXIMUM_SHADE_PATH_CHECKS = 6;
+	private static final int SHADE_SEARCH_RADIUS = 12;
+	private static final int SHADE_SEARCH_DOWN = 6;
+	private static final int SHADE_SEARCH_UP = 3;
+	private static final int MAXIMUM_SHADE_GEOMETRY_CHECKS = 4096;
+	private static final int MAXIMUM_SHADE_CANDIDATES = 128;
 	private static final int MAXIMUM_WATER_PATH_CHECKS = 8;
 	private static final int WATER_SEARCH_RADIUS = 12;
 	private static final int SURVIVAL_WATER_MINIMUM_HOLD_TICKS = 60;
-	private static final int[] SHADE_VERTICAL_OFFSETS = {0, 1, -1, 2, -2, 3, -3};
 	private static final int[] WATER_VERTICAL_OFFSETS = {0, -1, 1, -2, 2};
 	private static final int[] ENTRY_VERTICAL_OFFSETS = {0, 1, -1};
 	private static final Direction[] HORIZONTAL_DIRECTIONS = {
@@ -48,6 +56,7 @@ public final class ZombieFireSurvivalGoal extends Goal {
 		Direction.SOUTH,
 		Direction.WEST
 	};
+	private static final List<ShadeOffset> SHADE_SEARCH_OFFSETS = createShadeSearchOffsets();
 
 	private final Zombie zombie;
 	private final Activation activation;
@@ -158,7 +167,8 @@ public final class ZombieFireSurvivalGoal extends Goal {
 			this.tickWaterMovement(level);
 		} else {
 			this.mode = EscapeMode.SHADE;
-			this.prepareShadeEscape(level, true);
+			// canUse 已经完成过一次搜索；这里复用已确认路径，避免启动阶段重复寻路。
+			this.prepareShadeEscape(level, false);
 			this.startShadeMovement();
 		}
 	}
@@ -428,6 +438,20 @@ public final class ZombieFireSurvivalGoal extends Goal {
 			this.zombie.getNavigation().stop();
 			return;
 		}
+		if (this.shadePath != null && !isShadeCandidate(level, this.shadePath.getTarget())) {
+			// 顶棚被破坏等环境变化会让旧终点重新暴露；立即丢弃，不沿失效路径继续跑。
+			this.shadePath = null;
+			this.zombie.getNavigation().stop();
+			this.nextShadeSearchAt = 0L;
+		}
+		if (this.shadePath != null && !this.zombie.getNavigation().isDone()) {
+			return;
+		}
+		if (this.shadePath != null) {
+			// 已抵达路径终点却仍被天空照到，说明动态碰撞或路径近似没有真正进入阴影，马上改选目标。
+			this.shadePath = null;
+			this.nextShadeSearchAt = 0L;
+		}
 		if (this.prepareShadeEscape(level, false)) {
 			this.startShadeMovement();
 		}
@@ -453,43 +477,69 @@ public final class ZombieFireSurvivalGoal extends Goal {
 	}
 
 	private void startShadeMovement() {
-		if (this.shadePath != null) {
-			this.zombie.getNavigation().moveTo(this.shadePath, SHADE_SPEED);
+		Path path = this.shadePath;
+		if (path != null && !this.zombie.getNavigation().moveTo(path, SHADE_SPEED)) {
+			this.shadePath = null;
+			this.nextShadeSearchAt = this.zombie.level().getGameTime() + FAILED_SEARCH_RETRY_TICKS;
 		}
 	}
 
-	private @Nullable Path findShadePath(final ServerLevel level) {
+	@Nullable Path findShadePath(final ServerLevel level) {
 		BlockPos origin = this.zombie.blockPosition();
-		int phase = this.zombie.getRandom().nextInt(16);
-		int pathChecks = 0;
-		for (int ring = 1; ring <= 4; ring++) {
-			int radius = ring * 3;
-			for (int step = 0; step < 16; step++) {
-				double angle = (phase + step) * Math.PI * 2.0 / 16.0;
-				int dx = (int)Math.round(Math.cos(angle) * radius);
-				int dz = (int)Math.round(Math.sin(angle) * radius);
-				for (int dy : SHADE_VERTICAL_OFFSETS) {
-					BlockPos candidate = origin.offset(dx, dy, dz);
-					if (!level.getChunkSource().hasChunk(
-						SectionPos.blockToSectionCoord(candidate.getX()),
-						SectionPos.blockToSectionCoord(candidate.getZ())
-					)
-						|| level.canSeeSky(candidate.above())
-						|| !ZombieTraversalRules.canStandAt(level, candidate)) {
-						continue;
-					}
+		Set<BlockPos> candidates = new LinkedHashSet<>(MAXIMUM_SHADE_CANDIDATES);
+		int geometryChecks = 0;
+		for (ShadeOffset offset : SHADE_SEARCH_OFFSETS) {
+			if (geometryChecks++ >= MAXIMUM_SHADE_GEOMETRY_CHECKS
+				|| candidates.size() >= MAXIMUM_SHADE_CANDIDATES) {
+				break;
+			}
 
-					Path path = this.zombie.getNavigation().createPath(candidate, 0);
-					if (path != null && path.canReach()) {
-						return path;
-					}
-					if (++pathChecks >= MAXIMUM_SHADE_PATH_CHECKS) {
-						return null;
+			BlockPos candidate = origin.offset(offset.x(), offset.y(), offset.z());
+			if (!level.getChunkSource().hasChunk(
+				SectionPos.blockToSectionCoord(candidate.getX()),
+				SectionPos.blockToSectionCoord(candidate.getZ())
+			)
+				|| !isShadeCandidate(level, candidate)) {
+				continue;
+			}
+			candidates.add(candidate.immutable());
+		}
+
+		// 原版 PathFinder 在一次搜索中同时考虑全部阴影终点，找到最近的可达目标；不再为前六个
+		// 随机候选各跑一次 A*，也不会因几个不可达凹坑提前错过紧邻洞口。
+		Path path = candidates.isEmpty() ? null : this.zombie.getNavigation().createPath(candidates, 0);
+		return path != null && path.canReach() ? path : null;
+	}
+
+	static boolean isShadeCandidate(final ServerLevel level, final BlockPos feet) {
+		// canStandAt 已同时要求脚下真实承重，且 feet / feet.above() 两格无碰撞、无流体。
+		return !level.canSeeSky(feet.above()) && ZombieTraversalRules.canStandAt(level, feet);
+	}
+
+	private static List<ShadeOffset> createShadeSearchOffsets() {
+		List<ShadeOffset> offsets = new ArrayList<>();
+		for (int y = -SHADE_SEARCH_DOWN; y <= SHADE_SEARCH_UP; y++) {
+			for (int z = -SHADE_SEARCH_RADIUS; z <= SHADE_SEARCH_RADIUS; z++) {
+				for (int x = -SHADE_SEARCH_RADIUS; x <= SHADE_SEARCH_RADIUS; x++) {
+					int horizontalSquared = x * x + z * z;
+					if (horizontalSquared <= SHADE_SEARCH_RADIUS * SHADE_SEARCH_RADIUS) {
+						offsets.add(new ShadeOffset(
+							x,
+							y,
+							z,
+							horizontalSquared + y * y * 2
+						));
 					}
 				}
 			}
 		}
-		return null;
+		offsets.sort(
+			Comparator.comparingInt(ShadeOffset::travelScore)
+				.thenComparingInt(offset -> Math.abs(offset.y()))
+				.thenComparingInt(ShadeOffset::x)
+				.thenComparingInt(ShadeOffset::z)
+		);
+		return List.copyOf(offsets);
 	}
 
 	private static BlockPos feetPosition(final Zombie zombie) {
@@ -514,5 +564,8 @@ public final class ZombieFireSurvivalGoal extends Goal {
 	}
 
 	private record WaterEscapePlan(BlockPos water, BlockPos entry, @Nullable Path path) {
+	}
+
+	private record ShadeOffset(int x, int y, int z, int travelScore) {
 	}
 }
