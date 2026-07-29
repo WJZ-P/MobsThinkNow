@@ -1,16 +1,16 @@
 # 《怪物不再愚蠢 / Mobs Think Now》技术架构
 
-> 当前状态：M1“僵尸小队首领”首版已经实现。目标版本为 Minecraft Java
+> 当前状态：普通僵尸战术、普通骷髅远程战术与跨物种混编小队已经实现。目标版本为 Minecraft Java
 > 26.1.2、Fabric Loader 0.19.3、Fabric API 0.155.2+26.1.2、Java 25。
 
 ## 1. 首版边界
 
-- 只改造原版普通僵尸 `minecraft:zombie`；
-- 服务端权威，不增加客户端协议、模型或资源；
+- 只改造原版普通僵尸 `minecraft:zombie` 与普通骷髅 `minecraft:skeleton`；
+- 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩等姿态；
 - 不提高生成量；个体速度、最大生命、伤害与追踪距离围绕随难度变化的均值随机浮动；
 - 复用原版视线、GoalSelector、导航、近战距离和命中判定；
 - 世界对象只在服务器主线程访问，不把实体和导航器交给工作线程；
-- 尸壳、溺尸、僵尸村民和其他 Mod 实体暂不注入。
+- 尸壳、溺尸、僵尸村民、骷髅变种和其他 Mod 实体暂不注入。
 
 ## 2. 总体结构
 
@@ -92,6 +92,13 @@ flowchart TD
 com.wjz.mobsthinknow
 ├─ MobsThinkNow                         Fabric 初始化与世界事件注册
 ├─ ai/utility                           通用效用选择器
+├─ ai/skeleton
+│  ├─ SkeletonIntelligence              持久智力 1～10 与名称标记
+│  ├─ SmartSkeletonBowAttackGoal        距离分带、持弓拉扯、闪箭与掩体循环
+│  ├─ SkeletonEmergencyDisengageGoal    对任意当前目标的高优先级全速脱离
+│  ├─ SkeletonCrossbowLoadout            难度/IQ 弩手生成与真实爆炸烟花数据
+│  ├─ SmartSkeletonCrossbowAttackGoal    装填、蓄势、侧移、射击状态机
+│  └─ SkeletonSquadOrders               混编小队集结/部署命令适配
 ├─ ai/zombie
 │  ├─ SmartZombieAttackGoal             原版 Goal 生命周期与武器命中边界
 │  ├─ ReactiveRetreatGoal               低血/单次重伤撤退与限时重返战斗
@@ -127,21 +134,34 @@ com.wjz.mobsthinknow
 │  ├─ ZombieShieldCombat                举盾接近、随机守候、延迟反击与放盾收招
 │  ├─ SmartZombieMetrics                运行指标
 │  └─ squad
-│     ├─ ZombieSquadCoordinator         组队、黑板、状态机与命令
+│     ├─ ZombieSquadCoordinator         僵尸—骷髅混编、黑板、状态机与命令
 │     ├─ SquadLeaderElection            确定性首领选举
 │     ├─ SquadRolePlanner                智力到战术复杂度的映射 + 兵种职位偏好
 │     ├─ SquadTheatrics                 职业名牌、首领光环与会议声画表现层
 │     ├─ WeaponClass                    主手武器的战术分类
 │     ├─ UtilityClass                   水/岩浆战场工具分类
-│     └─ SquadDirective                 单只僵尸收到的只读命令
+│     └─ SquadDirective                 单个混编成员收到的只读命令
 ├─ command/MtnCommands                  status、reload、全兵种阵型与指定兵种生成
 ├─ command/ZombieShowcaseSpawner        安全落点检查、确定兵种装备与命令生成事务
 ├─ config                               JSON 配置、校验和热重载
-├─ mixin/ZombieMixin                    Goal 替换与智力存档注入
-└─ mixin/client                         僵尸盾牌 BLOCK 与食物抬手咀嚼动画仲裁
+├─ mixin/ZombieMixin                    僵尸 Goal 替换与智力存档注入
+├─ mixin/AbstractSkeletonMixin          骷髅 Goal、智力、负载与混编心跳注入
+└─ mixin/client                         盾牌/进食/举矛与骷髅双手弩姿态仲裁
 ```
 
-## 2.1 工程兵技能生命周期
+## 2.1 骷髅远程战术与混编边界
+
+- 弓与弩共用智力化偏好射程；近距离 `KITE` 始终保持头、身体和远程武器朝向目标，
+  全速脱离则放下武器、面向路径正向奔跑，两种状态互不混淆；
+- `SkeletonEmergencyDisengageGoal` 只读取当前 `LivingEntity` 目标，不按玩家/铁傀儡分类，
+  因而所有实际仇恨目标服从同一近身风险判断；
+- 弩使用物品组件中的真实 `CHARGED_PROJECTILES` 状态，爆炸烟花是有限库存。小于六格时
+  保留已装填弹药并优先拉开，烟花耗尽后 `Monster#getProjectile` 自然回落到普通箭；
+- 混编协调器仍按“相同目标 + 空间格”分桶。骷髅提交与僵尸相同的 O(1) 心跳，参与统一
+  选举和换届，但非首领骷髅强制使用 `RANGED` 角色及智力化射击站位；
+- 同队僵尸/骷髅的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
+
+## 2.2 工程兵技能生命周期
 
 “会搭方块”是高智力僵尸的通用地形能力；“工程兵”则是少量个体的持久职业。普通自然候选
 必须成年、双手为空、智力达到 `terrainMinimumIntelligence` 且不是持矛空袭；
@@ -323,6 +343,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 |---|---:|---|
 | `enabled` | `true` | 总开关 |
 | `zombieAiEnabled` | `true` | 僵尸 AI 开关 |
+| `skeletonAiEnabled` | `true` | 普通骷髅智力、远程走位、掩体和脱离总开关 |
+| `skeletonEmergencyDisengage` | `true` | 任意当前目标贴脸时放下远程武器并全速脱离 |
+| `skeletonCrossbows` | `true` | 自然生成普通骷髅是否可成为弩手 |
+| `skeletonCrossbowChance` | `0.18` | 弩手基础概率，再按难度与个体智力缩放 |
+| `skeletonFireworkCrossbowChance` | `0.25` | 智力 7～10 弩手携带有限爆炸烟花的二次基础概率 |
+| `skeletonPreferredRange` | `10.0` | 骷髅基础偏好射程，再按智力缩放 |
 | `packSurrounding` | `true` | 小队系统开关 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
