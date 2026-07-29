@@ -4,10 +4,12 @@ import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal.CoverPhase;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -62,6 +64,12 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		helper.assertTrue(goal.canUse(), "A player three blocks away did not trigger emergency disengage.");
 		goal.start();
 		helper.assertTrue(!skeleton.isUsingItem(), "Emergency disengage did not cancel the current bow draw.");
+		skeleton.setOnGround(true);
+		goal.tick();
+		helper.assertTrue(
+			isFacingAwayFrom(skeleton, player),
+			"Full escape did not turn the skeleton's head and body toward its escape route."
+		);
 		helper.assertTrue(goal.canContinueToUse(), "The disengage ended before reaching its safe threshold.");
 		helper.assertTrue(
 			SmartSkeletonMetrics.snapshot().emergencyDisengages() > disengagesBefore,
@@ -76,21 +84,30 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 	}
 
 	@GameTest
-	public void closeTargetImmediatelySelectsRetreatInsteadOfFaceTanking(final GameTestHelper helper) {
+	public void closeNonPlayerSelectsTargetFacingKiteInsteadOfBackwardsAiming(final GameTestHelper helper) {
 		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 2, 2, 2);
 		Villager target = helper.spawn(EntityType.VILLAGER, 4, 2, 2);
 		skeleton.setNoAi(true);
 		target.setNoAi(true);
 		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
 		skeleton.setTarget(target);
+		setFacingDirectlyAwayFrom(skeleton, target);
+		skeleton.startUsingItem(InteractionHand.MAIN_HAND);
 
 		SmartSkeletonBowAttackGoal goal = new SmartSkeletonBowAttackGoal(skeleton, 1.0, 40, 15.0F);
 		helper.assertTrue(goal.canUse(), "A bow skeleton with a live target could not start its ranged goal.");
 		goal.start();
 		goal.tick();
 		helper.assertTrue(
-			goal.movementMode() == MovementMode.RETREAT,
-			"A target two blocks away did not immediately select the retreat band."
+			goal.movementMode() == MovementMode.KITE,
+			"A target two blocks away did not immediately select the bow-combat kite band."
+		);
+		skeleton.getMoveControl().tick();
+		skeleton.getLookControl().tick();
+		helper.assertTrue(skeleton.isUsingItem(), "Kiting incorrectly lowered the bow like a full escape.");
+		helper.assertTrue(
+			isHeadAndBodyFacing(skeleton, target),
+			"Kiting left the skeleton's head, body, or bow facing away from its target."
 		);
 		goal.stop();
 		helper.succeed();
@@ -178,6 +195,7 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		helper.assertTrue(skeleton.isUsingItem(), "The skeleton never drew its bow while fully hidden.");
 
 		long coverShotsBefore = SmartSkeletonMetrics.snapshot().coverShots();
+		AtomicBoolean shotObserved = new AtomicBoolean();
 		helper.onEachTick(() -> {
 			SkeletonCoverPlanner.CoverPlan activePlan = goal.coverPlan();
 			helper.assertTrue(activePlan != null, "The cover plan ended before its peek shot.");
@@ -188,11 +206,18 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 			skeleton.getSensing().tick();
 			goal.tick();
 
-			if (SmartSkeletonMetrics.snapshot().coverShots() > coverShotsBefore) {
+			if (!shotObserved.get() && SmartSkeletonMetrics.snapshot().coverShots() > coverShotsBefore) {
 				helper.assertTrue(
-					goal.coverPhase() == CoverPhase.RETURNING_TO_COVER,
-					"The skeleton fired from the peek cell without immediately starting its withdrawal."
+					goal.coverPhase() == CoverPhase.POST_SHOT_FACING,
+					"The peek shot did not retain a short target-facing visual recovery phase."
 				);
+				helper.assertTrue(
+					isHeadAndBodyFacing(skeleton, target),
+					"The skeleton turned toward cover in the same tick that its arrow left the bow."
+				);
+				shotObserved.set(true);
+			}
+			if (shotObserved.get() && goal.coverPhase() == CoverPhase.RETURNING_TO_COVER) {
 				goal.stop();
 				helper.succeed();
 			}
@@ -207,6 +232,8 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		target.setNoAi(true);
 		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
 		skeleton.setTarget(target);
+		setFacingDirectlyAwayFrom(skeleton, target);
+		skeleton.startUsingItem(InteractionHand.MAIN_HAND);
 
 		Vec3 center = skeleton.getBoundingBox().getCenter();
 		Arrow arrow = new Arrow(
@@ -230,6 +257,13 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		helper.assertTrue(
 			goal.movementMode() == MovementMode.DODGE,
 			"An arrow crossing the skeleton center within eight ticks did not start a dodge burst."
+		);
+		skeleton.getMoveControl().tick();
+		skeleton.getLookControl().tick();
+		helper.assertTrue(skeleton.isUsingItem(), "Arrow dodging incorrectly lowered the combatant's bow.");
+		helper.assertTrue(
+			isHeadAndBodyFacing(skeleton, target),
+			"Arrow dodging did not keep the skeleton's head and body locked on its target."
 		);
 		goal.stop();
 		helper.succeed();
@@ -269,5 +303,32 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		// 单格宽、两格高：正后方完全遮住骷髅眼睛，相邻南北格则能从墙角获得射界。
 		helper.setBlock(new BlockPos(8, 2, 3), Blocks.STONE);
 		helper.setBlock(new BlockPos(8, 3, 3), Blocks.STONE);
+	}
+
+	private static void setFacingDirectlyAwayFrom(final Skeleton skeleton, final Villager target) {
+		float targetYaw = yawFromTo(skeleton.position(), target.position());
+		float awayYaw = targetYaw + 180.0F;
+		skeleton.setYRot(awayYaw);
+		skeleton.setYBodyRot(awayYaw);
+		skeleton.setYHeadRot(awayYaw);
+	}
+
+	private static boolean isHeadAndBodyFacing(final Skeleton skeleton, final Villager target) {
+		float expected = yawFromTo(skeleton.position(), target.position());
+		return Math.abs(Mth.wrapDegrees(skeleton.getYRot() - expected)) <= 1.0F
+			&& Math.abs(Mth.wrapDegrees(skeleton.yBodyRot - expected)) <= 1.0F
+			&& Math.abs(Mth.wrapDegrees(skeleton.getYHeadRot() - expected)) <= 1.0F;
+	}
+
+	private static boolean isFacingAwayFrom(final Skeleton skeleton, final Player threat) {
+		Vec3 away = skeleton.position().subtract(threat.position()).multiply(1.0, 0.0, 1.0).normalize();
+		Vec3 facing = skeleton.getLookAngle().multiply(1.0, 0.0, 1.0).normalize();
+		return away.dot(facing) > 0.5
+			&& Math.abs(Mth.wrapDegrees(skeleton.yBodyRot - skeleton.getYRot())) <= 1.0F
+			&& Math.abs(Mth.wrapDegrees(skeleton.getYHeadRot() - skeleton.getYRot())) <= 1.0F;
+	}
+
+	private static float yawFromTo(final Vec3 origin, final Vec3 target) {
+		return (float)(Mth.atan2(target.z - origin.z, target.x - origin.x) * 180.0F / Math.PI) - 90.0F;
 	}
 }

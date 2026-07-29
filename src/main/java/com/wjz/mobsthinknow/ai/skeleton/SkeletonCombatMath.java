@@ -30,9 +30,9 @@ public final class SkeletonCombatMath {
 		}
 
 		double preferred = validPreferredRange(preferredRange);
-		double retreatRange = preferred * 0.60;
-		if (Double.isFinite(distanceSquared) && distanceSquared < retreatRange * retreatRange) {
-			return MovementMode.RETREAT;
+		double kiteRange = preferred * 0.60;
+		if (Double.isFinite(distanceSquared) && distanceSquared < kiteRange * kiteRange) {
+			return MovementMode.KITE;
 		}
 
 		double pursuitRange = preferred * 1.35;
@@ -167,6 +167,34 @@ public final class SkeletonCombatMath {
 		};
 	}
 
+	/**
+	 * 把一个水平世界方向换算为指定身体 yaw 下的前后/左右输入。用于骷髅保持瞄准时侧移到
+	 * 相邻探头格，避免把导航朝向和射击朝向重新耦合起来。
+	 */
+	static StrafeInput targetFacingStrafeInput(
+		final float bodyYaw,
+		final double worldDirectionX,
+		final double worldDirectionZ
+	) {
+		double length = Math.sqrt(worldDirectionX * worldDirectionX + worldDirectionZ * worldDirectionZ);
+		if (!Double.isFinite(length) || length < 1.0E-6 || !Float.isFinite(bodyYaw)) {
+			return StrafeInput.ZERO;
+		}
+
+		double worldX = worldDirectionX / length;
+		double worldZ = worldDirectionZ / length;
+		double yaw = bodyYaw * Math.PI / 180.0;
+		double sin = Math.sin(yaw);
+		double cos = Math.cos(yaw);
+		double forward = -worldX * sin + worldZ * cos;
+		double sideways = worldX * cos + worldZ * sin;
+		return new StrafeInput(cleanUnitComponent(forward), cleanUnitComponent(sideways));
+	}
+
+	private static float cleanUnitComponent(final double value) {
+		return Math.abs(value) < 1.0E-6 ? 0.0F : (float)value;
+	}
+
 	private static double validPreferredRange(final double preferredRange) {
 		return Double.isFinite(preferredRange) && preferredRange > 0.0
 			? preferredRange
@@ -180,11 +208,16 @@ public final class SkeletonCombatMath {
 	public enum MovementMode {
 		APPROACH,
 		STRAFE,
-		RETREAT,
+		/** 持弓面对目标后退/横移；不等同于放下弓、转身正向奔跑的独立逃生 Goal。 */
+		KITE,
 		DODGE
 	}
 
 	public record HorizontalLead(double x, double z) {
 		public static final HorizontalLead ZERO = new HorizontalLead(0.0, 0.0);
+	}
+
+	record StrafeInput(float forward, float sideways) {
+		static final StrafeInput ZERO = new StrafeInput(0.0F, 0.0F);
 	}
 }

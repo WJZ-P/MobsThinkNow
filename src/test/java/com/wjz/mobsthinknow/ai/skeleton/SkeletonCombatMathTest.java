@@ -6,12 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.HorizontalLead;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.StrafeInput;
 import org.junit.jupiter.api.Test;
 
 class SkeletonCombatMathTest {
 	@Test
-	void distanceBandsPreferEscapeThenStrafeThenApproach() {
-		assertEquals(MovementMode.RETREAT, SkeletonCombatMath.chooseMovement(5.9 * 5.9, true, 10.0, false));
+	void distanceBandsPreferKiteThenStrafeThenApproach() {
+		assertEquals(MovementMode.KITE, SkeletonCombatMath.chooseMovement(5.9 * 5.9, true, 10.0, false));
 		assertEquals(MovementMode.STRAFE, SkeletonCombatMath.chooseMovement(6.0 * 6.0, true, 10.0, false));
 		assertEquals(MovementMode.STRAFE, SkeletonCombatMath.chooseMovement(13.5 * 13.5, true, 10.0, false));
 		assertEquals(MovementMode.APPROACH, SkeletonCombatMath.chooseMovement(13.6 * 13.6, true, 10.0, false));
@@ -102,5 +103,13 @@ class SkeletonCombatMathTest {
 			SkeletonCombatMath.difficultyPredictionFactor(1)
 				< SkeletonCombatMath.difficultyPredictionFactor(2)
 		);
+	}
+
+	@Test
+	void worldDirectionConvertsToLocalStrafeWithoutTurningTheBody() {
+		assertEquals(new StrafeInput(1.0F, 0.0F), SkeletonCombatMath.targetFacingStrafeInput(0.0F, 0.0, 1.0));
+		assertEquals(new StrafeInput(0.0F, 1.0F), SkeletonCombatMath.targetFacingStrafeInput(0.0F, 1.0, 0.0));
+		assertEquals(new StrafeInput(0.0F, -1.0F), SkeletonCombatMath.targetFacingStrafeInput(90.0F, 0.0, -1.0));
+		assertEquals(StrafeInput.ZERO, SkeletonCombatMath.targetFacingStrafeInput(0.0F, 0.0, 0.0));
 	}
 }

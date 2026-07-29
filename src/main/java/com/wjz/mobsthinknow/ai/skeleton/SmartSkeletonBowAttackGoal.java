@@ -9,7 +9,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
-import net.minecraft.world.entity.ai.util.DefaultRandomPos;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.item.BowItem;
@@ -22,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  * 普通骷髅的远程战斗状态机。
  *
  * <p>关闭总开关或骷髅开关时，整个生命周期直接委托给原版
- * {@link RangedBowAttackGoal}；开启时则在同一 Goal 内完成接敌、持续侧移、近身脱离、
+ * {@link RangedBowAttackGoal}；开启时则在同一 Goal 内完成接敌、持续侧移、持弓拉扯、
  * 来箭闪避、掩体探头和拉弓射击。这样配置热切换不会让一只骷髅同时运行两个 MOVE/LOOK Goal。</p>
  */
 public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<AbstractSkeleton> {
@@ -31,14 +30,14 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	private static final int PROJECTILE_SCAN_INTERVAL_TICKS = 3;
 	private static final int MINIMUM_DODGE_TICKS = 7;
 	private static final int MAXIMUM_DODGE_TICKS = 10;
-	private static final double RETREAT_SPEED_MODIFIER = 1.25;
 	private static final double COVER_PATH_SPEED_MODIFIER = 1.10;
-	private static final double PEEK_PATH_SPEED_MODIFIER = 1.15;
+	private static final double COVER_RETURN_SPEED_MODIFIER = 1.15;
 	private static final double COVER_POSITION_REACHED_DISTANCE_SQUARED = 0.49;
 	private static final int COVER_TRAVEL_TIMEOUT_TICKS = 60;
 	private static final int PEEK_TRAVEL_TIMEOUT_TICKS = 24;
 	private static final int PEEK_STABILIZE_TICKS = 2;
 	private static final int PEEK_TIMEOUT_TICKS = 12;
+	private static final int POST_SHOT_FACING_TICKS = 2;
 	private static final int RETURN_TO_COVER_TIMEOUT_TICKS = 30;
 	private static final int MAXIMUM_COVER_PLAN_TICKS = 260;
 
@@ -48,7 +47,6 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	private int attackTime;
 	private int seeTime;
 	private int approachRepathCooldown;
-	private int retreatRepathCooldown;
 	private int projectileScanCooldown;
 	private int dodgeTicks;
 	private int dodgeDirection = 1;
@@ -112,7 +110,6 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.attackTime = this.skeleton.getRandom().nextInt(9);
 		this.seeTime = 0;
 		this.approachRepathCooldown = 0;
-		this.retreatRepathCooldown = 0;
 		this.projectileScanCooldown = 0;
 		this.dodgeTicks = 0;
 		this.dodgeDirection = randomDirection();
@@ -164,15 +161,15 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		if (this.coverPhase != CoverPhase.INACTIVE
 			&& (!config.skeletonCoverPeeking
 				|| selected == MovementMode.DODGE
-				|| selected == MovementMode.RETREAT)) {
-			// 闪箭和近身脱离永远高于掩体循环；取消蓄力后立即交回普通移动状态机。
+				|| selected == MovementMode.KITE)) {
+			// 闪箭和近身拉扯永远高于掩体循环；取消蓄力后立即交回普通移动状态机。
 			this.clearCoverState(true);
 		}
 
 		if (this.coverPhase == CoverPhase.INACTIVE
 			&& config.skeletonCoverPeeking
 			&& selected != MovementMode.DODGE
-			&& selected != MovementMode.RETREAT
+			&& selected != MovementMode.KITE
 			&& SkeletonCoverPlanner.isUsefulRange(distanceSquared, config.skeletonPreferredRange)
 			&& !this.skeleton.isUsingItem()) {
 			this.tryStartCoverPlan(target, config.skeletonPreferredRange);
@@ -187,7 +184,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		switch (selected) {
 			case APPROACH -> approach(target);
 			case STRAFE -> strafe(target, distanceSquared, config.skeletonPreferredRange);
-			case RETREAT -> retreat(target);
+			case KITE -> kite(target);
 			case DODGE -> dodge(target, distanceSquared, config.skeletonPreferredRange);
 		}
 
@@ -209,7 +206,6 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	}
 
 	private void approach(final LivingEntity target) {
-		this.retreatRepathCooldown = 0;
 		if (this.approachRepathCooldown-- <= 0) {
 			this.approachRepathCooldown = 8;
 			this.skeleton.getNavigation().moveTo(target, this.speedModifier);
@@ -223,7 +219,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	) {
 		this.skeleton.getNavigation().stop();
 		this.approachRepathCooldown = 0;
-		this.retreatRepathCooldown = 0;
+		this.faceCombatTarget(target);
 		if (--this.strafeSwitchTicks <= 0) {
 			if (this.skeleton.getRandom().nextFloat() < 0.45F) {
 				this.strafeDirection = -this.strafeDirection;
@@ -240,27 +236,15 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.skeleton.getMoveControl().strafe(forward, lateral);
 	}
 
-	private void retreat(final LivingEntity target) {
+	/**
+	 * 拉扯仍属于弓战：正面锁定目标、保持拉弓并用后退/横移输入拉开距离。
+	 * 真正放下弓转身奔跑只由高优先级 {@link SkeletonEmergencyDisengageGoal} 执行。
+	 */
+	private void kite(final LivingEntity target) {
+		this.skeleton.getNavigation().stop();
 		this.approachRepathCooldown = 0;
-		if (this.retreatRepathCooldown-- <= 0) {
-			this.retreatRepathCooldown = 7;
-			Vec3 candidate = DefaultRandomPos.getPosAway(this.skeleton, 9, 4, target.position());
-			if (candidate != null
-				&& candidate.distanceToSqr(target.position()) > this.skeleton.distanceToSqr(target) + 1.0) {
-				this.skeleton.getNavigation().moveTo(
-					candidate.x,
-					candidate.y,
-					candidate.z,
-					RETREAT_SPEED_MODIFIER
-				);
-			} else {
-				this.skeleton.getNavigation().stop();
-			}
-		}
-
-		if (this.skeleton.getNavigation().isDone()) {
-			this.skeleton.getMoveControl().strafe(-0.85F, 0.45F * this.strafeDirection);
-		}
+		this.faceCombatTarget(target);
+		this.skeleton.getMoveControl().strafe(-0.90F, 0.45F * this.strafeDirection);
 	}
 
 	private void dodge(
@@ -270,16 +254,18 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	) {
 		this.skeleton.getNavigation().stop();
 		this.approachRepathCooldown = 0;
-		this.retreatRepathCooldown = 0;
+		this.faceCombatTarget(target);
 		double preferredRange = validPreferredRange(configuredPreferredRange);
 		float backwards = distanceSquared < preferredRange * preferredRange * 0.64 ? -0.35F : 0.0F;
 		this.skeleton.getMoveControl().strafe(backwards, this.dodgeDirection);
-		this.skeleton.getLookControl().setLookAt(target, 30.0F, 30.0F);
 		this.dodgeTicks--;
 	}
 
 	private void tickBow(final LivingEntity target, final boolean hasLineOfSight) {
 		if (this.skeleton.isUsingItem()) {
+			if (hasLineOfSight) {
+				this.faceCombatTarget(target);
+			}
 			if (!hasLineOfSight && this.seeTime < -LOST_SIGHT_CANCEL_TICKS) {
 				this.skeleton.stopUsingItem();
 				this.attackTime = Math.max(this.attackTime, 5);
@@ -340,8 +326,9 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		return switch (this.coverPhase) {
 			case MOVING_TO_COVER -> this.tickMovingToCover(target, plan, preferredRange);
 			case DRAWING_IN_COVER -> this.tickDrawingInCover(target, plan, hasLineOfSight);
-			case MOVING_TO_PEEK -> this.tickMovingToPeek(plan);
+			case MOVING_TO_PEEK -> this.tickMovingToPeek(target, plan);
 			case PEEKING -> this.tickPeeking(target, plan, hasLineOfSight);
+			case POST_SHOT_FACING -> this.tickPostShotFacing(target, plan);
 			case RETURNING_TO_COVER -> this.tickReturningToCover(target, plan, preferredRange);
 			case INACTIVE -> false;
 		};
@@ -376,6 +363,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		final boolean hasLineOfSight
 	) {
 		this.skeleton.getNavigation().stop();
+		this.faceCombatTarget(target);
 		this.coverVisibleTicks = hasLineOfSight ? this.coverVisibleTicks + 1 : 0;
 		if (this.coverVisibleTicks >= 3) {
 			// 目标已经绕过墙角，连续三 tick 暴露说明这个藏身格失效，不继续原地蓄力。
@@ -386,7 +374,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		if (this.skeleton.isUsingItem()) {
 			if (this.skeleton.getTicksUsingItem() >= BOW_DRAW_TICKS) {
 				if (!SkeletonCoverPlanner.hasClearShotFrom(this.skeleton, target, plan.peek())
-					|| !this.beginMoveToPeek(plan)) {
+					|| !this.beginMoveToPeek()) {
 					this.clearCoverState(true);
 					return false;
 				}
@@ -401,7 +389,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		return true;
 	}
 
-	private boolean tickMovingToPeek(final CoverPlan plan) {
+	private boolean tickMovingToPeek(final LivingEntity target, final CoverPlan plan) {
 		if (!this.skeleton.isUsingItem()) {
 			this.clearCoverState(false);
 			return false;
@@ -411,11 +399,15 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			this.enterCoverPhase(CoverPhase.PEEKING);
 			return true;
 		}
-		if (this.coverPhaseTicks > PEEK_TRAVEL_TIMEOUT_TICKS
-			|| this.skeleton.getNavigation().isDone()) {
+		if (this.coverPhaseTicks > PEEK_TRAVEL_TIMEOUT_TICKS) {
 			this.coverShotsRemaining = 0;
 			return this.beginReturnToCover(plan);
 		}
+
+		// 藏身格与探头格必定相邻；这里不让导航 MoveControl 把身体扭向侧移方向，
+		// 而是按目标朝向换算本地前/侧输入，让弓、头和身体始终与箭的方向一致。
+		this.faceCombatTarget(target);
+		this.strafeToward(plan.peek());
 		return true;
 	}
 
@@ -425,6 +417,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		final boolean hasLineOfSight
 	) {
 		this.skeleton.getNavigation().stop();
+		this.faceCombatTarget(target);
 		if (!this.skeleton.isUsingItem()) {
 			this.clearCoverState(false);
 			return false;
@@ -435,12 +428,24 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			&& this.skeleton.getTicksUsingItem() >= BOW_DRAW_TICKS) {
 			this.fireArrow(target, this.skeleton.getTicksUsingItem(), true);
 			this.coverShotsRemaining--;
-			return this.beginReturnToCover(plan);
+			// 保留两个 tick 的正面射后姿态，再转身缩回；避免同一服务端 tick 内导航先把模型扭向掩体，
+			// 造成玩家看到“箭从背后反向飞出”。
+			this.enterCoverPhase(CoverPhase.POST_SHOT_FACING);
+			return true;
 		}
 
 		if (this.coverPhaseTicks > PEEK_TIMEOUT_TICKS) {
 			// 墙角仍无视线时不傻站暴露；放弃这一箭并先缩回掩体。
 			this.coverShotsRemaining = 0;
+			return this.beginReturnToCover(plan);
+		}
+		return true;
+	}
+
+	private boolean tickPostShotFacing(final LivingEntity target, final CoverPlan plan) {
+		this.skeleton.getNavigation().stop();
+		this.faceCombatTarget(target);
+		if (this.coverPhaseTicks >= POST_SHOT_FACING_TICKS) {
 			return this.beginReturnToCover(plan);
 		}
 		return true;
@@ -468,12 +473,10 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		return true;
 	}
 
-	private boolean beginMoveToPeek(final CoverPlan plan) {
+	private boolean beginMoveToPeek() {
 		this.enterCoverPhase(CoverPhase.MOVING_TO_PEEK);
-		if (isAt(plan.peek())) {
-			return true;
-		}
-		return this.moveTo(plan.peek(), PEEK_PATH_SPEED_MODIFIER);
+		this.skeleton.getNavigation().stop();
+		return true;
 	}
 
 	private boolean beginReturnToCover(final CoverPlan plan) {
@@ -482,7 +485,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		if (isAt(plan.hide())) {
 			return true;
 		}
-		if (this.moveTo(plan.hide(), PEEK_PATH_SPEED_MODIFIER)) {
+		if (this.moveTo(plan.hide(), COVER_RETURN_SPEED_MODIFIER)) {
 			return true;
 		}
 		this.clearCoverState(false);
@@ -514,7 +517,34 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			<= COVER_POSITION_REACHED_DISTANCE_SQUARED;
 	}
 
+	/**
+	 * 原版弓箭 Goal 在侧移时调用 Mob.lookAt，而不只给 LookControl 下命令。后者会被正在
+	 * 行走的 BodyRotationControl 限制在身体左右 75 度内，正是“模型背身、箭却反向飞出”的根因。
+	 */
+	private void faceCombatTarget(final LivingEntity target) {
+		this.skeleton.lookAt(target, 360.0F, 90.0F);
+		float yaw = this.skeleton.getYRot();
+		this.skeleton.setYBodyRot(yaw);
+		this.skeleton.setYHeadRot(yaw);
+		this.skeleton.getLookControl().setLookAt(target, 90.0F, 90.0F);
+	}
+
+	/** 把世界坐标方向转换成“身体仍面向目标”时的前后/左右输入。 */
+	private void strafeToward(final BlockPos destination) {
+		Vec3 offset = Vec3.atBottomCenterOf(destination).subtract(this.skeleton.position());
+		SkeletonCombatMath.StrafeInput input = SkeletonCombatMath.targetFacingStrafeInput(
+			this.skeleton.getYRot(),
+			offset.x,
+			offset.z
+		);
+		if (input.forward() == 0.0F && input.sideways() == 0.0F) {
+			return;
+		}
+		this.skeleton.getMoveControl().strafe(input.forward(), input.sideways());
+	}
+
 	private void fireArrow(final LivingEntity target, final int usingTicks, final boolean fromCover) {
+		this.faceCombatTarget(target);
 		this.skeleton.stopUsingItem();
 		this.skeleton.performRangedAttack(target, BowItem.getPowerForTime(usingTicks));
 		SmartSkeletonMetrics.shot();
@@ -595,8 +625,8 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			return;
 		}
 		this.movementMode = selected;
-		if (selected == MovementMode.RETREAT) {
-			SmartSkeletonMetrics.retreatStarted();
+		if (selected == MovementMode.KITE) {
+			SmartSkeletonMetrics.kiteStarted();
 		}
 	}
 
@@ -630,6 +660,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		DRAWING_IN_COVER,
 		MOVING_TO_PEEK,
 		PEEKING,
+		POST_SHOT_FACING,
 		RETURNING_TO_COVER
 	}
 }

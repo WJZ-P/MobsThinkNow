@@ -75,7 +75,7 @@ public abstract class AbstractSkeletonMixin extends Monster {
 		}
 
 		if (skeleton.isHolding(Items.BOW)) {
-			// 原版避日是优先级 2、避狼是 3、弓术是 4；贴脸脱离必须先于它们抢占 MOVE/LOOK。
+			// 原版避日是优先级 2、避狼是 3、弓术是 4；贴脸全力逃跑必须先于它们抢占 MOVE/LOOK。
 			this.goalSelector.addGoal(1, this.mobsthinknow$emergencyDisengageGoal);
 			this.goalSelector.addGoal(4, this.mobsthinknow$smartBowGoal);
 			if (!this.mobsthinknow$emergencyDisengageGoalCounted) {

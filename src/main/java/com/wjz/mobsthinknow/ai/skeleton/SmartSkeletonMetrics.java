@@ -9,7 +9,7 @@ public final class SmartSkeletonMetrics {
 	private static final AtomicLong EMERGENCY_DISENGAGES = new AtomicLong();
 	private static final AtomicLong COVER_PLANS = new AtomicLong();
 	private static final AtomicLong COVER_SHOTS = new AtomicLong();
-	private static final AtomicLong RETREATS = new AtomicLong();
+	private static final AtomicLong KITES = new AtomicLong();
 	private static final AtomicLong PROJECTILE_DODGES = new AtomicLong();
 	private static final AtomicLong SHOTS = new AtomicLong();
 	private static final AtomicLong PREDICTIVE_SHOTS = new AtomicLong();
@@ -37,8 +37,8 @@ public final class SmartSkeletonMetrics {
 		COVER_SHOTS.incrementAndGet();
 	}
 
-	public static void retreatStarted() {
-		RETREATS.incrementAndGet();
+	public static void kiteStarted() {
+		KITES.incrementAndGet();
 	}
 
 	public static void projectileDodgeStarted() {
@@ -60,7 +60,7 @@ public final class SmartSkeletonMetrics {
 			EMERGENCY_DISENGAGES.get(),
 			COVER_PLANS.get(),
 			COVER_SHOTS.get(),
-			RETREATS.get(),
+			KITES.get(),
 			PROJECTILE_DODGES.get(),
 			SHOTS.get(),
 			PREDICTIVE_SHOTS.get()
@@ -73,7 +73,7 @@ public final class SmartSkeletonMetrics {
 		long emergencyDisengages,
 		long coverPlans,
 		long coverShots,
-		long retreats,
+		long kites,
 		long projectileDodges,
 		long shots,
 		long predictiveShots

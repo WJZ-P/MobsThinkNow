@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.utility.EscapePathing;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -9,7 +10,6 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.entity.ai.util.LandRandomPos;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
@@ -203,21 +203,13 @@ public final class ReactiveRetreatGoal extends Goal {
 		}
 
 		// 原版算法会采样可站立、无寻路惩罚的陆地点，比把坐标生硬平移更少撞墙或冲下悬崖。
-		Vec3 destination = LandRandomPos.getPosAway(
+		Vec3 destination = EscapePathing.findDestinationAwayFrom(
 			this.zombie,
+			currentAttacker,
 			RETREAT_MINIMUM_DISTANCE,
 			RETREAT_MAXIMUM_DISTANCE,
-			RETREAT_VERTICAL_SEARCH,
-			currentAttacker.position()
+			RETREAT_VERTICAL_SEARCH
 		);
-		if (destination == null) {
-			// 极端地形保留严格背向的退化候选；失败后两 tick 再搜索，而不是提前结束撤退。
-			Vec3 away = horizontalUnit(
-				this.zombie.position().subtract(currentAttacker.position()),
-				currentAttacker.getLookAngle()
-			);
-			destination = this.zombie.position().add(away.scale(RETREAT_MINIMUM_DISTANCE));
-		}
 
 		boolean foundPath = this.zombie
 			.getNavigation()
@@ -225,7 +217,7 @@ public final class ReactiveRetreatGoal extends Goal {
 		this.retreatDestination = foundPath ? destination : null;
 		this.nextPathUpdateAt = now + (foundPath ? RETREAT_PATH_REFRESH_TICKS : 2L);
 		if (foundPath) {
-			this.zombie.getLookControl().setLookAt(destination.add(0.0, 1.0, 0.0));
+			EscapePathing.faceCurrentPathOrDestination(this.zombie, destination);
 		} else if (this.zombie.onGround()) {
 			SmartZombieMetrics.failedPath();
 		}
@@ -301,14 +293,4 @@ public final class ReactiveRetreatGoal extends Goal {
 		return x * x + z * z >= safeDistance * safeDistance;
 	}
 
-	private static Vec3 horizontalUnit(final Vec3 preferred, final Vec3 fallback) {
-		Vec3 horizontal = new Vec3(preferred.x, 0.0, preferred.z);
-		if (horizontal.horizontalDistanceSqr() < 1.0E-6) {
-			horizontal = new Vec3(fallback.x, 0.0, fallback.z);
-		}
-		if (horizontal.horizontalDistanceSqr() < 1.0E-6) {
-			return new Vec3(0.0, 0.0, 1.0);
-		}
-		return horizontal.normalize();
-	}
 }

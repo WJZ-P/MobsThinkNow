@@ -68,7 +68,7 @@ public final class MtnCommands {
 		MobsThinkNowConfig config = ConfigManager.get();
 		SmartZombieMetrics.Snapshot metrics = SmartZombieMetrics.snapshot();
 		SmartSkeletonMetrics.Snapshot skeletonMetrics = SmartSkeletonMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEmergencyDisengages=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonRetreats=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d"
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -99,7 +99,7 @@ public final class MtnCommands {
 				skeletonMetrics.emergencyDisengages(),
 				skeletonMetrics.coverPlans(),
 				skeletonMetrics.coverShots(),
-				skeletonMetrics.retreats(),
+				skeletonMetrics.kites(),
 				skeletonMetrics.projectileDodges(),
 				skeletonMetrics.shots(),
 				skeletonMetrics.predictiveShots()
