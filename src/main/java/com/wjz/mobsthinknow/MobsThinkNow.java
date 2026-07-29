@@ -10,6 +10,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.ZombieRetreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieShieldMemory;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceName;
+import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.command.MtnCommands;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -22,6 +23,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+import net.minecraft.world.entity.monster.Creeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,6 +71,8 @@ public final class MobsThinkNow implements ModInitializer {
 			} else if (entity instanceof AbstractSkeleton skeleton) {
 				ZombieSquadCoordinator.onMemberDying(skeleton);
 				SkeletonIntelligenceName.removeSyntheticMarker(skeleton);
+			} else if (entity instanceof Creeper creeper) {
+				CreeperIntelligenceName.removeSyntheticMarker(creeper);
 			}
 			return true;
 		});

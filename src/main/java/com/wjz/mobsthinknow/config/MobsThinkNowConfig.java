@@ -33,6 +33,12 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_SKELETON_AIM_PREDICTION_STRENGTH = 0.65;
 	public static final double DEFAULT_SKELETON_CROSSBOW_CHANCE = 0.18;
 	public static final double DEFAULT_SKELETON_FIREWORK_CROSSBOW_CHANCE = 0.25;
+	public static final double DEFAULT_CREEPER_MAXIMUM_FUSE_START_DISTANCE = 4.0;
+	public static final double MINIMUM_CREEPER_MAXIMUM_FUSE_START_DISTANCE = 3.0;
+	public static final double MAXIMUM_CREEPER_MAXIMUM_FUSE_START_DISTANCE = 5.0;
+	public static final double DEFAULT_CREEPER_FUSE_MOVEMENT_SPEED = 1.25;
+	public static final double MINIMUM_CREEPER_FUSE_MOVEMENT_SPEED = 1.0;
+	public static final double MAXIMUM_CREEPER_FUSE_MOVEMENT_SPEED = 1.5;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
@@ -53,6 +59,18 @@ public final class MobsThinkNowConfig {
 	public boolean skeletonPredictiveAim = true;
 	public double skeletonPreferredRange = DEFAULT_SKELETON_PREFERRED_RANGE;
 	public double skeletonAimPredictionStrength = DEFAULT_SKELETON_AIM_PREDICTION_STRENGTH;
+	/** 普通苦力怕使用预判截击、观察感知、绕盾和移动引信状态机。 */
+	public boolean creeperAiEnabled = true;
+	/** 中高智力个体被目标正面观察或举盾时，优先前往目标侧后方的稳定分流点。 */
+	public boolean creeperFlanking = true;
+	/** 引信鸣响后继续追向预测爆点；原版 30 tick 引信与首次嘶声保持不变。 */
+	public boolean creeperMovingFuse = true;
+	/** 高智力个体只对可被爆炸破坏的第一层软墙保留引信；同时服从 mobGriefing。 */
+	public boolean creeperWallBreaching = true;
+	/** IQ 10 普通个体的最远起爆距离；低智力按 3 格原版距离向该值插值，带电个体另加半格。 */
+	public double creeperMaximumFuseStartDistance = DEFAULT_CREEPER_MAXIMUM_FUSE_START_DISTANCE;
+	/** 移动引信的绝对寻路速度上限；智力与难度只决定个体接近该上限的程度。 */
+	public double creeperFuseMovementSpeed = DEFAULT_CREEPER_FUSE_MOVEMENT_SPEED;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public boolean squadVisualEffects = true;
@@ -225,6 +243,16 @@ public final class MobsThinkNowConfig {
 		this.skeletonAimPredictionStrength = clamp(this.skeletonAimPredictionStrength, 0.0, 1.0);
 		this.skeletonCrossbowChance = clamp(this.skeletonCrossbowChance, 0.0, 1.0);
 		this.skeletonFireworkCrossbowChance = clamp(this.skeletonFireworkCrossbowChance, 0.0, 1.0);
+		this.creeperMaximumFuseStartDistance = clamp(
+			this.creeperMaximumFuseStartDistance,
+			MINIMUM_CREEPER_MAXIMUM_FUSE_START_DISTANCE,
+			MAXIMUM_CREEPER_MAXIMUM_FUSE_START_DISTANCE
+		);
+		this.creeperFuseMovementSpeed = clamp(
+			this.creeperFuseMovementSpeed,
+			MINIMUM_CREEPER_FUSE_MOVEMENT_SPEED,
+			MAXIMUM_CREEPER_FUSE_MOVEMENT_SPEED
+		);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);
 		this.specialEquipmentDropChance = clamp(this.specialEquipmentDropChance, 0.0, 1.0);

@@ -22,6 +22,12 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.skeletonPredictiveAim);
 		assertEquals(10.0, config.skeletonPreferredRange);
 		assertEquals(0.65, config.skeletonAimPredictionStrength);
+		assertEquals(true, config.creeperAiEnabled);
+		assertEquals(true, config.creeperFlanking);
+		assertEquals(true, config.creeperMovingFuse);
+		assertEquals(true, config.creeperWallBreaching);
+		assertEquals(4.0, config.creeperMaximumFuseStartDistance);
+		assertEquals(1.25, config.creeperFuseMovementSpeed);
 	}
 
 	@Test
@@ -193,5 +199,22 @@ class MobsThinkNowConfigTest {
 		config.validate();
 		assertEquals(6.0, config.skeletonPreferredRange);
 		assertEquals(0.0, config.skeletonAimPredictionStrength);
+	}
+
+	@Test
+	void clampsCreeperThreatEnvelope() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.creeperMaximumFuseStartDistance = 99.0;
+		config.creeperFuseMovementSpeed = 9.0;
+		config.validate();
+
+		assertEquals(5.0, config.creeperMaximumFuseStartDistance);
+		assertEquals(1.5, config.creeperFuseMovementSpeed);
+
+		config.creeperMaximumFuseStartDistance = Double.NaN;
+		config.creeperFuseMovementSpeed = -1.0;
+		config.validate();
+		assertEquals(3.0, config.creeperMaximumFuseStartDistance);
+		assertEquals(1.0, config.creeperFuseMovementSpeed);
 	}
 }

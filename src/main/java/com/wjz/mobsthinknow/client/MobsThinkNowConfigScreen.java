@@ -121,6 +121,62 @@ public final class MobsThinkNowConfigScreen {
 			))
 			.build());
 
+		ConfigCategory creeperCategory = builder.getOrCreateCategory(
+			Component.translatable("mobsthinknow.config.category.creeper")
+		);
+		creeperCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.creeper_ai_enabled"),
+			config.creeperAiEnabled
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_ai_enabled.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperAiEnabled = value))
+			.build());
+		creeperCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.creeper_flanking"),
+			config.creeperFlanking
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_flanking.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperFlanking = value))
+			.build());
+		creeperCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.creeper_moving_fuse"),
+			config.creeperMovingFuse
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_moving_fuse.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperMovingFuse = value))
+			.build());
+		creeperCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.creeper_wall_breaching"),
+			config.creeperWallBreaching
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_wall_breaching.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperWallBreaching = value))
+			.build());
+		creeperCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.creeper_maximum_fuse_start_distance"),
+			(int)Math.round(config.creeperMaximumFuseStartDistance),
+			(int)MobsThinkNowConfig.MINIMUM_CREEPER_MAXIMUM_FUSE_START_DISTANCE,
+			(int)MobsThinkNowConfig.MAXIMUM_CREEPER_MAXIMUM_FUSE_START_DISTANCE
+		)
+			.setDefaultValue((int)MobsThinkNowConfig.DEFAULT_CREEPER_MAXIMUM_FUSE_START_DISTANCE)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_maximum_fuse_start_distance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperMaximumFuseStartDistance = value))
+			.build());
+		creeperCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.creeper_fuse_movement_speed"),
+			(int)Math.round(config.creeperFuseMovementSpeed * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MINIMUM_CREEPER_FUSE_MOVEMENT_SPEED * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_CREEPER_FUSE_MOVEMENT_SPEED * 100.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_CREEPER_FUSE_MOVEMENT_SPEED * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_fuse_movement_speed.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperFuseMovementSpeed = value / 100.0))
+			.build());
+
 		// Mod Menu 位于客户端；这段提示避免玩家误以为它可以直接修改远程服务器规则。
 		squadCategory.addEntry(entries.startTextDescription(
 			Component.translatable("mobsthinknow.config.server_authority_note")
