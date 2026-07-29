@@ -19,8 +19,6 @@ import java.util.Locale;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
@@ -32,9 +30,6 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
@@ -47,15 +42,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ZombieShowcaseSpawner {
 	public static final int MAX_BATCH_SIZE = 100;
-	private static final double GRID_SPACING = 3.0;
-	private static final double FORMATION_FRONT_DISTANCE = 5.0;
-	private static final double SINGLE_SPAWN_DISTANCE = 4.0;
-	private static final int[] VERTICAL_SEARCH = {0, 1, -1, 2, -2, 3, -3, 4, -4};
-	private static final int[][] LOCAL_OFFSETS = {
-		{0, 0},
-		{1, 0}, {-1, 0}, {0, 1}, {0, -1},
-		{1, 1}, {1, -1}, {-1, 1}, {-1, -1}
-	};
 	private static final List<EquipmentSlot> HUMANOID_EQUIPMENT = List.of(
 		EquipmentSlot.MAINHAND,
 		EquipmentSlot.OFFHAND,
@@ -79,7 +65,13 @@ public final class ZombieShowcaseSpawner {
 		}
 
 		List<ShowcaseArchetype> archetypes = List.of(ShowcaseArchetype.values());
-		List<BlockPos> positions = findFormation(level, source.getPosition(), source.getRotation().y, archetypes.size());
+		List<BlockPos> positions = ShowcaseSpawnPlacement.findFormation(
+			level,
+			source.getPosition(),
+			source.getRotation().y,
+			archetypes.size(),
+			EntityType.ZOMBIE
+		);
 		if (positions.size() != archetypes.size()) {
 			return SpawnResult.failed(Failure.NO_SPACE);
 		}
@@ -113,16 +105,13 @@ public final class ZombieShowcaseSpawner {
 			return SpawnResult.failed(Failure.PEACEFUL);
 		}
 
-		List<BlockPos> positions;
-		if (count == 1) {
-			double radians = Math.toRadians(source.getRotation().y);
-			Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
-			Vec3 preferred = source.getPosition().add(forward.scale(SINGLE_SPAWN_DISTANCE));
-			@Nullable BlockPos feet = findSafeFeet(level, preferred, source.getPosition().y, List.of());
-			positions = feet == null ? List.of() : List.of(feet);
-		} else {
-			positions = findFormation(level, source.getPosition(), source.getRotation().y, count);
-		}
+		List<BlockPos> positions = ShowcaseSpawnPlacement.findBatch(
+			level,
+			source.getPosition(),
+			source.getRotation().y,
+			count,
+			EntityType.ZOMBIE
+		);
 		if (positions.size() != count) {
 			return SpawnResult.failed(Failure.NO_SPACE);
 		}
@@ -161,101 +150,6 @@ public final class ZombieShowcaseSpawner {
 			spawned.add(new SpawnedZombie(entry.archetype(), entry.zombie()));
 		}
 		return SpawnResult.succeeded(spawned);
-	}
-
-	private static List<BlockPos> findFormation(
-		final ServerLevel level,
-		final Vec3 origin,
-		final float yaw,
-		final int count
-	) {
-		double radians = Math.toRadians(yaw);
-		Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
-		Vec3 lateral = new Vec3(Math.cos(radians), 0.0, Math.sin(radians));
-		int columns = (int)Math.ceil(Math.sqrt(count));
-		List<BlockPos> positions = new ArrayList<>(count);
-		List<AABB> reservedBoxes = new ArrayList<>(count);
-
-		for (int index = 0; index < count; index++) {
-			int row = index / columns;
-			int rowStart = row * columns;
-			int rowSize = Math.min(columns, count - rowStart);
-			int column = index - rowStart;
-			double lateralOffset = (column - (rowSize - 1) * 0.5) * GRID_SPACING;
-			Vec3 preferred = origin
-				.add(forward.scale(FORMATION_FRONT_DISTANCE + row * GRID_SPACING))
-				.add(lateral.scale(lateralOffset));
-			@Nullable BlockPos safe = findSafeFeet(level, preferred, origin.y, reservedBoxes);
-			if (safe == null) {
-				return List.of();
-			}
-			positions.add(safe);
-			reservedBoxes.add(spawnBox(safe));
-		}
-		return List.copyOf(positions);
-	}
-
-	private static @Nullable BlockPos findSafeFeet(
-		final ServerLevel level,
-		final Vec3 preferred,
-		final double originY,
-		final List<AABB> reservedBoxes
-	) {
-		BlockPos horizontal = BlockPos.containing(preferred.x, originY, preferred.z);
-		for (int[] offset : LOCAL_OFFSETS) {
-			for (int dy : VERTICAL_SEARCH) {
-				BlockPos candidate = horizontal.offset(offset[0], dy, offset[1]);
-				if (isSafeFeet(level, candidate, reservedBoxes)) {
-					return candidate.immutable();
-				}
-			}
-		}
-
-		// 飞行中的玩家或洞内命令源附近没有地面时，最后尝试同一阵型列的世界表面。
-		if (!isChunkLoaded(level, horizontal)) {
-			return null;
-		}
-		BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, horizontal);
-		for (int[] offset : LOCAL_OFFSETS) {
-			BlockPos candidate = surface.offset(offset[0], 0, offset[1]);
-			if (isSafeFeet(level, candidate, reservedBoxes)) {
-				return candidate.immutable();
-			}
-		}
-		return null;
-	}
-
-	private static boolean isSafeFeet(
-		final ServerLevel level,
-		final BlockPos feet,
-		final List<AABB> reservedBoxes
-	) {
-		if (!Level.isInSpawnableBounds(feet) || !isChunkLoaded(level, feet)) {
-			return false;
-		}
-		BlockPos support = feet.below();
-		if (!level.getBlockState(support).isFaceSturdy(level, support, Direction.UP)
-			|| !level.getBlockState(feet).getFluidState().isEmpty()
-			|| !level.getBlockState(feet.above()).getFluidState().isEmpty()) {
-			return false;
-		}
-
-		AABB box = spawnBox(feet);
-		if (!level.getWorldBorder().isWithinBounds(box) || !level.noCollision(box)) {
-			return false;
-		}
-		return reservedBoxes.stream().noneMatch(box::intersects);
-	}
-
-	private static AABB spawnBox(final BlockPos feet) {
-		return EntityType.ZOMBIE.getSpawnAABB(feet.getX() + 0.5, feet.getY(), feet.getZ() + 0.5);
-	}
-
-	private static boolean isChunkLoaded(final ServerLevel level, final BlockPos pos) {
-		return level.getChunkSource().hasChunk(
-			SectionPos.blockToSectionCoord(pos.getX()),
-			SectionPos.blockToSectionCoord(pos.getZ())
-		);
 	}
 
 	private static @Nullable Zombie createZombie(

@@ -94,6 +94,7 @@ com.wjz.mobsthinknow
 ├─ ai/utility                           通用效用选择器
 ├─ ai/skeleton
 │  ├─ SkeletonIntelligence              持久智力 1～10 与名称标记
+│  ├─ SkeletonEscapeSpeedProfile        难度化、个体随机且持久的逃跑速度因子
 │  ├─ SmartSkeletonBowAttackGoal        距离分带、持弓拉扯、闪箭与掩体循环
 │  ├─ SkeletonEmergencyDisengageGoal    对任意当前目标的高优先级全速脱离
 │  ├─ SkeletonCrossbowLoadout            难度/IQ 弩手生成与真实爆炸烟花数据
@@ -143,6 +144,8 @@ com.wjz.mobsthinknow
 │     └─ SquadDirective                 单个混编成员收到的只读命令
 ├─ command/MtnCommands                  status、reload、全兵种阵型与指定兵种生成
 ├─ command/ZombieShowcaseSpawner        安全落点检查、确定兵种装备与命令生成事务
+├─ command/SkeletonShowcaseSpawner      弓/弩/爆炸弩测试兵种与批量生成事务
+├─ command/ShowcaseSpawnPlacement       跨物种共用的碰撞、地基与阵型预检
 ├─ config                               JSON 配置、校验和热重载
 ├─ mixin/ZombieMixin                    僵尸 Goal 替换与智力存档注入
 ├─ mixin/AbstractSkeletonMixin          骷髅 Goal、智力、负载与混编心跳注入
@@ -155,6 +158,9 @@ com.wjz.mobsthinknow
   全速脱离则放下武器、面向路径正向奔跑，两种状态互不混淆；
 - `SkeletonEmergencyDisengageGoal` 只读取当前 `LivingEntity` 目标，不按玩家/铁傀儡分类，
   因而所有实际仇恨目标服从同一近身风险判断；
+- 路径节点只提供水平朝向，LookControl 的凝视 Y 固定为自身眼高，避免把节点脚底坐标解释成
+  观察目标而产生持续俯视；逃跑速度使用持久化随机因子，简单/普通/困难下界依次为
+  `0.68/0.76/0.84`，上界均为 `1.0`，所以旧智力速度曲线仍是绝对上限；
 - 弩使用物品组件中的真实 `CHARGED_PROJECTILES` 状态，爆炸烟花是有限库存。小于六格时
   保留已装填弹药并优先拉开，烟花耗尽后 `Monster#getProjectile` 自然回落到普通箭；
 - 混编协调器仍按“相同目标 + 空间格”分桶。骷髅提交与僵尸相同的 O(1) 心跳，参与统一

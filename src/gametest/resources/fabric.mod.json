@@ -16,7 +16,8 @@
 			"com.wjz.mobsthinknow.ai.zombie.ZombieAirAssaultGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieEnvironmentalTacticsGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieEngineerSkillGameTests",
-			"com.wjz.mobsthinknow.command.ZombieShowcaseCommandGameTests"
+			"com.wjz.mobsthinknow.command.ZombieShowcaseCommandGameTests",
+			"com.wjz.mobsthinknow.command.SkeletonShowcaseCommandGameTests"
 		]
 	},
 	"depends": {

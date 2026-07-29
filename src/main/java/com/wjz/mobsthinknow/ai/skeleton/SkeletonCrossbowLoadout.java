@@ -83,7 +83,8 @@ public final class SkeletonCrossbowLoadout {
 		return Math.clamp(baseChance * mastery * difficultyFactor, 0.0, 1.0);
 	}
 
-	static ItemStack explosiveRockets(final int count) {
+	/** 命令样本和自然生成共用的真实爆炸烟花堆。 */
+	public static ItemStack explosiveRockets(final int count) {
 		ItemStack rockets = new ItemStack(Items.FIREWORK_ROCKET, Math.max(1, count));
 		FireworkExplosion explosion = new FireworkExplosion(
 			FireworkExplosion.Shape.BURST,

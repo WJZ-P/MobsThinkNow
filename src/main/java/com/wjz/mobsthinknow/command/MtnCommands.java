@@ -29,6 +29,12 @@ public final class MtnCommands {
 					Commands.literal("spawnall")
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAll)
+						.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons))
+				)
+				.then(
+					Commands.literal("spawnskeletons")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(MtnCommands::spawnAllSkeletons)
 				)
 				.then(spawnSpecificCommand())
 				.then(
@@ -54,6 +60,23 @@ public final class MtnCommands {
 							"count",
 							IntegerArgumentType.integer(1, ZombieShowcaseSpawner.MAX_BATCH_SIZE)
 						).executes(context -> spawnSpecific(
+							context,
+							archetype,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+					)
+			);
+		}
+		for (SkeletonShowcaseSpawner.ShowcaseArchetype archetype
+			: SkeletonShowcaseSpawner.ShowcaseArchetype.values()) {
+			command.then(
+				Commands.literal(archetype.commandId())
+					.executes(context -> spawnSpecificSkeleton(context, archetype, 1))
+					.then(
+						Commands.argument(
+							"count",
+							IntegerArgumentType.integer(1, SkeletonShowcaseSpawner.MAX_BATCH_SIZE)
+						).executes(context -> spawnSpecificSkeleton(
 							context,
 							archetype,
 							IntegerArgumentType.getInteger(context, "count")
@@ -160,16 +183,23 @@ public final class MtnCommands {
 	}
 
 	private static int listSpawnTypes(final CommandContext<CommandSourceStack> context) {
-		String types = String.join(
+		String zombieTypes = String.join(
 			", ",
 			Arrays.stream(ZombieShowcaseSpawner.ShowcaseArchetype.values())
 				.map(ZombieShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
+		String skeletonTypes = String.join(
+			", ",
+			Arrays.stream(SkeletonShowcaseSpawner.ShowcaseArchetype.values())
+				.map(SkeletonShowcaseSpawner.ShowcaseArchetype::commandId)
+				.toList()
+		);
+		String types = zombieTypes + ", " + skeletonTypes;
 		context.getSource().sendSuccess(
 			() -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.types",
-				"Available tactical zombie types (usage: /mtn spawn <type> [count], count 1-%s): %s",
+				"Available tactical monster types (usage: /mtn spawn <type> [count], count 1-%s): %s",
 				ZombieShowcaseSpawner.MAX_BATCH_SIZE,
 				types
 			),
@@ -224,6 +254,95 @@ public final class MtnCommands {
 				requestedCount
 			);
 			case NONE -> throw new IllegalStateException("Successful specific spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(error);
+		return 0;
+	}
+
+	private static int spawnAllSkeletons(final CommandContext<CommandSourceStack> context) {
+		SkeletonShowcaseSpawner.SpawnResult result = SkeletonShowcaseSpawner.spawnAll(context.getSource());
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_all_skeletons.success",
+					"Spawned %s tactical skeleton archetypes.",
+					count
+				),
+				true
+			);
+			return count;
+		}
+
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_skeletons.no_space",
+				"No nearby ground has enough safe space for all tactical skeleton archetypes."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_skeletons.create_failed",
+				"Skeleton entity creation failed; no showcase formation was added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_skeletons.add_failed",
+				"Adding the skeleton formation failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful skeleton spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private static int spawnSpecificSkeleton(
+		final CommandContext<CommandSourceStack> context,
+		final SkeletonShowcaseSpawner.ShowcaseArchetype archetype,
+		final int requestedCount
+	) {
+		SkeletonShowcaseSpawner.SpawnResult result = SkeletonShowcaseSpawner.spawnBatch(
+			context.getSource(),
+			archetype,
+			requestedCount
+		);
+		if (result.success()) {
+			int spawnedCount = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn.success",
+					"Spawned %s × %s (%s).",
+					spawnedCount,
+					archetype.displayName(),
+					archetype.commandId()
+				),
+				true
+			);
+			return spawnedCount;
+		}
+
+		Component error = switch (result.failure()) {
+			case PEACEFUL -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.no_space",
+				"No safe nearby ground was found for all %s requested mobs; nothing was spawned.",
+				requestedCount
+			);
+			case CREATE_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.create_failed",
+				"Preparing the requested batch of %s mobs failed; nothing was spawned.",
+				requestedCount
+			);
+			case ADD_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.add_failed",
+				"Adding the requested batch of %s mobs failed; the entire batch was rolled back.",
+				requestedCount
+			);
+			case NONE -> throw new IllegalStateException("Successful skeleton spawn reached the failure branch.");
 		};
 		context.getSource().sendFailure(error);
 		return 0;
