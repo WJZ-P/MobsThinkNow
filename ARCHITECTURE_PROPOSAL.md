@@ -1,11 +1,11 @@
 # 《怪物不再愚蠢 / Mobs Think Now》技术架构
 
-> 当前状态：普通僵尸战术、普通骷髅远程战术与跨物种混编小队已经实现。目标版本为 Minecraft Java
+> 当前状态：普通僵尸、普通骷髅、普通苦力怕战术与僵尸—骷髅混编小队已经实现。目标版本为 Minecraft Java
 > 26.1.2、Fabric Loader 0.19.3、Fabric API 0.155.2+26.1.2、Java 25。
 
 ## 1. 首版边界
 
-- 只改造原版普通僵尸 `minecraft:zombie` 与普通骷髅 `minecraft:skeleton`；
+- 只改造原版普通僵尸 `minecraft:zombie`、普通骷髅 `minecraft:skeleton` 与普通苦力怕 `minecraft:creeper`；
 - 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩等姿态；
 - 不提高生成量；个体速度、最大生命、伤害与追踪距离围绕随难度变化的均值随机浮动；
 - 复用原版视线、GoalSelector、导航、近战距离和命中判定；
@@ -100,6 +100,13 @@ com.wjz.mobsthinknow
 │  ├─ SkeletonCrossbowLoadout            难度/IQ 弩手生成与真实爆炸烟花数据
 │  ├─ SmartSkeletonCrossbowAttackGoal    装填、蓄势、侧移、射击状态机
 │  └─ SkeletonSquadOrders               混编小队集结/部署命令适配
+├─ ai/creeper
+│  ├─ CreeperIntelligence               难度化出生区间与持久智力 1～10
+│  ├─ CreeperCombatMath                 观察、截击、绕后、引信与退火纯数学边界
+│  ├─ CreeperTacticalController         两个 Goal 共享的目击记忆和稳定左右分流
+│  ├─ CreeperBreachPlanner              第一层软障碍射线、抗性和游戏规则检查
+│  ├─ SmartCreeperApproachGoal          直接追击、速度截击与观察感知绕后
+│  └─ SmartCreeperSwellGoal             移动引信、预测爆点、软墙提交与安全退火
 ├─ ai/zombie
 │  ├─ SmartZombieAttackGoal             原版 Goal 生命周期与武器命中边界
 │  ├─ ReactiveRetreatGoal               低血/单次重伤撤退与限时重返战斗
@@ -145,10 +152,12 @@ com.wjz.mobsthinknow
 ├─ command/MtnCommands                  status、reload、全兵种阵型与指定兵种生成
 ├─ command/ZombieShowcaseSpawner        安全落点检查、确定兵种装备与命令生成事务
 ├─ command/SkeletonShowcaseSpawner      弓/弩/爆炸弩测试兵种与批量生成事务
+├─ command/CreeperShowcaseSpawner       猎手/绕后/破墙/带电预设与批量生成事务
 ├─ command/ShowcaseSpawnPlacement       跨物种共用的碰撞、地基与阵型预检
 ├─ config                               JSON 配置、校验和热重载
 ├─ mixin/ZombieMixin                    僵尸 Goal 替换与智力存档注入
 ├─ mixin/AbstractSkeletonMixin          骷髅 Goal、智力、负载与混编心跳注入
+├─ mixin/CreeperMixin                   苦力怕 Goal 替换、智力存档与带电测试访问
 └─ mixin/client                         盾牌/进食/举矛与骷髅双手弩姿态仲裁
 ```
 
@@ -167,7 +176,21 @@ com.wjz.mobsthinknow
   选举和换届，但非首领骷髅强制使用 `RANGED` 角色及智力化射击站位；
 - 同队僵尸/骷髅的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
 
-## 2.2 工程兵技能生命周期
+## 2.2 苦力怕威胁与反制边界
+
+- 原版 `SwellGoal` 在三格内立即停止导航；替换状态机保留 30 tick 引信和首次嘶声，但允许继续向
+  有限速度预测点导航。默认移动引信速度最大 `1.25`，实际值按难度和 IQ 插值；
+- IQ 6 起检测目标水平视线和举盾状态。稳定 UUID 奇偶只决定左右方向，不查询同伴；不可达绕后点
+  降级为截击，因此单只决策保持常数空间且无 N² 同伴扫描；
+- 起爆距离从原版 3 格向配置上限插值，默认普通最高约 4 格，带电个体另加 0.5 格；高智力面对
+  正面举盾目标时额外靠近约 0.45 格才鸣响，避免在绕后完成前从盾牌正面提交；
+- 退火距离始终大于起爆距离。目标拉开约 3～3.8 格额外距离时反向衰减引信；后半段引信只有
+  在近距离且仍有近期目标证据时提交，保留听声撤离的反制窗口；
+- 软墙提交要求 IQ 8、40 tick 目击记忆、`mobGriefing=true`、射线第一层方块可破坏且爆炸抗性
+  不高于 20。它不把黑曜石/基岩当目标，也不绕过原版爆炸、伤害和方块保护规则；
+- 猫与豹猫 Goal 保持优先级 3；智能接敌位于 4，因此仍会被猫克制。引信 Goal 继续使用原版优先级 2。
+
+## 2.3 工程兵技能生命周期
 
 “会搭方块”是高智力僵尸的通用地形能力；“工程兵”则是少量个体的持久职业。普通自然候选
 必须成年、双手为空、智力达到 `terrainMinimumIntelligence` 且不是持矛空袭；
@@ -336,6 +359,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
    一次局部候选。TNT 固定检查 9 格，水和岩浆各固定检查 5 格，点燃只验证当前目标和一条
    可达路径；未到冷却时 `canUse` 只有常数次字段读取。流体投放后的每 tick 只读取一个持久
    源坐标，不查询同伴，不形成 N² 互扫。
+12. 苦力怕接敌每 4～11 tick 才重建一次路径；目标观察判断只做固定向量点积。左右分流由 UUID
+   决定，不扫描同伴；软墙射线只在高智力近距引信候选或已经提交的破墙阶段执行一次局部方块射线。
 
 `/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
 50、100、200 只激活僵尸的 MSPT 实机基准；同时输出累计采集、放置、俯击、工程兵 TNT、
@@ -355,6 +380,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `skeletonCrossbowChance` | `0.18` | 弩手基础概率，再按难度与个体智力缩放 |
 | `skeletonFireworkCrossbowChance` | `0.25` | 智力 7～10 弩手携带有限爆炸烟花的二次基础概率 |
 | `skeletonPreferredRange` | `10.0` | 骷髅基础偏好射程，再按智力缩放 |
+| `creeperAiEnabled` | `true` | 普通苦力怕智力、截击、绕后与智能引信总开关 |
+| `creeperFlanking` | `true` | IQ 6 以上被观察或面对举盾目标时前往稳定侧后方 |
+| `creeperMovingFuse` | `true` | 保留完整引信但点火后继续导航至预测爆点 |
+| `creeperWallBreaching` | `true` | IQ 8 以上对近期目标后的可炸软墙保留引信 |
+| `creeperMaximumFuseStartDistance` | `4.0` | 普通高智力个体起爆距离上限，范围 `3～5` 格 |
+| `creeperFuseMovementSpeed` | `1.25` | 移动引信寻路速度硬上限，范围 `1.0～1.5` |
 | `packSurrounding` | `true` | 小队系统开关 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
@@ -676,7 +707,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 
 ## 9. 验证体系
 
-- JUnit：效用选择、配置边界、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
+- JUnit：效用选择、配置边界、苦力怕难度智力区间、观察点积、稳定绕后点、起爆/退火边界与移动引信速度硬上限、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
   四格上限、IQ 8～10 拆柱概率、
   觅食半血边界、个体声线映射、难度属性均值、特殊桶概率分区与原版掉落率、智力
   概率和换手选择、工程兵 6～10 秒调度边界、水/岩浆保留时间与五秒点燃常量、智力名字结构、
@@ -704,7 +735,9 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   入口逐条验证九种指定兵种子命令；工程兵另覆盖真实放置/点燃 TNT、owner 与 80 tick
   引信、真实水/岩浆源投放—等待—BucketPickup 回收、五秒近身点燃、临时工具后的双手恢复、
   流体事务与正式身份存读，以及九兵种样本中 `builder`、`water_support`、`lava_harasser`
-  恰好三种带工程兵标记；当前共 58 项
+  恰好三种带工程兵标记；苦力怕另覆盖生产 Mixin 的双 Goal 替换、观察目标触发真实绕后路径、
+  鸣响后继续导航到预测爆点、近期泥土墙提交与黑曜石拒绝，以及真实 Brigadier 的四种预设、
+  批量带电破墙手和两个全预设快捷入口；当前共 72 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。

@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
+import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -30,11 +31,17 @@ public final class MtnCommands {
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAll)
 						.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons))
+						.then(Commands.literal("creepers").executes(MtnCommands::spawnAllCreepers))
 				)
 				.then(
 					Commands.literal("spawnskeletons")
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAllSkeletons)
+				)
+				.then(
+					Commands.literal("spawncreepers")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(MtnCommands::spawnAllCreepers)
 				)
 				.then(spawnSpecificCommand())
 				.then(
@@ -84,6 +91,23 @@ public final class MtnCommands {
 					)
 			);
 		}
+		for (CreeperShowcaseSpawner.ShowcaseArchetype archetype
+			: CreeperShowcaseSpawner.ShowcaseArchetype.values()) {
+			command.then(
+				Commands.literal(archetype.commandId())
+					.executes(context -> spawnSpecificCreeper(context, archetype, 1))
+					.then(
+						Commands.argument(
+							"count",
+							IntegerArgumentType.integer(1, CreeperShowcaseSpawner.MAX_BATCH_SIZE)
+						).executes(context -> spawnSpecificCreeper(
+							context,
+							archetype,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+					)
+			);
+		}
 		return command;
 	}
 
@@ -91,7 +115,8 @@ public final class MtnCommands {
 		MobsThinkNowConfig config = ConfigManager.get();
 		SmartZombieMetrics.Snapshot metrics = SmartZombieMetrics.snapshot();
 		SmartSkeletonMetrics.Snapshot skeletonMetrics = SmartSkeletonMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d"
+		SmartCreeperMetrics.Snapshot creeperMetrics = SmartCreeperMetrics.snapshot();
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -127,7 +152,14 @@ public final class MtnCommands {
 				skeletonMetrics.shots(),
 				skeletonMetrics.predictiveShots(),
 				skeletonMetrics.crossbowShots(),
-				skeletonMetrics.fireworkCrossbowShots()
+				skeletonMetrics.fireworkCrossbowShots(),
+				config.creeperAiEnabled,
+				creeperMetrics.installedGoals(),
+				creeperMetrics.flanks(),
+				creeperMetrics.intercepts(),
+				creeperMetrics.movingFuses(),
+				creeperMetrics.breachFuses(),
+				creeperMetrics.abortedFuses()
 			);
 		context.getSource().sendSuccess(() -> Component.literal(message), false);
 		return Command.SINGLE_SUCCESS;
@@ -195,7 +227,13 @@ public final class MtnCommands {
 				.map(SkeletonShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
-		String types = zombieTypes + ", " + skeletonTypes;
+		String creeperTypes = String.join(
+			", ",
+			Arrays.stream(CreeperShowcaseSpawner.ShowcaseArchetype.values())
+				.map(CreeperShowcaseSpawner.ShowcaseArchetype::commandId)
+				.toList()
+		);
+		String types = zombieTypes + ", " + skeletonTypes + ", " + creeperTypes;
 		context.getSource().sendSuccess(
 			() -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.types",
@@ -343,6 +381,95 @@ public final class MtnCommands {
 				requestedCount
 			);
 			case NONE -> throw new IllegalStateException("Successful skeleton spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(error);
+		return 0;
+	}
+
+	private static int spawnAllCreepers(final CommandContext<CommandSourceStack> context) {
+		CreeperShowcaseSpawner.SpawnResult result = CreeperShowcaseSpawner.spawnAll(context.getSource());
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_all_creepers.success",
+					"Spawned %s tactical creeper archetypes.",
+					count
+				),
+				true
+			);
+			return count;
+		}
+
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_creepers.no_space",
+				"No nearby ground has enough safe space for all tactical creeper archetypes."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_creepers.create_failed",
+				"Creeper entity creation failed; no showcase formation was added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_creepers.add_failed",
+				"Adding the creeper formation failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful creeper spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private static int spawnSpecificCreeper(
+		final CommandContext<CommandSourceStack> context,
+		final CreeperShowcaseSpawner.ShowcaseArchetype archetype,
+		final int requestedCount
+	) {
+		CreeperShowcaseSpawner.SpawnResult result = CreeperShowcaseSpawner.spawnBatch(
+			context.getSource(),
+			archetype,
+			requestedCount
+		);
+		if (result.success()) {
+			int spawnedCount = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn.success",
+					"Spawned %s × %s (%s).",
+					spawnedCount,
+					archetype.displayName(),
+					archetype.commandId()
+				),
+				true
+			);
+			return spawnedCount;
+		}
+
+		Component error = switch (result.failure()) {
+			case PEACEFUL -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.no_space",
+				"No safe nearby ground was found for all %s requested mobs; nothing was spawned.",
+				requestedCount
+			);
+			case CREATE_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.create_failed",
+				"Preparing the requested batch of %s mobs failed; nothing was spawned.",
+				requestedCount
+			);
+			case ADD_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.add_failed",
+				"Adding the requested batch of %s mobs failed; the entire batch was rolled back.",
+				requestedCount
+			);
+			case NONE -> throw new IllegalStateException("Successful creeper spawn reached the failure branch.");
 		};
 		context.getSource().sendFailure(error);
 		return 0;
