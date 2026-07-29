@@ -50,6 +50,25 @@ class SkeletonCombatMathTest {
 	}
 
 	@Test
+	void higherIntelligenceKeepsMoreDistanceAndEscapesMoreDecisively() {
+		double lowPreferred = SkeletonCombatMath.intelligenceAdjustedPreferredRange(10.0, 1);
+		double highPreferred = SkeletonCombatMath.intelligenceAdjustedPreferredRange(10.0, 10);
+		assertTrue(highPreferred > lowPreferred);
+		assertTrue(
+			SkeletonCombatMath.emergencyDisengageTriggerRange(10.0, 10)
+				> SkeletonCombatMath.emergencyDisengageTriggerRange(10.0, 1)
+		);
+		assertTrue(
+			SkeletonCombatMath.emergencyDisengageSafeRange(10.0, 10)
+				> SkeletonCombatMath.emergencyDisengageSafeRange(10.0, 1)
+		);
+		assertTrue(SkeletonCombatMath.disengagePathSpeed(10) > SkeletonCombatMath.disengagePathSpeed(1));
+		assertTrue(SkeletonCombatMath.kiteBackwardInput(10) > SkeletonCombatMath.kiteBackwardInput(1));
+		assertTrue(SkeletonCombatMath.kiteSidewaysInput(10) > SkeletonCombatMath.kiteSidewaysInput(1));
+		assertTrue(SkeletonCombatMath.disengagePathRefreshTicks(10) < SkeletonCombatMath.disengagePathRefreshTicks(1));
+	}
+
+	@Test
 	void directIncomingArrowIsDetectedButMissAndOutgoingArrowAreRejected() {
 		assertTrue(SkeletonCombatMath.isIncomingProjectile(
 			0.0, 0.0, 5.0,

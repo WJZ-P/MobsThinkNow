@@ -11,7 +11,7 @@ public final class SkeletonCombatMath {
 	public static final double PROJECTILE_SPEED = 1.6;
 	public static final double MAXIMUM_LEAD_TICKS = 8.0;
 	public static final double MAXIMUM_LEAD_DISTANCE = 3.0;
-	/** 玩家进入偏好射程的 60% 时，由高优先级 Goal 强制接管移动。 */
+	/** 兼容旧测试与未提供智力的调用：进入偏好射程的 60% 时强制脱离。 */
 	public static final double EMERGENCY_DISENGAGE_TRIGGER_RATIO = 0.60;
 	/** 接管后必须拉到偏好射程的 90% 才释放，避免在临界点逐 tick 抖动。 */
 	public static final double EMERGENCY_DISENGAGE_SAFE_RATIO = 0.90;
@@ -42,12 +42,46 @@ public final class SkeletonCombatMath {
 		return MovementMode.STRAFE;
 	}
 
+	/**
+	 * 智力越高，越早识别近身风险并主动保持更远的射击距离；低智力仍保留基础拉扯，
+	 * 避免数值差异退化成“会拉扯/完全不会拉扯”的二元开关。
+	 */
+	public static double intelligenceAdjustedPreferredRange(final double preferredRange, final int intelligence) {
+		double factor = lerp(0.85, 1.15, normalizedIntelligence(intelligence));
+		return validPreferredRange(preferredRange) * factor;
+	}
+
+	public static MovementMode chooseMovement(
+		final double distanceSquared,
+		final boolean hasLineOfSight,
+		final double preferredRange,
+		final boolean dodging,
+		final int intelligence
+	) {
+		return chooseMovement(
+			distanceSquared,
+			hasLineOfSight,
+			intelligenceAdjustedPreferredRange(preferredRange, intelligence),
+			dodging
+		);
+	}
+
 	public static double emergencyDisengageTriggerRange(final double preferredRange) {
 		return validPreferredRange(preferredRange) * EMERGENCY_DISENGAGE_TRIGGER_RATIO;
 	}
 
 	public static double emergencyDisengageSafeRange(final double preferredRange) {
 		return validPreferredRange(preferredRange) * EMERGENCY_DISENGAGE_SAFE_RATIO;
+	}
+
+	public static double emergencyDisengageTriggerRange(final double preferredRange, final int intelligence) {
+		double ratio = lerp(0.48, 0.72, normalizedIntelligence(intelligence));
+		return intelligenceAdjustedPreferredRange(preferredRange, intelligence) * ratio;
+	}
+
+	public static double emergencyDisengageSafeRange(final double preferredRange, final int intelligence) {
+		double ratio = lerp(0.78, 1.05, normalizedIntelligence(intelligence));
+		return intelligenceAdjustedPreferredRange(preferredRange, intelligence) * ratio;
 	}
 
 	/**
@@ -70,6 +104,44 @@ public final class SkeletonCombatMath {
 		double safeRange = emergencyDisengageSafeRange(preferredRange);
 		return isValidSquaredDistance(horizontalDistanceSquared)
 			&& horizontalDistanceSquared < safeRange * safeRange;
+	}
+
+	public static boolean shouldStartEmergencyDisengage(
+		final double horizontalDistanceSquared,
+		final double preferredRange,
+		final int intelligence
+	) {
+		double triggerRange = emergencyDisengageTriggerRange(preferredRange, intelligence);
+		return isValidSquaredDistance(horizontalDistanceSquared)
+			&& horizontalDistanceSquared < triggerRange * triggerRange;
+	}
+
+	public static boolean shouldContinueEmergencyDisengage(
+		final double horizontalDistanceSquared,
+		final double preferredRange,
+		final int intelligence
+	) {
+		double safeRange = emergencyDisengageSafeRange(preferredRange, intelligence);
+		return isValidSquaredDistance(horizontalDistanceSquared)
+			&& horizontalDistanceSquared < safeRange * safeRange;
+	}
+
+	/** 全力逃跑寻路速度随智力从约 1.29 提升到 1.60。 */
+	public static double disengagePathSpeed(final int intelligence) {
+		return lerp(1.285, 1.60, normalizedIntelligence(intelligence));
+	}
+
+	/** 面向目标拉弓后退的输入强度；它不是转身逃跑速度。 */
+	public static float kiteBackwardInput(final int intelligence) {
+		return (float)lerp(0.68, 1.0, normalizedIntelligence(intelligence));
+	}
+
+	public static float kiteSidewaysInput(final int intelligence) {
+		return (float)lerp(0.32, 0.56, normalizedIntelligence(intelligence));
+	}
+
+	public static int disengagePathRefreshTicks(final int intelligence) {
+		return Math.max(3, 9 - SkeletonIntelligence.clamp(intelligence) / 2);
 	}
 
 	/**
@@ -203,6 +275,15 @@ public final class SkeletonCombatMath {
 
 	private static boolean isValidSquaredDistance(final double distanceSquared) {
 		return Double.isFinite(distanceSquared) && distanceSquared >= 0.0;
+	}
+
+	private static double normalizedIntelligence(final int intelligence) {
+		return (SkeletonIntelligence.clamp(intelligence) - SkeletonIntelligence.MINIMUM)
+			/ (double)(SkeletonIntelligence.MAXIMUM - SkeletonIntelligence.MINIMUM);
+	}
+
+	private static double lerp(final double start, final double end, final double amount) {
+		return start + (end - start) * amount;
 	}
 
 	public enum MovementMode {

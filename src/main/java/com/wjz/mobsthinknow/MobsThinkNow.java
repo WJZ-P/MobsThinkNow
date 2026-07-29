@@ -9,6 +9,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.ZombieRetreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieShieldMemory;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.command.MtnCommands;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -20,6 +21,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,6 +66,9 @@ public final class MobsThinkNow implements ModInitializer {
 				ZombieFoodEquipment.restore(zombie, true);
 				ZombieEngineerEquipment.restore(zombie, true);
 				ZombieIntelligenceName.removeSyntheticMarker(zombie);
+			} else if (entity instanceof AbstractSkeleton skeleton) {
+				ZombieSquadCoordinator.onMemberDying(skeleton);
+				SkeletonIntelligenceName.removeSyntheticMarker(skeleton);
 			}
 			return true;
 		});
@@ -91,6 +96,9 @@ public final class MobsThinkNow implements ModInitializer {
 				if (damageSource.getEntity() instanceof LivingEntity attacker) {
 					ZombieSquadCoordinator.onSquadMemberAttacked(zombie, attacker);
 				}
+			} else if (entity instanceof AbstractSkeleton skeleton
+				&& damageSource.getEntity() instanceof LivingEntity attacker) {
+				ZombieSquadCoordinator.onSquadMemberAttacked(skeleton, attacker);
 			}
 			return true;
 		});

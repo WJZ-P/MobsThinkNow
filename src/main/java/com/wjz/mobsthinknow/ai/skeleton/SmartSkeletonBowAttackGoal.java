@@ -146,6 +146,16 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		}
 
 		MobsThinkNowConfig config = ConfigManager.get();
+		if (SkeletonSquadOrders.obeyPreparationOrder(this.skeleton, target, this.speedModifier)) {
+			this.attackTime = Math.max(this.attackTime, 5);
+			this.clearCoverState(false);
+			return;
+		}
+		int intelligence = SkeletonIntelligence.get(this.skeleton);
+		double preferredRange = SkeletonCombatMath.intelligenceAdjustedPreferredRange(
+			config.skeletonPreferredRange,
+			intelligence
+		);
 		boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
 		updateSightMemory(hasLineOfSight);
 		updateProjectileThreat(config);
@@ -154,7 +164,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		MovementMode selected = SkeletonCombatMath.chooseMovement(
 			distanceSquared,
 			hasLineOfSight,
-			config.skeletonPreferredRange,
+			preferredRange,
 			this.dodgeTicks > 0
 		);
 		this.skeleton.getLookControl().setLookAt(target, 30.0F, 30.0F);
@@ -170,22 +180,22 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			&& config.skeletonCoverPeeking
 			&& selected != MovementMode.DODGE
 			&& selected != MovementMode.KITE
-			&& SkeletonCoverPlanner.isUsefulRange(distanceSquared, config.skeletonPreferredRange)
+			&& SkeletonCoverPlanner.isUsefulRange(distanceSquared, preferredRange)
 			&& !this.skeleton.isUsingItem()) {
-			this.tryStartCoverPlan(target, config.skeletonPreferredRange);
+			this.tryStartCoverPlan(target, preferredRange);
 		}
 
 		if (this.coverPhase != CoverPhase.INACTIVE
-			&& this.tickCoverPlan(target, hasLineOfSight, config.skeletonPreferredRange)) {
+			&& this.tickCoverPlan(target, hasLineOfSight, preferredRange)) {
 			return;
 		}
 
 		transitionTo(selected);
 		switch (selected) {
 			case APPROACH -> approach(target);
-			case STRAFE -> strafe(target, distanceSquared, config.skeletonPreferredRange);
-			case KITE -> kite(target);
-			case DODGE -> dodge(target, distanceSquared, config.skeletonPreferredRange);
+			case STRAFE -> strafe(target, distanceSquared, preferredRange);
+			case KITE -> kite(target, intelligence);
+			case DODGE -> dodge(target, distanceSquared, preferredRange);
 		}
 
 		tickBow(target, hasLineOfSight);
@@ -240,11 +250,14 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	 * 拉扯仍属于弓战：正面锁定目标、保持拉弓并用后退/横移输入拉开距离。
 	 * 真正放下弓转身奔跑只由高优先级 {@link SkeletonEmergencyDisengageGoal} 执行。
 	 */
-	private void kite(final LivingEntity target) {
+	private void kite(final LivingEntity target, final int intelligence) {
 		this.skeleton.getNavigation().stop();
 		this.approachRepathCooldown = 0;
 		this.faceCombatTarget(target);
-		this.skeleton.getMoveControl().strafe(-0.90F, 0.45F * this.strafeDirection);
+		this.skeleton.getMoveControl().strafe(
+			-SkeletonCombatMath.kiteBackwardInput(intelligence),
+			SkeletonCombatMath.kiteSidewaysInput(intelligence) * this.strafeDirection
+		);
 	}
 
 	private void dodge(

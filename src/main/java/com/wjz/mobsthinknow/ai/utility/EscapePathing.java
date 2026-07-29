@@ -37,18 +37,19 @@ public final class EscapePathing {
 			verticalSearch,
 			threat.position()
 		);
-		double currentDistanceSquared = horizontalDistanceSquared(mob.position(), threat.position());
-		if (candidate != null
-			&& horizontalDistanceSquared(candidate, threat.position())
-				> currentDistanceSquared + MINIMUM_HORIZONTAL_GAIN_SQUARED) {
-			return candidate;
-		}
-
 		Vec3 away = horizontalAwayDirection(
 			mob.position(),
 			threat.position(),
 			threat.getLookAngle()
 		);
+		double currentDistanceSquared = horizontalDistanceSquared(mob.position(), threat.position());
+		if (candidate != null
+			&& horizontalDistanceSquared(candidate, threat.position())
+				> currentDistanceSquared + MINIMUM_HORIZONTAL_GAIN_SQUARED
+			&& pointsMeaningfullyAway(mob.position(), candidate, away)) {
+			return candidate;
+		}
+
 		return mob.position().add(away.scale(minimumDistance));
 	}
 
@@ -90,6 +91,11 @@ public final class EscapePathing {
 		double x = first.x - second.x;
 		double z = first.z - second.z;
 		return x * x + z * z;
+	}
+
+	private static boolean pointsMeaningfullyAway(final Vec3 origin, final Vec3 candidate, final Vec3 away) {
+		Vec3 travel = new Vec3(candidate.x - origin.x, 0.0, candidate.z - origin.z);
+		return travel.horizontalDistanceSqr() >= 1.0E-6 && travel.normalize().dot(away) >= 0.45;
 	}
 
 	/** 计算只含水平分量的单位逃离方向；位置重合时使用威胁视线作为稳定退化方向。 */

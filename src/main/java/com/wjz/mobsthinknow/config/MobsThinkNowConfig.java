@@ -31,13 +31,20 @@ public final class MobsThinkNowConfig {
 	public static final double MINIMUM_SKELETON_PREFERRED_RANGE = 6.0;
 	public static final double MAXIMUM_SKELETON_PREFERRED_RANGE = 16.0;
 	public static final double DEFAULT_SKELETON_AIM_PREDICTION_STRENGTH = 0.65;
+	public static final double DEFAULT_SKELETON_CROSSBOW_CHANCE = 0.18;
+	public static final double DEFAULT_SKELETON_FIREWORK_CROSSBOW_CHANCE = 0.25;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
 	/** 普通持弓骷髅使用距离分带、目标朝向锁定、持续侧移与近身拉扯；关闭后委托原版弓箭 Goal。 */
 	public boolean skeletonAiEnabled = true;
-	/** 玩家贴脸时使用优先级 1 的独立 Goal 放下弓并正向逃跑，拉到安全射程后再恢复射击。 */
+	/** 任意当前敌对目标贴脸时使用优先级 1 的独立 Goal 放下远程武器并正向逃跑。 */
 	public boolean skeletonEmergencyDisengage = true;
+	/** 普通骷髅自然生成时可替换为弩手；原版骷髅并不会自行使用弩，因此由本 Mod 状态机接管。 */
+	public boolean skeletonCrossbows = true;
+	public double skeletonCrossbowChance = DEFAULT_SKELETON_CROSSBOW_CHANCE;
+	/** 仅智力 7～10 的弩手有机会携带有限爆炸烟花，耗尽后自动继续使用普通箭。 */
+	public double skeletonFireworkCrossbowChance = DEFAULT_SKELETON_FIREWORK_CROSSBOW_CHANCE;
 	/** 搜索附近真实掩体，在遮蔽格蓄力后移动到相邻射界格探头射击并缩回。 */
 	public boolean skeletonCoverPeeking = true;
 	/** 每三 tick 查询七格内来箭，并只对八 tick 内会穿过碰撞安全半径的箭执行侧闪。 */
@@ -216,6 +223,8 @@ public final class MobsThinkNowConfig {
 			MAXIMUM_SKELETON_PREFERRED_RANGE
 		);
 		this.skeletonAimPredictionStrength = clamp(this.skeletonAimPredictionStrength, 0.0, 1.0);
+		this.skeletonCrossbowChance = clamp(this.skeletonCrossbowChance, 0.0, 1.0);
+		this.skeletonFireworkCrossbowChance = clamp(this.skeletonFireworkCrossbowChance, 0.0, 1.0);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);
 		this.specialEquipmentDropChance = clamp(this.specialEquipmentDropChance, 0.0, 1.0);

@@ -36,6 +36,36 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_ai_enabled.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonAiEnabled = value))
 			.build());
+		skeletonCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.skeleton_crossbows"),
+			config.skeletonCrossbows
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_crossbows.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonCrossbows = value))
+			.build());
+		skeletonCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.skeleton_crossbow_chance"),
+			(int)Math.round(config.skeletonCrossbowChance * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SKELETON_CROSSBOW_CHANCE * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_crossbow_chance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonCrossbowChance = value / 100.0))
+			.build());
+		skeletonCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.skeleton_firework_crossbow_chance"),
+			(int)Math.round(config.skeletonFireworkCrossbowChance * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SKELETON_FIREWORK_CROSSBOW_CHANCE * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_firework_crossbow_chance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(
+				updated -> updated.skeletonFireworkCrossbowChance = value / 100.0
+			))
+			.build());
 		skeletonCategory.addEntry(entries.startIntSlider(
 			Component.translatable("mobsthinknow.config.skeleton_preferred_range"),
 			(int)Math.round(config.skeletonPreferredRange),

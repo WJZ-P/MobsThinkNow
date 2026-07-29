@@ -2,6 +2,10 @@ package com.wjz.mobsthinknow.ai.skeleton;
 
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal.CoverPhase;
+import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -13,7 +17,10 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
+import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
@@ -50,6 +57,8 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 2, 2, 2);
 		skeleton.setNoAi(true);
 		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+		// 智力 5 的安全线约为 8.85 格，保留旧用例对九格迟滞区边界的验证。
+		SkeletonIntelligence.set(skeleton, 5);
 
 		Player player = helper.makeMockPlayer(GameType.SURVIVAL);
 		player.snapTo(skeleton.getX() + 3.0, skeleton.getY(), skeleton.getZ(), 0.0F, 0.0F);
@@ -81,6 +90,119 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		goal.stop();
 		player.discard();
 		helper.succeed();
+	}
+
+	@GameTest
+	public void closeIronGolemTriggersTheSameFullDisengageAsAPlayer(final GameTestHelper helper) {
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 2, 2, 2);
+		IronGolem golem = helper.spawn(EntityType.IRON_GOLEM, 5, 2, 2);
+		skeleton.setNoAi(true);
+		golem.setNoAi(true);
+		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+		SkeletonIntelligence.set(skeleton, 7);
+		skeleton.setTarget(golem);
+		skeleton.startUsingItem(InteractionHand.MAIN_HAND);
+
+		SkeletonEmergencyDisengageGoal goal = new SkeletonEmergencyDisengageGoal(skeleton);
+		helper.assertTrue(goal.canUse(), "An iron golem three blocks away did not trigger full disengagement.");
+		goal.start();
+		helper.assertTrue(!skeleton.isUsingItem(), "Disengaging from an iron golem did not lower the bow.");
+		skeleton.setOnGround(true);
+		goal.tick();
+		helper.assertTrue(
+			isFacingAwayFrom(skeleton, golem),
+			"The skeleton did not face its escape route when an iron golem closed in."
+		);
+		helper.assertTrue(goal.canContinueToUse(), "The golem disengage ended before reaching safe range.");
+		goal.stop();
+		helper.succeed();
+	}
+
+	@GameTest(maxTicks = 80)
+	public void skeletonAndZombiesFormOneMixedSquad(final GameTestHelper helper) {
+		Zombie leader = helper.spawn(EntityType.ZOMBIE, 2, 2, 2);
+		Zombie wing = helper.spawn(EntityType.ZOMBIE, 4, 2, 2);
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 3, 2, 4);
+		IronGolem target = helper.spawn(EntityType.IRON_GOLEM, 10, 2, 3);
+		leader.setNoAi(true);
+		wing.setNoAi(true);
+		skeleton.setNoAi(true);
+		target.setNoAi(true);
+		ZombieIntelligence.set(leader, 10);
+		ZombieIntelligence.set(wing, 8);
+		SkeletonIntelligence.set(skeleton, 5);
+		leader.setTarget(target);
+		wing.setTarget(target);
+		skeleton.setTarget(target);
+
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			coordinator.heartbeat(leader, target, true, target.position(), now);
+			coordinator.heartbeat(wing, target, true, target.position(), now);
+			coordinator.heartbeat(skeleton, target, true, target.position(), now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(skeleton);
+			if (view == null) {
+				return;
+			}
+			helper.assertTrue(view.memberCount() == 3, "The mixed squad did not contain all three members.");
+			helper.assertTrue(view.leaderEntityId() == leader.getId(), "The highest-intelligence zombie was not elected leader.");
+			SquadDirective directive = coordinator.directiveFor(skeleton);
+			helper.assertTrue(directive != null, "The skeleton received no mixed-squad directive.");
+			helper.assertTrue(directive.role() == SquadRole.RANGED, "The skeleton was assigned a melee squad role.");
+			helper.succeed();
+		});
+	}
+
+	@GameTest(
+		structure = "mobsthinknow-gametest:skeleton_cover_arena",
+		maxTicks = 100,
+		skyAccess = true,
+		padding = 8
+	)
+	public void explosiveCrossbowLoadsAndFiresARealRocket(final GameTestHelper helper) {
+		buildCoverLane(helper);
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 2, 2, 2);
+		IronGolem target = helper.spawn(EntityType.IRON_GOLEM, 12, 2, 2);
+		skeleton.setNoAi(true);
+		target.setNoAi(true);
+		SkeletonIntelligence.set(skeleton, 10);
+		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.CROSSBOW));
+		skeleton.setItemSlot(EquipmentSlot.OFFHAND, SkeletonCrossbowLoadout.explosiveRockets(3));
+		skeleton.setTarget(target);
+		skeleton.getSensing().tick();
+		helper.assertTrue(skeleton.getSensing().hasLineOfSight(target), "The crossbow fixture had no clear firing line.");
+		long fireworkShotsBefore = SmartSkeletonMetrics.snapshot().fireworkCrossbowShots();
+		SmartSkeletonCrossbowAttackGoal goal = new SmartSkeletonCrossbowAttackGoal(skeleton);
+		helper.assertTrue(goal.canUse(), "A crossbow skeleton with a live target could not start its goal.");
+		goal.start();
+		int[] elapsed = {0};
+
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			skeleton.getSensing().tick();
+			goal.tick();
+			if (SmartSkeletonMetrics.snapshot().fireworkCrossbowShots() > fireworkShotsBefore) {
+				helper.assertTrue(
+					skeleton.getOffhandItem().getCount() == 2,
+					"Loading one explosive rocket did not consume exactly one offhand item."
+				);
+				helper.assertTrue(
+					!helper.getEntities(EntityType.FIREWORK_ROCKET).isEmpty(),
+					"The crossbow state machine recorded a shot without spawning a real firework entity."
+				);
+				goal.stop();
+				helper.succeed();
+			}
+			if (elapsed[0] >= 90) {
+				helper.fail(
+					"Crossbow state machine stalled: " + goal.diagnosticState()
+						+ ",los=" + skeleton.getSensing().hasLineOfSight(target)
+						+ ",rockets=" + skeleton.getOffhandItem().getCount()
+				);
+			}
+		});
 	}
 
 	@GameTest
@@ -320,7 +442,7 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 			&& Math.abs(Mth.wrapDegrees(skeleton.getYHeadRot() - expected)) <= 1.0F;
 	}
 
-	private static boolean isFacingAwayFrom(final Skeleton skeleton, final Player threat) {
+	private static boolean isFacingAwayFrom(final Skeleton skeleton, final LivingEntity threat) {
 		Vec3 away = skeleton.position().subtract(threat.position()).multiply(1.0, 0.0, 1.0).normalize();
 		Vec3 facing = skeleton.getLookAngle().multiply(1.0, 0.0, 1.0).normalize();
 		return away.dot(facing) > 0.5

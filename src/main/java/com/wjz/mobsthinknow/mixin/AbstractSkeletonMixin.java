@@ -1,19 +1,36 @@
 package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonCrossbowLoadout;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonEmergencyDisengageGoal;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceAccess;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceName;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal;
+import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonCrossbowAttackGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
+import com.wjz.mobsthinknow.ai.skeleton.SquadSkeletonHurtByTargetGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.SpawnGroupData;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
+import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,14 +40,21 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
 /** 只改造原版普通骷髅；流浪者、沼骸、凋灵骷髅等变种先保留各自原版节奏。 */
 @Mixin(AbstractSkeleton.class)
-public abstract class AbstractSkeletonMixin extends Monster {
+public abstract class AbstractSkeletonMixin extends Monster implements SkeletonIntelligenceAccess {
+	@Unique
+	private static final String mobsthinknow$INTELLIGENCE_TAG = "MobsThinkNowIntelligence";
+
 	@Shadow
 	@Final
 	private RangedBowAttackGoal<AbstractSkeleton> bowGoal;
+	@Shadow
+	@Final
+	private MeleeAttackGoal meleeGoal;
 
 	@Unique
 	private @Nullable SmartSkeletonBowAttackGoal mobsthinknow$smartBowGoal;
@@ -40,9 +64,24 @@ public abstract class AbstractSkeletonMixin extends Monster {
 	private @Nullable SkeletonEmergencyDisengageGoal mobsthinknow$emergencyDisengageGoal;
 	@Unique
 	private boolean mobsthinknow$emergencyDisengageGoalCounted;
+	@Unique
+	private @Nullable SmartSkeletonCrossbowAttackGoal mobsthinknow$smartCrossbowGoal;
+	@Unique
+	private int mobsthinknow$skeletonIntelligence;
 
 	protected AbstractSkeletonMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
+	}
+
+	@Inject(method = "registerGoals", at = @At("TAIL"))
+	private void mobsthinknow$installSquadFriendlyFireTargetGoal(final CallbackInfo callbackInfo) {
+		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
+		if (skeleton.getType() != EntityType.SKELETON) {
+			return;
+		}
+		// 只替换 AbstractSkeleton 自己注册的精确原版类，不移除其他模组添加的 HurtByTargetGoal 子类。
+		this.targetSelector.removeAllGoals(goal -> goal.getClass() == HurtByTargetGoal.class);
+		this.targetSelector.addGoal(1, new SquadSkeletonHurtByTargetGoal(skeleton));
 	}
 
 	/**
@@ -57,6 +96,11 @@ public abstract class AbstractSkeletonMixin extends Monster {
 		}
 
 		this.goalSelector.removeGoal(this.bowGoal);
+		if (this.mobsthinknow$smartCrossbowGoal == null) {
+			this.mobsthinknow$smartCrossbowGoal = new SmartSkeletonCrossbowAttackGoal(skeleton);
+		} else {
+			this.goalSelector.removeGoal(this.mobsthinknow$smartCrossbowGoal);
+		}
 		if (this.mobsthinknow$smartBowGoal == null) {
 			int vanillaInterval = skeleton.level().getDifficulty() == Difficulty.HARD ? 20 : 40;
 			this.mobsthinknow$smartBowGoal = new SmartSkeletonBowAttackGoal(
@@ -86,7 +130,95 @@ public abstract class AbstractSkeletonMixin extends Monster {
 				this.mobsthinknow$smartBowGoalCounted = true;
 				SmartSkeletonMetrics.goalInstalled();
 			}
+		} else if (skeleton.isHolding(Items.CROSSBOW)) {
+			// 原版把弩当成近战武器；先撤掉刚在 reassessWeaponGoal 中注册的 meleeGoal。
+			this.goalSelector.removeGoal(this.meleeGoal);
+			this.goalSelector.addGoal(1, this.mobsthinknow$emergencyDisengageGoal);
+			this.goalSelector.addGoal(4, this.mobsthinknow$smartCrossbowGoal);
+			if (!this.mobsthinknow$emergencyDisengageGoalCounted) {
+				this.mobsthinknow$emergencyDisengageGoalCounted = true;
+				SmartSkeletonMetrics.emergencyGoalInstalled();
+			}
 		}
+	}
+
+	@Override
+	protected void addAdditionalSaveData(final ValueOutput output) {
+		super.addAdditionalSaveData(output);
+		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
+		if (skeleton.getType() == EntityType.SKELETON) {
+			output.putInt(mobsthinknow$INTELLIGENCE_TAG, this.mobsthinknow$getSkeletonIntelligence());
+		}
+	}
+
+	@Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
+	private void mobsthinknow$loadSkeletonIntelligence(final ValueInput input, final CallbackInfo callbackInfo) {
+		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
+		if (skeleton.getType() != EntityType.SKELETON) {
+			return;
+		}
+		int saved = input.getIntOr(mobsthinknow$INTELLIGENCE_TAG, 0);
+		this.mobsthinknow$skeletonIntelligence = saved == 0 ? 0 : SkeletonIntelligence.clamp(saved);
+		SquadTheatrics.stripLeftoverRoleTag(skeleton);
+		SkeletonIntelligenceName.apply(skeleton, this.mobsthinknow$getSkeletonIntelligence());
+	}
+
+	@Inject(method = "finalizeSpawn", at = @At("TAIL"))
+	private void mobsthinknow$finalizeSkeletonLoadout(
+		final ServerLevelAccessor level,
+		final DifficultyInstance difficulty,
+		final EntitySpawnReason spawnReason,
+		final SpawnGroupData groupData,
+		final CallbackInfoReturnable<SpawnGroupData> callbackInfo
+	) {
+		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
+		if (skeleton.getType() != EntityType.SKELETON) {
+			return;
+		}
+		SkeletonIntelligenceName.apply(skeleton, this.mobsthinknow$getSkeletonIntelligence());
+		SkeletonCrossbowLoadout.maybeEquip(skeleton, skeleton.level().getDifficulty(), ConfigManager.get());
+		// 换成弩时 setItemSlot 会重评一次；显式再调用可覆盖其他 Mod 直接修改 ItemStack 的路径。
+		skeleton.reassessWeaponGoal();
+	}
+
+	@Override
+	protected void customServerAiStep(final ServerLevel serverLevel) {
+		super.customServerAiStep(serverLevel);
+		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
+		MobsThinkNowConfig config = ConfigManager.get();
+		if (skeleton.getType() != EntityType.SKELETON
+			|| !config.enabled
+			|| !config.skeletonAiEnabled
+			|| !config.packSurrounding) {
+			return;
+		}
+		LivingEntity target = skeleton.getTarget();
+		if (target == null || !target.isAlive()) {
+			return;
+		}
+		boolean visible = skeleton.getSensing().hasLineOfSight(target);
+		long now = serverLevel.getGameTime();
+		ZombieSquadCoordinator.forLevel(serverLevel).heartbeat(
+			skeleton,
+			target,
+			visible,
+			visible ? target.position() : null,
+			visible ? now : Long.MIN_VALUE
+		);
+	}
+
+	@Override
+	public int mobsthinknow$getSkeletonIntelligence() {
+		if (this.mobsthinknow$skeletonIntelligence == 0) {
+			this.mobsthinknow$skeletonIntelligence = this.random.nextInt(SkeletonIntelligence.MAXIMUM)
+				+ SkeletonIntelligence.MINIMUM;
+		}
+		return this.mobsthinknow$skeletonIntelligence;
+	}
+
+	@Override
+	public void mobsthinknow$setSkeletonIntelligence(final int intelligence) {
+		this.mobsthinknow$skeletonIntelligence = SkeletonIntelligence.clamp(intelligence);
 	}
 
 	/**
@@ -123,7 +255,9 @@ public abstract class AbstractSkeletonMixin extends Monster {
 			target.getDeltaMovement().x,
 			target.getDeltaMovement().z,
 			Math.sqrt(originalX * originalX + originalZ * originalZ),
-			config.skeletonAimPredictionStrength * difficultyFactor
+			config.skeletonAimPredictionStrength
+				* difficultyFactor
+				* (0.55 + SkeletonIntelligence.get(skeleton) * 0.045)
 		);
 		if (lead.x() == 0.0 && lead.z() == 0.0) {
 			return;

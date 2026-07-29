@@ -7,36 +7,33 @@ import java.util.EnumSet;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 持弓骷髅被玩家贴脸时使用的最高移动优先级脱离行为。
+ * 远程骷髅被当前目标贴脸时使用的最高移动优先级脱离行为。
  *
  * <p>普通弓箭 Goal 位于优先级 4，原版避日和避狼行为位于 2～3；如果把后撤只写在弓箭 Goal
  * 内部，任何正在运行的高优先级行为都可能让骷髅继续贴脸挨打。本 Goal 以优先级 1 独立占用
- * {@link Flag#MOVE} 与 {@link Flag#LOOK}：玩家进入触发距离便取消拉弓并强制脱离，身体和头部
- * 都朝逃生路径正向全速奔跑；达到更远的安全距离后才把控制权交还给弓箭 Goal。</p>
+ * {@link Flag#MOVE} 与 {@link Flag#LOOK}：玩家、铁傀儡等当前目标进入触发距离便取消蓄力并强制脱离，
+ * 身体和头部都朝逃生路径正向全速奔跑；达到更远的安全距离后才把控制权交还给远程 Goal。</p>
  *
  * <p>路径每六 tick 至多重算一次，并与僵尸受击撤退共用 {@link EscapePathing} 的陆地落点规划。
  * 狭窄地形找不到完整路径时也会面向威胁反方向向前冲刺，而不是背对行进方向举弓后退；八十 tick
  * 仍未脱困则短暂释放控制权，让弓箭 Goal 以保持瞄准的拉扯步伐反击，避免永久占用战斗状态机。</p>
  */
 public final class SkeletonEmergencyDisengageGoal extends Goal {
-	private static final double PATH_SPEED_MODIFIER = 1.50;
 	private static final double MINIMUM_ESCAPE_PATH_DISTANCE = 6.0;
 	private static final double MAXIMUM_ESCAPE_PATH_DISTANCE = 12.0;
 	private static final int VERTICAL_PATH_SEARCH = 5;
-	private static final int PATH_REFRESH_TICKS = 6;
 	private static final int MAXIMUM_DISENGAGE_TICKS = 80;
 	private static final int TIMEOUT_COOLDOWN_TICKS = 20;
 	private static final float FALLBACK_FORWARD = 1.0F;
 	private static final float FALLBACK_SIDEWAYS = 0.35F;
 
 	private final AbstractSkeleton skeleton;
-	private @Nullable Player threat;
+	private @Nullable LivingEntity threat;
 	private @Nullable Vec3 escapeDestination;
 	private int elapsedTicks;
 	private int pathRefreshCooldown;
@@ -54,40 +51,44 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 		MobsThinkNowConfig config = ConfigManager.get();
 		if (!isEnabled(config)
 			|| !this.skeleton.isAlive()
-			|| !this.skeleton.isHolding(Items.BOW)
+			|| !this.isHoldingRangedWeapon()
 			|| this.skeleton.level().getGameTime() < this.nextAllowedStartAt) {
 			return false;
 		}
 
 		LivingEntity target = this.skeleton.getTarget();
-		if (!(target instanceof Player player) || !isValidThreat(player)) {
+		if (target == null || !isValidThreat(target)) {
 			return false;
 		}
+		int intelligence = SkeletonIntelligence.get(this.skeleton);
 		if (!SkeletonCombatMath.shouldStartEmergencyDisengage(
-			horizontalDistanceSquared(this.skeleton.position(), player.position()),
-			config.skeletonPreferredRange
+			horizontalDistanceSquared(this.skeleton.position(), target.position()),
+			config.skeletonPreferredRange,
+			intelligence
 		)) {
 			return false;
 		}
 
-		this.threat = player;
+		this.threat = target;
 		return true;
 	}
 
 	@Override
 	public boolean canContinueToUse() {
 		MobsThinkNowConfig config = ConfigManager.get();
-		Player currentThreat = this.threat;
+		LivingEntity currentThreat = this.threat;
+		int intelligence = SkeletonIntelligence.get(this.skeleton);
 		return isEnabled(config)
 			&& this.elapsedTicks < MAXIMUM_DISENGAGE_TICKS
 			&& this.skeleton.isAlive()
-			&& this.skeleton.isHolding(Items.BOW)
+			&& this.isHoldingRangedWeapon()
 			&& currentThreat != null
 			&& isValidThreat(currentThreat)
 			&& this.skeleton.getTarget() == currentThreat
 			&& SkeletonCombatMath.shouldContinueEmergencyDisengage(
 				horizontalDistanceSquared(this.skeleton.position(), currentThreat.position()),
-				config.skeletonPreferredRange
+				config.skeletonPreferredRange,
+				intelligence
 			);
 	}
 
@@ -106,7 +107,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 
 	@Override
 	public void tick() {
-		Player currentThreat = this.threat;
+		LivingEntity currentThreat = this.threat;
 		if (currentThreat == null) {
 			return;
 		}
@@ -149,14 +150,16 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 	@Override
 	public void stop() {
 		MobsThinkNowConfig config = ConfigManager.get();
-		Player currentThreat = this.threat;
+		LivingEntity currentThreat = this.threat;
+		int intelligence = SkeletonIntelligence.get(this.skeleton);
 		boolean timedOutWhileUnsafe = this.elapsedTicks >= MAXIMUM_DISENGAGE_TICKS
 			&& currentThreat != null
 			&& isValidThreat(currentThreat)
 			&& this.skeleton.getTarget() == currentThreat
 			&& SkeletonCombatMath.shouldContinueEmergencyDisengage(
 				horizontalDistanceSquared(this.skeleton.position(), currentThreat.position()),
-				config.skeletonPreferredRange
+				config.skeletonPreferredRange,
+				intelligence
 			);
 		if (timedOutWhileUnsafe) {
 			this.nextAllowedStartAt = this.skeleton.level().getGameTime() + TIMEOUT_COOLDOWN_TICKS;
@@ -174,7 +177,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 		return true;
 	}
 
-	private void updateEscapePath(final Player currentThreat) {
+	private void updateEscapePath(final LivingEntity currentThreat) {
 		Vec3 candidate = EscapePathing.findDestinationAwayFrom(
 			this.skeleton,
 			currentThreat,
@@ -187,10 +190,12 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 			candidate.x,
 			candidate.y,
 			candidate.z,
-			PATH_SPEED_MODIFIER
+			SkeletonCombatMath.disengagePathSpeed(SkeletonIntelligence.get(this.skeleton))
 		);
 		this.escapeDestination = foundPath ? candidate : null;
-		this.pathRefreshCooldown = foundPath ? PATH_REFRESH_TICKS : 2;
+		this.pathRefreshCooldown = foundPath
+			? SkeletonCombatMath.disengagePathRefreshTicks(SkeletonIntelligence.get(this.skeleton))
+			: 2;
 		if (foundPath) {
 			EscapePathing.faceCurrentPathOrDestination(this.skeleton, candidate);
 		}
@@ -204,8 +209,15 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 		return config.enabled && config.skeletonAiEnabled && config.skeletonEmergencyDisengage;
 	}
 
-	private static boolean isValidThreat(final Player player) {
-		return player.isAlive() && !player.isCreative() && !player.isSpectator();
+	private boolean isHoldingRangedWeapon() {
+		return this.skeleton.isHolding(Items.BOW) || this.skeleton.isHolding(Items.CROSSBOW);
+	}
+
+	/** 当前仇恨目标无论是玩家、铁傀儡还是其他生物，都服从同一近身风险判定。 */
+	private static boolean isValidThreat(final LivingEntity target) {
+		return target.isAlive()
+			&& (!(target instanceof net.minecraft.world.entity.player.Player player)
+				|| (!player.isCreative() && !player.isSpectator()));
 	}
 
 	private static double horizontalDistanceSquared(final Vec3 first, final Vec3 second) {

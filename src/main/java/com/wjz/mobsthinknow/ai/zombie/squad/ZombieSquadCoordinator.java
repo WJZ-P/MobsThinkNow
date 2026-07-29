@@ -1,12 +1,14 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import com.wjz.mobsthinknow.MobsThinkNow;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
@@ -25,22 +27,24 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 每个 {@link ServerLevel} 唯一的僵尸小队协调器。
+ * 每个 {@link ServerLevel} 唯一的僵尸—骷髅混编小队协调器。
  *
- * <p>僵尸 AI 和 {@code END_LEVEL_TICK} 都在服务器主线程执行，所以这里故意不加锁。导航、视线和
+ * <p>敌对生物 AI 和 {@code END_LEVEL_TICK} 都在服务器主线程执行，所以这里故意不加锁。导航、视线和
  * 实体状态仍只在主线程读取或修改；未来如果把纯数学评分搬到工作线程，也只能传不可变快照，不能把
  * Minecraft 实体对象交给子线程。</p>
  *
- * <p>性能上，僵尸每 tick 只做一次 O(1) 心跳。组队时先按目标和空间格分桶，每个种子最多检查
+ * <p>性能上，每名候选成员每 tick 只做一次 O(1) 心跳。组队时先按目标和空间格分桶，每个种子最多检查
  * {@code maxSquadSize * 16} 条桶记录。加上为确定性结果所做的种子排序，密集场景上界是
  * O(N log N + N * K)，其中 K 有硬上限，不会退化为每只僵尸查询全部同伴的 O(N²)。</p>
  */
@@ -69,7 +73,7 @@ public final class ZombieSquadCoordinator {
 	public static void tickLevel(final ServerLevel level) {
 		MobsThinkNowConfig config = ConfigManager.get();
 		ZombieSquadCoordinator existing = COORDINATORS.get(level);
-		if (existing == null && (!config.enabled || !config.zombieAiEnabled || !config.packSurrounding)) {
+		if (existing == null && !squadsEnabled(config)) {
 			return;
 		}
 
@@ -94,19 +98,24 @@ public final class ZombieSquadCoordinator {
 	 * 死亡结算前恢复职业名牌，避免每只小队僵尸阵亡都触发原版
 	 * “Named entity ... died” 的 INFO 日志（那是给玩家命名牌实体保留的行为）。
 	 */
-	public static void onZombieDying(final Zombie zombie) {
-		if (!(zombie.level() instanceof ServerLevel serverLevel)) {
+	public static void onMemberDying(final Mob mob) {
+		if (!(mob.level() instanceof ServerLevel serverLevel)) {
 			return;
 		}
 		ZombieSquadCoordinator coordinator = COORDINATORS.get(serverLevel);
 		if (coordinator != null) {
-			coordinator.theatrics.restoreName(zombie);
-			removeSquadSpeedBonus(zombie);
+			coordinator.theatrics.restoreName(mob);
+			removeSquadSpeedBonus(mob);
 		}
 	}
 
-	/** 供仇恨 Goal 判断"攻击者是不是同队队友"；两只僵尸都在同一支小队才算。 */
-	public static boolean areSquadmates(final Zombie first, final Zombie second) {
+	/** 保留旧调用名，避免其他模组或测试源码在本次跨物种扩展后立即断裂。 */
+	public static void onZombieDying(final Zombie zombie) {
+		onMemberDying(zombie);
+	}
+
+	/** 供仇恨 Goal 判断“攻击者是不是同队队友”；两个受支持 Mob 都在同一支小队才算。 */
+	public static boolean areSquadmates(final Mob first, final Mob second) {
 		if (first.level() != second.level() || !(first.level() instanceof ServerLevel serverLevel)) {
 			return false;
 		}
@@ -123,15 +132,16 @@ public final class ZombieSquadCoordinator {
 	 * 真实受击事件触发的有界求援广播。只遍历受害者所在小队（默认最多 20），且只给水桶辅助兵写信号；
 	 * 不在每 tick 做邻居查询，因此不会形成“每只僵尸扫描每只僵尸”的 N² 热点。
 	 */
-	public static void onSquadMemberAttacked(final Zombie victim, final LivingEntity attacker) {
+	public static void onSquadMemberAttacked(final Mob victim, final LivingEntity attacker) {
 		if (!(victim.level() instanceof ServerLevel serverLevel)
 			|| !attacker.isAlive()
 			|| (attacker instanceof Player player && (player.isCreative() || player.isSpectator()))) {
 			return;
 		}
 
-		if (ZombieSpecialEquipment.utilityClassOf(victim) == UtilityClass.WATER) {
-			ZombieFluidThreatMemory.record(victim, attacker, victim.position());
+		if (victim instanceof Zombie zombie
+			&& ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.WATER) {
+			ZombieFluidThreatMemory.record(zombie, attacker, zombie.position());
 		}
 		ZombieSquadCoordinator coordinator = COORDINATORS.get(serverLevel);
 		if (coordinator == null) {
@@ -145,9 +155,10 @@ public final class ZombieSquadCoordinator {
 		for (int memberId : squad.memberIds) {
 			MemberRecord helper = coordinator.members.get(memberId);
 			if (helper != null
-				&& helper.zombie != victim
-				&& ZombieSpecialEquipment.utilityClassOf(helper.zombie) == UtilityClass.WATER) {
-				ZombieFluidThreatMemory.record(helper.zombie, attacker, victim.position());
+				&& helper.mob != victim
+				&& helper.mob instanceof Zombie helperZombie
+				&& ZombieSpecialEquipment.utilityClassOf(helperZombie) == UtilityClass.WATER) {
+				ZombieFluidThreatMemory.record(helperZombie, attacker, victim.position());
 			}
 		}
 	}
@@ -175,15 +186,16 @@ public final class ZombieSquadCoordinator {
 		for (int memberId : squad.memberIds) {
 			MemberRecord candidate = coordinator.members.get(memberId);
 			if (candidate == null
-				|| candidate.zombie == victim
-				|| !candidate.zombie.isAlive()
-				|| !ZombieSpecialEquipment.hasFullBucket(candidate.zombie, UtilityClass.WATER)) {
+				|| candidate.mob == victim
+				|| !candidate.mob.isAlive()
+				|| !(candidate.mob instanceof Zombie candidateZombie)
+				|| !ZombieSpecialEquipment.hasFullBucket(candidateZombie, UtilityClass.WATER)) {
 				continue;
 			}
-			double distance = candidate.zombie.distanceToSqr(victim);
+			double distance = candidate.mob.distanceToSqr(victim);
 			if (distance < bestDistance) {
 				bestDistance = distance;
-				selected = candidate.zombie;
+				selected = candidateZombie;
 			}
 		}
 		if (selected != null) {
@@ -192,27 +204,27 @@ public final class ZombieSquadCoordinator {
 	}
 
 	/**
-	 * 单只僵尸提交自己的观察结果。只有直接视线会刷新时间戳；旧的最后目击位置可以继续上报，
+	 * 单个混编成员提交自己的观察结果。只有直接视线会刷新时间戳；旧的最后目击位置可以继续上报，
 	 * 但不会被误当成一条更新鲜的情报。
 	 */
 	public void heartbeat(
-		final Zombie zombie,
+		final Mob mob,
 		final LivingEntity target,
 		final boolean hasLineOfSight,
 		final @Nullable Vec3 lastSeenPosition,
 		final long lastSeenAt
 	) {
-		if (zombie.getType() != EntityType.ZOMBIE || !zombie.isAlive() || !target.isAlive()) {
+		if (!isSupportedMember(mob) || !mob.isAlive() || !target.isAlive()) {
 			return;
 		}
 
-		long now = zombie.level().getGameTime();
-		MemberRecord member = this.members.get(zombie.getId());
+		long now = mob.level().getGameTime();
+		MemberRecord member = this.members.get(mob.getId());
 		if (member == null) {
 			// 首次注册时剥掉上次异常退出可能残留在存档里的职业名牌。
-			SquadTheatrics.stripLeftoverRoleTag(zombie);
-			member = new MemberRecord(zombie);
-			this.members.put(zombie.getId(), member);
+			SquadTheatrics.stripLeftoverRoleTag(mob);
+			member = new MemberRecord(mob);
+			this.members.put(mob.getId(), member);
 		}
 		if (member.target != target) {
 			this.detachFromSquad(member);
@@ -239,8 +251,8 @@ public final class ZombieSquadCoordinator {
 	}
 
 	/** 返回当前命令快照；未组队时返回 {@code null}，由单体战术继续接管。 */
-	public @Nullable SquadDirective directiveFor(final Zombie zombie) {
-		MemberRecord member = this.members.get(zombie.getId());
+	public @Nullable SquadDirective directiveFor(final Mob mob) {
+		MemberRecord member = this.members.get(mob.getId());
 		if (member == null || member.squadId == 0L) {
 			return null;
 		}
@@ -251,12 +263,14 @@ public final class ZombieSquadCoordinator {
 			return null;
 		}
 
-		SquadOrder order = squad.orders.get(zombie.getId());
+		SquadOrder order = squad.orders.get(mob.getId());
 		SquadRole role = order == null
-			? squad.roles.getOrDefault(zombie.getId(), SquadRole.PRESSURER)
+			? squad.roles.getOrDefault(mob.getId(), defaultRole(mob))
 			: order.role;
 		Vec3 destination = order == null ? null : order.destination;
-		if (role == SquadRole.SUPPORT && ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.NONE) {
+		if (role == SquadRole.SUPPORT
+			&& (!(mob instanceof Zombie zombie)
+				|| ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.NONE)) {
 			// 源方块被玩家移走后手里只剩空桶：同一 tick 起按普通施压手执行，不等待下一轮重编队。
 			role = SquadRole.PRESSURER;
 			if (squad.state == SquadState.ENGAGING) {
@@ -264,8 +278,8 @@ public final class ZombieSquadCoordinator {
 			}
 		}
 		MemberRecord leader = this.members.get(squad.leaderId);
-		Vec3 focusPosition = leader == null ? squad.rallyPoint : leader.zombie.position().add(0.0, 1.0, 0.0);
-		long now = zombie.level().getGameTime();
+		Vec3 focusPosition = leader == null ? squad.rallyPoint : leader.mob.position().add(0.0, 1.0, 0.0);
+		long now = mob.level().getGameTime();
 		boolean sharedMemoryIsFresh = isMemoryFresh(
 			squad.sharedLastSeenPosition,
 			squad.sharedLastSeenAt,
@@ -286,8 +300,8 @@ public final class ZombieSquadCoordinator {
 	}
 
 	/** 测试和诊断使用的只读小队摘要。 */
-	public @Nullable SquadView viewFor(final Zombie zombie) {
-		MemberRecord member = this.members.get(zombie.getId());
+	public @Nullable SquadView viewFor(final Mob mob) {
+		MemberRecord member = this.members.get(mob.getId());
 		ZombieSquad squad = member == null ? null : this.squads.get(member.squadId);
 		if (squad == null) {
 			return null;
@@ -296,8 +310,8 @@ public final class ZombieSquadCoordinator {
 	}
 
 	/** 目标失效时立即注销；正常 Goal 切换则交给心跳超时，避免频繁退队又入队。 */
-	public void unregister(final Zombie zombie) {
-		MemberRecord member = this.members.remove(zombie.getId());
+	public void unregister(final Mob mob) {
+		MemberRecord member = this.members.remove(mob.getId());
 		if (member != null) {
 			this.detachFromSquad(member);
 		}
@@ -310,7 +324,7 @@ public final class ZombieSquadCoordinator {
 		}
 		this.lastTickAt = now;
 
-		if (!config.enabled || !config.zombieAiEnabled || !config.packSurrounding) {
+		if (!squadsEnabled(config)) {
 			this.reset();
 			return;
 		}
@@ -337,12 +351,12 @@ public final class ZombieSquadCoordinator {
 		Iterator<MemberRecord> iterator = this.members.values().iterator();
 		while (iterator.hasNext()) {
 			MemberRecord member = iterator.next();
-			boolean invalid = member.zombie.level() != level
-				|| member.zombie.isRemoved()
-				|| !member.zombie.isAlive()
+			boolean invalid = member.mob.level() != level
+				|| member.mob.isRemoved()
+				|| !member.mob.isAlive()
 				|| member.target == null
 				|| !member.target.isAlive()
-				|| member.zombie.getTarget() != member.target
+				|| member.mob.getTarget() != member.target
 				|| now - member.lastHeartbeatAt > config.memberHeartbeatTimeoutTicks;
 			if (invalid) {
 				this.detachFromSquad(member);
@@ -355,8 +369,8 @@ public final class ZombieSquadCoordinator {
 		BoundedSpatialIndex<MemberRecord> spatialIndex = new BoundedSpatialIndex<>(
 			config.coordinationRadius,
 			member -> member.target == null ? Integer.MIN_VALUE : member.target.getId(),
-			member -> member.zombie.getX(),
-			member -> member.zombie.getZ()
+			member -> member.mob.getX(),
+			member -> member.mob.getZ()
 		);
 		List<MemberRecord> seeds = new ArrayList<>();
 		for (MemberRecord member : this.members.values()) {
@@ -369,7 +383,7 @@ public final class ZombieSquadCoordinator {
 			spatialIndex.add(member);
 		}
 
-		seeds.sort(Comparator.comparingInt(member -> member.zombie.getId()));
+		seeds.sort(Comparator.comparingInt(member -> member.mob.getId()));
 		for (MemberRecord seed : seeds) {
 			if (seed.squadId != 0L || seed.target == null) {
 				continue;
@@ -381,8 +395,8 @@ public final class ZombieSquadCoordinator {
 			}
 
 			nearby.sort(
-				Comparator.comparingDouble((MemberRecord member) -> member.zombie.distanceToSqr(seed.zombie))
-					.thenComparingInt(member -> member.zombie.getId())
+				Comparator.comparingDouble((MemberRecord member) -> member.mob.distanceToSqr(seed.mob))
+					.thenComparingInt(member -> member.mob.getId())
 			);
 			if (nearby.size() > config.maximumCoordinatedZombies) {
 				nearby = new ArrayList<>(nearby.subList(0, config.maximumCoordinatedZombies));
@@ -402,7 +416,7 @@ public final class ZombieSquadCoordinator {
 		BoundedSpatialIndex.ScanResult<MemberRecord> scan = spatialIndex.collectNearby(
 			seed,
 			candidate -> candidate.squadId == 0L,
-			(first, second) -> first.zombie.distanceToSqr(second.zombie),
+			(first, second) -> first.mob.distanceToSqr(second.mob),
 			radiusSquared,
 			acceptedBudget,
 			rawScanBudget
@@ -420,7 +434,7 @@ public final class ZombieSquadCoordinator {
 		ZombieSquad squad = new ZombieSquad(this.nextSquadId++, first.target);
 		for (MemberRecord member : selected) {
 			if (member.squadId == 0L && member.target == first.target) {
-				squad.memberIds.add(member.zombie.getId());
+				squad.memberIds.add(member.mob.getId());
 				member.squadId = squad.id;
 				this.mergeObservation(squad, member);
 			}
@@ -524,7 +538,7 @@ public final class ZombieSquadCoordinator {
 		squad.term++;
 		this.rebuildRoles(squad);
 		MemberRecord leader = this.members.get(squad.leaderId);
-		squad.rallyPoint = leader == null ? squad.rallyPoint : leader.zombie.position();
+		squad.rallyPoint = leader == null ? squad.rallyPoint : leader.mob.position();
 		this.assignRallyOrders(squad, squad.rallyPoint, config);
 		this.enterState(squad, SquadState.REORGANIZING, now, now + config.regroupTicks, config, "leader re-elected");
 		SmartZombieMetrics.leaderElection(true);
@@ -535,9 +549,9 @@ public final class ZombieSquadCoordinator {
 		List<SquadLeaderCandidate> candidates = new ArrayList<>();
 		for (int memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
-			if (member != null && member.zombie.isAlive()) {
+			if (member != null && member.mob.isAlive()) {
 				candidates.add(
-					new SquadLeaderCandidate(memberId, ZombieIntelligence.get(member.zombie), member.zombie.getHealth())
+					new SquadLeaderCandidate(memberId, intelligenceOf(member.mob), member.mob.getHealth())
 				);
 			}
 		}
@@ -547,7 +561,7 @@ public final class ZombieSquadCoordinator {
 	private void rebuildRoles(final ZombieSquad squad) {
 		List<Integer> ordered = this.orderedMemberIds(squad);
 		MemberRecord leader = this.members.get(squad.leaderId);
-		int intelligence = leader == null ? 1 : ZombieIntelligence.get(leader.zombie);
+		int intelligence = leader == null ? 1 : intelligenceOf(leader.mob);
 		squad.roles.clear();
 		squad.roles.putAll(SquadRolePlanner.planLoadouts(
 			ordered,
@@ -555,6 +569,13 @@ public final class ZombieSquadCoordinator {
 			intelligence,
 			this.memberLoadouts(ordered)
 		));
+		// 远程成员不会被编成贴脸施压/包夹位；首领仍保留 LEADER 身份，但目的地按远程成员计算。
+		for (int memberId : ordered) {
+			MemberRecord member = this.members.get(memberId);
+			if (memberId != squad.leaderId && member != null && isRangedMember(member.mob)) {
+				squad.roles.put(memberId, SquadRole.RANGED);
+			}
+		}
 	}
 
 	/** 武装或特殊装备开启时读取完整负载；两者都关时空 Map 保持旧版分配。 */
@@ -567,14 +588,14 @@ public final class ZombieSquadCoordinator {
 		Map<Integer, SquadLoadout> loadouts = new HashMap<>();
 		for (int memberId : memberIds) {
 			MemberRecord member = this.members.get(memberId);
-			if (member != null) {
+			if (member != null && member.mob instanceof Zombie zombie) {
 				loadouts.put(memberId, new SquadLoadout(
 					config.armedSquads
-						? ZombieArmory.weaponClassOf(member.zombie.getMainHandItem())
+						? ZombieArmory.weaponClassOf(zombie.getMainHandItem())
 						: WeaponClass.NONE,
-					config.armedSquads && ZombieArmory.hasShield(member.zombie),
+					config.armedSquads && ZombieArmory.hasShield(zombie),
 					config.specialEquipment
-						? ZombieSpecialEquipment.utilityClassOf(member.zombie)
+						? ZombieSpecialEquipment.utilityClassOf(zombie)
 						: UtilityClass.NONE
 				));
 			}
@@ -591,11 +612,11 @@ public final class ZombieSquadCoordinator {
 			}
 		}
 		ordered.sort(
-			Comparator.comparingInt((MemberRecord member) -> ZombieIntelligence.get(member.zombie)).reversed()
-				.thenComparing(Comparator.comparingDouble((MemberRecord member) -> member.zombie.getHealth()).reversed())
-				.thenComparingInt(member -> member.zombie.getId())
+			Comparator.comparingInt((MemberRecord member) -> intelligenceOf(member.mob)).reversed()
+				.thenComparing(Comparator.comparingDouble((MemberRecord member) -> member.mob.getHealth()).reversed())
+				.thenComparingInt(member -> member.mob.getId())
 		);
-		return ordered.stream().map(member -> member.zombie.getId()).toList();
+		return ordered.stream().map(member -> member.mob.getId()).toList();
 	}
 
 	private void assignRallyOrders(final ZombieSquad squad, final Vec3 center, final MobsThinkNowConfig config) {
@@ -663,8 +684,10 @@ public final class ZombieSquadCoordinator {
 		squad.orders.clear();
 		int pressureIndex = 0;
 		for (int memberId : ordered) {
-			SquadRole role = squad.roles.getOrDefault(memberId, SquadRole.PRESSURER);
+			MemberRecord member = this.members.get(memberId);
+			SquadRole role = squad.roles.getOrDefault(memberId, member == null ? SquadRole.PRESSURER : defaultRole(member.mob));
 			Vec3 destination = this.combatDestination(
+				member,
 				role,
 				targetPosition,
 				forward,
@@ -673,7 +696,8 @@ public final class ZombieSquadCoordinator {
 				engaging,
 				pressureIndex
 			);
-			if (role == SquadRole.LEADER || role == SquadRole.PRESSURER) {
+			if (!isRangedMember(member == null ? null : member.mob)
+				&& (role == SquadRole.LEADER || role == SquadRole.PRESSURER)) {
 				pressureIndex++;
 			}
 			squad.orders.put(memberId, new SquadOrder(role, destination));
@@ -681,6 +705,7 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private @Nullable Vec3 combatDestination(
+		final @Nullable MemberRecord member,
 		final SquadRole role,
 		final Vec3 targetPosition,
 		final Vec3 forward,
@@ -689,6 +714,16 @@ public final class ZombieSquadCoordinator {
 		final boolean engaging,
 		final int pressureIndex
 	) {
+		if (member != null && isRangedMember(member.mob)) {
+			Vec3 outward = horizontalUnit(member.mob.position().subtract(targetPosition), forward.scale(-1.0));
+			Vec3 rangedLateral = new Vec3(-outward.z, 0.0, outward.x);
+			double range = SkeletonCombatMath.intelligenceAdjustedPreferredRange(
+				config.skeletonPreferredRange,
+				intelligenceOf(member.mob)
+			);
+			double side = (member.mob.getId() & 1) == 0 ? 1.5 : -1.5;
+			return targetPosition.add(outward.scale(range)).add(rangedLateral.scale(side));
+		}
 		return switch (role) {
 			case LEADER, PRESSURER -> {
 				if (engaging) {
@@ -707,6 +742,7 @@ public final class ZombieSquadCoordinator {
 			case SUPPORT -> targetPosition
 				.add(forward.scale(config.formationRadius + 2.5))
 				.add(lateral.scale((pressureIndex & 1) == 0 ? 2.0 : -2.0));
+			case RANGED -> targetPosition.add(forward.scale(config.skeletonPreferredRange));
 		};
 	}
 
@@ -720,7 +756,7 @@ public final class ZombieSquadCoordinator {
 				continue;
 			}
 			total++;
-			if (member.zombie.position().distanceToSqr(order.destination) <= ORDER_REACHED_DISTANCE_SQUARED) {
+			if (member.mob.position().distanceToSqr(order.destination) <= ORDER_REACHED_DISTANCE_SQUARED) {
 				arrived++;
 			}
 		}
@@ -737,10 +773,10 @@ public final class ZombieSquadCoordinator {
 			// 只有被小队目标本人刚刚打了才算紧急军情；日晒着火、摔落这类无关伤害不应打断会议。
 			// hurtTime 对任何伤害源都会置位，而 lastHurtByMob 会保留 100 tick，两者组合会误报；
 			// 用"最后一次被生物攻击的时间戳距今 ≤10 tick"才能精确对应目标刚出手这一事件。
-			boolean hurtByTarget = member.zombie.getLastHurtByMob() == squad.target
-				&& member.zombie.tickCount - member.zombie.getLastHurtByMobTimestamp() <= 10;
+			boolean hurtByTarget = member.mob.getLastHurtByMob() == squad.target
+				&& member.mob.tickCount - member.mob.getLastHurtByMobTimestamp() <= 10;
 			if (hurtByTarget
-				|| (member.hasLineOfSight && member.zombie.distanceToSqr(squad.target) <= emergencyDistanceSquared)) {
+				|| (member.hasLineOfSight && member.mob.distanceToSqr(squad.target) <= emergencyDistanceSquared)) {
 				return true;
 			}
 		}
@@ -763,7 +799,7 @@ public final class ZombieSquadCoordinator {
 		for (int memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
 			if (member != null) {
-				Vec3 position = member.zombie.position();
+				Vec3 position = member.mob.position();
 				x += position.x;
 				y += position.y;
 				z += position.z;
@@ -803,13 +839,13 @@ public final class ZombieSquadCoordinator {
 		}
 		ZombieSquad squad = this.squads.get(member.squadId);
 		if (squad != null) {
-			squad.memberIds.remove(member.zombie.getId());
-			squad.roles.remove(member.zombie.getId());
-			squad.orders.remove(member.zombie.getId());
+			squad.memberIds.remove(member.mob.getId());
+			squad.roles.remove(member.mob.getId());
+			squad.orders.remove(member.mob.getId());
 		}
 		member.squadId = 0L;
-		this.theatrics.restoreName(member.zombie);
-		removeSquadSpeedBonus(member.zombie);
+		this.theatrics.restoreName(member.mob);
+		removeSquadSpeedBonus(member.mob);
 	}
 
 	private void disband(final ZombieSquad squad, final MobsThinkNowConfig config, final String reason) {
@@ -824,8 +860,8 @@ public final class ZombieSquadCoordinator {
 			MemberRecord member = this.members.get(memberId);
 			if (member != null && member.squadId == squad.id) {
 				member.squadId = 0L;
-				this.theatrics.restoreName(member.zombie);
-				removeSquadSpeedBonus(member.zombie);
+				this.theatrics.restoreName(member.mob);
+				removeSquadSpeedBonus(member.mob);
 			}
 		}
 	}
@@ -833,8 +869,8 @@ public final class ZombieSquadCoordinator {
 	private void reset() {
 		for (MemberRecord member : this.members.values()) {
 			member.squadId = 0L;
-			this.theatrics.restoreName(member.zombie);
-			removeSquadSpeedBonus(member.zombie);
+			this.theatrics.restoreName(member.mob);
+			removeSquadSpeedBonus(member.mob);
 		}
 		this.members.clear();
 		this.squads.clear();
@@ -850,7 +886,7 @@ public final class ZombieSquadCoordinator {
 			if (member == null) {
 				continue;
 			}
-			AttributeInstance speed = member.zombie.getAttribute(Attributes.MOVEMENT_SPEED);
+			AttributeInstance speed = member.mob.getAttribute(Attributes.MOVEMENT_SPEED);
 			if (speed == null) {
 				continue;
 			}
@@ -869,8 +905,8 @@ public final class ZombieSquadCoordinator {
 		}
 	}
 
-	private static void removeSquadSpeedBonus(final Zombie zombie) {
-		AttributeInstance speed = zombie.getAttribute(Attributes.MOVEMENT_SPEED);
+	private static void removeSquadSpeedBonus(final Mob mob) {
+		AttributeInstance speed = mob.getAttribute(Attributes.MOVEMENT_SPEED);
 		if (speed != null) {
 			speed.removeModifier(SQUAD_SPEED_MODIFIER_ID);
 		}
@@ -880,21 +916,22 @@ public final class ZombieSquadCoordinator {
 	private void presentSquad(final ServerLevel level, final ZombieSquad squad, final MobsThinkNowConfig config, final long now) {
 		// 即使两个表现开关都被关掉也要继续调用：tickSquad 的名牌分支负责把已应用的名牌还原。
 		List<SquadTheatrics.RoleMember> roleMembers = new ArrayList<>(squad.memberIds.size());
-		Zombie leader = null;
+		Mob leader = null;
 		for (int memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
 			if (member == null) {
 				continue;
 			}
 			if (memberId == squad.leaderId) {
-				leader = member.zombie;
+				leader = member.mob;
 			}
-			SquadRole presentedRole = squad.roles.getOrDefault(memberId, SquadRole.PRESSURER);
+			SquadRole presentedRole = squad.roles.getOrDefault(memberId, defaultRole(member.mob));
 			if (presentedRole == SquadRole.SUPPORT
-				&& ZombieSpecialEquipment.utilityClassOf(member.zombie) == UtilityClass.NONE) {
+				&& (!(member.mob instanceof Zombie zombie)
+					|| ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.NONE)) {
 				presentedRole = SquadRole.PRESSURER;
 			}
-			roleMembers.add(new SquadTheatrics.RoleMember(member.zombie, presentedRole));
+			roleMembers.add(new SquadTheatrics.RoleMember(member.mob, presentedRole));
 		}
 		this.theatrics.tickSquad(level, squad.id, squad.state, squad.stateStartedAt, leader, roleMembers, config, now);
 	}
@@ -902,7 +939,7 @@ public final class ZombieSquadCoordinator {
 	private void debug(final MobsThinkNowConfig config, final ZombieSquad squad, final String reason) {
 		if (config.debugLogging) {
 			MobsThinkNow.LOGGER.info(
-				"Zombie squad {} state={} leader={} term={} members={} ({})",
+				"Mixed hostile squad {} state={} leader={} term={} members={} ({})",
 				squad.id,
 				squad.state,
 				squad.leaderId,
@@ -937,6 +974,34 @@ public final class ZombieSquadCoordinator {
 		return elapsed >= 0L && elapsed <= memoryTicks;
 	}
 
+	private static boolean squadsEnabled(final MobsThinkNowConfig config) {
+		return config.enabled
+			&& config.packSurrounding
+			&& (config.zombieAiEnabled || config.skeletonAiEnabled);
+	}
+
+	private static boolean isSupportedMember(final Mob mob) {
+		return mob.getType() == EntityType.ZOMBIE || mob.getType() == EntityType.SKELETON;
+	}
+
+	private static boolean isRangedMember(final @Nullable Mob mob) {
+		return mob instanceof AbstractSkeleton && mob.getType() == EntityType.SKELETON;
+	}
+
+	private static SquadRole defaultRole(final Mob mob) {
+		return isRangedMember(mob) ? SquadRole.RANGED : SquadRole.PRESSURER;
+	}
+
+	private static int intelligenceOf(final Mob mob) {
+		if (mob instanceof Zombie zombie) {
+			return ZombieIntelligence.get(zombie);
+		}
+		if (mob instanceof AbstractSkeleton skeleton) {
+			return SkeletonIntelligence.get(skeleton);
+		}
+		return 1;
+	}
+
 	public record SquadView(
 		long squadId,
 		SquadState state,
@@ -948,7 +1013,7 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private static final class MemberRecord {
-		private final Zombie zombie;
+		private final Mob mob;
 		private @Nullable LivingEntity target;
 		private long lastHeartbeatAt = Long.MIN_VALUE;
 		private boolean hasLineOfSight;
@@ -957,8 +1022,8 @@ public final class ZombieSquadCoordinator {
 		private long lastSeenAt = Long.MIN_VALUE;
 		private long squadId;
 
-		private MemberRecord(final Zombie zombie) {
-			this.zombie = zombie;
+		private MemberRecord(final Mob mob) {
+			this.mob = mob;
 		}
 	}
 

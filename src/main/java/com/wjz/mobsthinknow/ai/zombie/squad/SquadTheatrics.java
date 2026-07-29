@@ -43,16 +43,16 @@ public final class SquadTheatrics {
 		final long squadId,
 		final SquadState state,
 		final long stateStartedAt,
-		final @Nullable Zombie leader,
+		final @Nullable Mob leader,
 		final List<RoleMember> members,
 		final MobsThinkNowConfig config,
 		final long now
 	) {
 		for (RoleMember member : members) {
 			if (config.squadRoleNameTags) {
-				this.applyRoleTag(member.zombie(), member.role());
+				this.applyRoleTag(member.mob(), member.role());
 			} else {
-				this.restoreName(member.zombie());
+				this.restoreName(member.mob());
 			}
 		}
 
@@ -74,14 +74,14 @@ public final class SquadTheatrics {
 	}
 
 	/** 成员正式离队时恢复原始名字与可见性；玩家中途用命名牌起的新名字优先保留。 */
-	void restoreName(final Zombie zombie) {
-		StoredName stored = this.storedNames.remove(zombie.getId());
+	void restoreName(final Mob mob) {
+		StoredName stored = this.storedNames.remove(mob.getId());
 		if (stored == null) {
 			return;
 		}
-		if (Objects.equals(zombie.getCustomName(), stored.applied())) {
-			zombie.setCustomName(stored.name());
-			zombie.setCustomNameVisible(stored.visible());
+		if (Objects.equals(mob.getCustomName(), stored.applied())) {
+			mob.setCustomName(stored.name());
+			mob.setCustomNameVisible(stored.visible());
 		}
 	}
 
@@ -113,9 +113,9 @@ public final class SquadTheatrics {
 		mob.setCustomNameVisible(false);
 	}
 
-	private void applyRoleTag(final Zombie zombie, final SquadRole role) {
-		StoredName stored = this.storedNames.get(zombie.getId());
-		Component current = zombie.getCustomName();
+	private void applyRoleTag(final Mob mob, final SquadRole role) {
+		StoredName stored = this.storedNames.get(mob.getId());
+		Component current = mob.getCustomName();
 		if (stored != null && !Objects.equals(current, stored.applied())) {
 			// 佩戴名牌期间被外部改名（玩家命名牌等）：以新名字为原名重新记录，别吞掉玩家的命名。
 			stored = null;
@@ -125,12 +125,12 @@ public final class SquadTheatrics {
 		}
 
 		Component original = stored != null ? stored.name() : current;
-		boolean originalVisible = stored != null ? stored.visible() : zombie.isCustomNameVisible();
-		Component base = original != null ? original : zombie.getType().getDescription();
+		boolean originalVisible = stored != null ? stored.visible() : mob.isCustomNameVisible();
+		Component base = original != null ? original : mob.getType().getDescription();
 		Component tagged = Component.empty().append(base).append(Component.literal(" ")).append(roleTag(role));
-		this.storedNames.put(zombie.getId(), new StoredName(original, originalVisible, role, tagged));
-		zombie.setCustomName(tagged);
-		zombie.setCustomNameVisible(true);
+		this.storedNames.put(mob.getId(), new StoredName(original, originalVisible, role, tagged));
+		mob.setCustomName(tagged);
+		mob.setCustomNameVisible(true);
 	}
 
 	/** 未安装本 Mod 的原版客户端无法解析语言键，因此带英文回退文本。 */
@@ -147,6 +147,7 @@ public final class SquadTheatrics {
 			case FLANK_RIGHT -> "[Right Flank]";
 			case CUTOFF -> "[Cutoff]";
 			case SUPPORT -> "[Support]";
+			case RANGED -> "[Ranged]";
 		};
 	}
 
@@ -158,6 +159,7 @@ public final class SquadTheatrics {
 			case FLANK_RIGHT -> ChatFormatting.AQUA;
 			case CUTOFF -> ChatFormatting.LIGHT_PURPLE;
 			case SUPPORT -> ChatFormatting.BLUE;
+			case RANGED -> ChatFormatting.WHITE;
 		};
 	}
 
@@ -169,11 +171,12 @@ public final class SquadTheatrics {
 			case FLANK_RIGHT -> new DustParticleOptions(0x3FB8E0, 0.9F);
 			case CUTOFF -> new DustParticleOptions(0xB05CE6, 0.9F);
 			case SUPPORT -> new DustParticleOptions(0x3F72E0, 0.9F);
+			case RANGED -> new DustParticleOptions(0xE6E6E6, 0.9F);
 		};
 	}
 
 	/** 首领常驻的金色头顶光环，让玩家一眼认出该优先处理谁。 */
-	private static void emitLeaderAura(final ServerLevel level, final Zombie leader, final long now) {
+	private static void emitLeaderAura(final ServerLevel level, final Mob leader, final long now) {
 		if (now % 3L != 0L) {
 			return;
 		}
@@ -189,15 +192,8 @@ public final class SquadTheatrics {
 		if (members.isEmpty() || phase % MARCH_GRUNT_TICKS != 0L) {
 			return;
 		}
-		Zombie speaker = members.get((int)((phase / MARCH_GRUNT_TICKS) % members.size())).zombie();
-		level.playSound(
-			null,
-			speaker,
-			SoundEvents.ZOMBIE_AMBIENT,
-			SoundSource.HOSTILE,
-			0.5F,
-			ZombieVoiceProfile.expressivePitch(speaker, 0.98F)
-		);
+		Mob speaker = members.get((int)((phase / MARCH_GRUNT_TICKS) % members.size())).mob();
+		playVoice(level, speaker, 0.5F, 0.98F);
 	}
 
 	/**
@@ -207,14 +203,13 @@ public final class SquadTheatrics {
 	private static void emitBriefingConversation(
 		final ServerLevel level,
 		final long squadId,
-		final @Nullable Zombie leader,
+		final @Nullable Mob leader,
 		final List<RoleMember> members,
 		final long phase
 	) {
 		if (leader != null && phase % BRIEFING_SENTENCE_TICKS == 0L) {
 			// 不同小队的首领音高略有差异，多队同屏时不会像一个声音在循环。
-			float pitch = ZombieVoiceProfile.expressivePitch(leader, 0.62F + (squadId % 3L) * 0.03F);
-			level.playSound(null, leader, SoundEvents.ZOMBIE_AMBIENT, SoundSource.HOSTILE, 1.1F, pitch);
+			playVoice(level, leader, 1.1F, 0.62F + (squadId % 3L) * 0.03F);
 			level.sendParticles(
 				ParticleTypes.ANGRY_VILLAGER,
 				leader.getX(), leader.getEyeY() + 0.6, leader.getZ(),
@@ -235,15 +230,8 @@ public final class SquadTheatrics {
 		if (followers.isEmpty()) {
 			return;
 		}
-		Zombie speaker = followers.get((int)((phase / BRIEFING_SENTENCE_TICKS) % followers.size())).zombie();
-		level.playSound(
-			null,
-			speaker,
-			SoundEvents.ZOMBIE_AMBIENT,
-			SoundSource.HOSTILE,
-			0.65F,
-			ZombieVoiceProfile.expressivePitch(speaker, 1.08F)
-		);
+		Mob speaker = followers.get((int)((phase / BRIEFING_SENTENCE_TICKS) % followers.size())).mob();
+		playVoice(level, speaker, 0.65F, 1.08F);
 		level.sendParticles(
 			ParticleTypes.NOTE,
 			speaker.getX(), speaker.getEyeY() + 0.5, speaker.getZ(),
@@ -257,10 +245,10 @@ public final class SquadTheatrics {
 			return;
 		}
 		for (RoleMember member : members) {
-			Zombie zombie = member.zombie();
+			Mob mob = member.mob();
 			level.sendParticles(
 				roleDust(member.role()),
-				zombie.getX(), zombie.getY() + 1.2, zombie.getZ(),
+				mob.getX(), mob.getY() + 1.2, mob.getZ(),
 				1, 0.15, 0.2, 0.15, 0.0
 			);
 		}
@@ -269,20 +257,13 @@ public final class SquadTheatrics {
 	/** 进入交战的最初几 tick：首领一声怒吼，成员声浪依次跟上。 */
 	private static void emitWarCryRipple(
 		final ServerLevel level,
-		final @Nullable Zombie leader,
+		final @Nullable Mob leader,
 		final List<RoleMember> members,
 		final long phase
 	) {
 		if (phase == 0L && leader != null) {
 			// 首领先用低沉长吼下达进攻命令，成员再按两 tick 间隔依次应声。
-			level.playSound(
-				null,
-				leader,
-				SoundEvents.ZOMBIE_AMBIENT,
-				SoundSource.HOSTILE,
-				1.3F,
-				ZombieVoiceProfile.expressivePitch(leader, 0.55F)
-			);
+			playVoice(level, leader, 1.3F, 0.55F);
 			return;
 		}
 		if (phase < 2L || phase % 2L != 0L) {
@@ -290,7 +271,7 @@ public final class SquadTheatrics {
 		}
 		List<RoleMember> followers = new ArrayList<>(members.size());
 		for (RoleMember member : members) {
-			if (leader == null || member.zombie() != leader) {
+			if (leader == null || member.mob() != leader) {
 				followers.add(member);
 			}
 		}
@@ -298,19 +279,36 @@ public final class SquadTheatrics {
 		if (index >= Math.min(followers.size(), WAR_CRY_MAX_VOICES)) {
 			return;
 		}
-		Zombie voice = followers.get(index).zombie();
+		Mob voice = followers.get(index).mob();
+		playVoice(level, voice, 0.9F, 0.86F);
+	}
+
+	private static void playVoice(final ServerLevel level, final Mob mob, final float volume, final float expression) {
+		if (mob instanceof Zombie zombie) {
+			level.playSound(
+				null,
+				zombie,
+				SoundEvents.ZOMBIE_AMBIENT,
+				SoundSource.HOSTILE,
+				volume,
+				ZombieVoiceProfile.expressivePitch(zombie, expression)
+			);
+			return;
+		}
+		// 骷髅没有僵尸声线字段；UUID 哈希提供稳定的小幅个体差异，重进世界后也不会变声。
+		float individual = 0.92F + Math.floorMod(mob.getUUID().hashCode(), 17) / 100.0F;
 		level.playSound(
 			null,
-			voice,
-			SoundEvents.ZOMBIE_AMBIENT,
+			mob,
+			SoundEvents.SKELETON_AMBIENT,
 			SoundSource.HOSTILE,
-			0.9F,
-			ZombieVoiceProfile.expressivePitch(voice, 0.86F)
+			volume,
+			expression * individual
 		);
 	}
 
 	/** 协调器传入的成员及其当前职位快照。 */
-	record RoleMember(Zombie zombie, SquadRole role) {
+	record RoleMember(Mob mob, SquadRole role) {
 	}
 
 	private record StoredName(@Nullable Component name, boolean visible, SquadRole appliedRole, Component applied) {

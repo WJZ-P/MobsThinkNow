@@ -13,6 +13,8 @@ public final class SmartSkeletonMetrics {
 	private static final AtomicLong PROJECTILE_DODGES = new AtomicLong();
 	private static final AtomicLong SHOTS = new AtomicLong();
 	private static final AtomicLong PREDICTIVE_SHOTS = new AtomicLong();
+	private static final AtomicLong CROSSBOW_SHOTS = new AtomicLong();
+	private static final AtomicLong FIREWORK_CROSSBOW_SHOTS = new AtomicLong();
 
 	private SmartSkeletonMetrics() {
 	}
@@ -53,6 +55,13 @@ public final class SmartSkeletonMetrics {
 		PREDICTIVE_SHOTS.incrementAndGet();
 	}
 
+	public static void crossbowShot(final boolean firework) {
+		CROSSBOW_SHOTS.incrementAndGet();
+		if (firework) {
+			FIREWORK_CROSSBOW_SHOTS.incrementAndGet();
+		}
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -63,7 +72,9 @@ public final class SmartSkeletonMetrics {
 			KITES.get(),
 			PROJECTILE_DODGES.get(),
 			SHOTS.get(),
-			PREDICTIVE_SHOTS.get()
+			PREDICTIVE_SHOTS.get(),
+			CROSSBOW_SHOTS.get(),
+			FIREWORK_CROSSBOW_SHOTS.get()
 		);
 	}
 
@@ -76,7 +87,9 @@ public final class SmartSkeletonMetrics {
 		long kites,
 		long projectileDodges,
 		long shots,
-		long predictiveShots
+		long predictiveShots,
+		long crossbowShots,
+		long fireworkCrossbowShots
 	) {
 	}
 }

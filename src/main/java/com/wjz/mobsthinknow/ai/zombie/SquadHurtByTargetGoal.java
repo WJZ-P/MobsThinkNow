@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 
@@ -29,7 +30,7 @@ public final class SquadHurtByTargetGoal extends HurtByTargetGoal {
 		if (config.enabled
 			&& config.zombieAiEnabled
 			&& config.squadIgnoreFriendlyFire
-			&& this.zombie.getLastHurtByMob() instanceof Zombie attacker
+			&& this.zombie.getLastHurtByMob() instanceof Mob attacker
 			&& ZombieSquadCoordinator.areSquadmates(this.zombie, attacker)) {
 			// 立即消费掉这次误伤事件：lastHurtByMob 会保留 100 tick，若只返回 false，
 			// 小队一旦解散（目标死亡、心跳超时），旧账就会翻出来引发僵尸内战 + 警报连锁。

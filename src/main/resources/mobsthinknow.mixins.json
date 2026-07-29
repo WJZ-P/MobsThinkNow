@@ -9,6 +9,7 @@
 		"ZombieMixin"
 	],
 	"client": [
+		"client.AbstractSkeletonRendererMixin",
 		"client.AbstractZombieModelMixin",
 		"client.AbstractZombieRendererMixin",
 		"client.LivingEntityRendererMixin"
