@@ -102,6 +102,7 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		SkeletonIntelligence.set(skeleton, 7);
 		skeleton.setTarget(golem);
 		skeleton.startUsingItem(InteractionHand.MAIN_HAND);
+		skeleton.setXRot(55.0F); // 回归夹具：旧实现会继续把脚底路径节点当作凝视点。
 
 		SkeletonEmergencyDisengageGoal goal = new SkeletonEmergencyDisengageGoal(skeleton);
 		helper.assertTrue(goal.canUse(), "An iron golem three blocks away did not trigger full disengagement.");
@@ -109,9 +110,14 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		helper.assertTrue(!skeleton.isUsingItem(), "Disengaging from an iron golem did not lower the bow.");
 		skeleton.setOnGround(true);
 		goal.tick();
+		skeleton.getLookControl().tick();
 		helper.assertTrue(
 			isFacingAwayFrom(skeleton, golem),
 			"The skeleton did not face its escape route when an iron golem closed in."
+		);
+		helper.assertTrue(
+			Math.abs(skeleton.getXRot()) <= 1.0F,
+			"Full escape kept looking down at the path node instead of looking horizontally ahead."
 		);
 		helper.assertTrue(goal.canContinueToUse(), "The golem disengage ended before reaching safe range.");
 		goal.stop();

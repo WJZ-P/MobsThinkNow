@@ -84,7 +84,10 @@ public final class EscapePathing {
 		mob.setYRot(yaw);
 		mob.setYBodyRot(yaw);
 		mob.setYHeadRot(yaw);
-		mob.getLookControl().setLookAt(focus.x, focus.y + 1.0, focus.z, 90.0F, 90.0F);
+		// 路径节点记录的是脚底坐标。直接盯节点会让眼睛朝下看，尤其下坡时像在低头数方块；
+		// 逃跑姿态只取节点的水平朝向，并把凝视高度固定到自己的眼睛高度。
+		mob.setXRot(0.0F);
+		mob.getLookControl().setLookAt(focus.x, mob.getEyeY(), focus.z, 90.0F, 90.0F);
 	}
 
 	static double horizontalDistanceSquared(final Vec3 first, final Vec3 second) {

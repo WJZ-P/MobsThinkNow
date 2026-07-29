@@ -190,7 +190,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 			candidate.x,
 			candidate.y,
 			candidate.z,
-			SkeletonCombatMath.disengagePathSpeed(SkeletonIntelligence.get(this.skeleton))
+			SkeletonEscapeSpeedProfile.pathSpeed(this.skeleton)
 		);
 		this.escapeDestination = foundPath ? candidate : null;
 		this.pathRefreshCooldown = foundPath

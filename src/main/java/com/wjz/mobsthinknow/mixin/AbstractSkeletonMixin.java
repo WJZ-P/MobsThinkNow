@@ -2,6 +2,8 @@ package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCrossbowLoadout;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonEscapeSpeedAccess;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonEscapeSpeedProfile;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonEmergencyDisengageGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceAccess;
@@ -45,7 +47,7 @@ import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
 /** 只改造原版普通骷髅；流浪者、沼骸、凋灵骷髅等变种先保留各自原版节奏。 */
 @Mixin(AbstractSkeleton.class)
-public abstract class AbstractSkeletonMixin extends Monster implements SkeletonIntelligenceAccess {
+public abstract class AbstractSkeletonMixin extends Monster implements SkeletonIntelligenceAccess, SkeletonEscapeSpeedAccess {
 	@Unique
 	private static final String mobsthinknow$INTELLIGENCE_TAG = "MobsThinkNowIntelligence";
 
@@ -68,6 +70,8 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	private @Nullable SmartSkeletonCrossbowAttackGoal mobsthinknow$smartCrossbowGoal;
 	@Unique
 	private int mobsthinknow$skeletonIntelligence;
+	@Unique
+	private float mobsthinknow$skeletonEscapeSpeedFactor;
 
 	protected AbstractSkeletonMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
@@ -148,6 +152,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
 		if (skeleton.getType() == EntityType.SKELETON) {
 			output.putInt(mobsthinknow$INTELLIGENCE_TAG, this.mobsthinknow$getSkeletonIntelligence());
+			SkeletonEscapeSpeedProfile.save(skeleton, output);
 		}
 	}
 
@@ -159,8 +164,10 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 		}
 		int saved = input.getIntOr(mobsthinknow$INTELLIGENCE_TAG, 0);
 		this.mobsthinknow$skeletonIntelligence = saved == 0 ? 0 : SkeletonIntelligence.clamp(saved);
+		SkeletonEscapeSpeedProfile.load(skeleton, input);
 		SquadTheatrics.stripLeftoverRoleTag(skeleton);
 		SkeletonIntelligenceName.apply(skeleton, this.mobsthinknow$getSkeletonIntelligence());
+		SkeletonEscapeSpeedProfile.initialize(skeleton);
 	}
 
 	@Inject(method = "finalizeSpawn", at = @At("TAIL"))
@@ -176,6 +183,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 			return;
 		}
 		SkeletonIntelligenceName.apply(skeleton, this.mobsthinknow$getSkeletonIntelligence());
+		SkeletonEscapeSpeedProfile.initialize(skeleton);
 		SkeletonCrossbowLoadout.maybeEquip(skeleton, skeleton.level().getDifficulty(), ConfigManager.get());
 		// 换成弩时 setItemSlot 会重评一次；显式再调用可覆盖其他 Mod 直接修改 ItemStack 的路径。
 		skeleton.reassessWeaponGoal();
@@ -219,6 +227,16 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	@Override
 	public void mobsthinknow$setSkeletonIntelligence(final int intelligence) {
 		this.mobsthinknow$skeletonIntelligence = SkeletonIntelligence.clamp(intelligence);
+	}
+
+	@Override
+	public float mobsthinknow$getSkeletonEscapeSpeedFactor() {
+		return this.mobsthinknow$skeletonEscapeSpeedFactor;
+	}
+
+	@Override
+	public void mobsthinknow$setSkeletonEscapeSpeedFactor(final float factor) {
+		this.mobsthinknow$skeletonEscapeSpeedFactor = factor;
 	}
 
 	/**
