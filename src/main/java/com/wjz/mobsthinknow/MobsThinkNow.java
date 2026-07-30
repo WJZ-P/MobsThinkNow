@@ -12,6 +12,8 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieShieldMemory;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceName;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligenceName;
 import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligenceName;
+import com.wjz.mobsthinknow.ai.giant.GiantIntelligenceName;
+import com.wjz.mobsthinknow.ai.giant.GiantZombieSpawnConversion;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.command.MtnCommands;
@@ -20,6 +22,7 @@ import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.world.entity.LivingEntity;
@@ -27,6 +30,7 @@ import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.monster.spider.Spider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,9 +43,17 @@ public final class MobsThinkNow implements ModInitializer {
 	public void onInitialize() {
 		ConfigManager.load();
 		MtnCommands.register();
+		// finalizeSpawn 只负责掷概率；实体确认入世后排队，在维度 tick 末做无递归替换。
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
+			if (entity instanceof Zombie zombie) {
+				GiantZombieSpawnConversion.queueIfMarked(zombie, level);
+			}
+		});
+		ServerTickEvents.END_LEVEL_TICK.register(GiantZombieSpawnConversion::tickLevel);
 		// 协调器统一在每个维度 tick 的末尾做一次决策，保证本 tick 的所有僵尸心跳已经收齐。
 		ServerTickEvents.END_LEVEL_TICK.register(ZombieSquadCoordinator::tickLevel);
 		ServerLevelEvents.UNLOAD.register((server, level) -> {
+			GiantZombieSpawnConversion.unloadLevel(level);
 			ZombieSquadCoordinator.unloadLevel(level);
 			ZombieFireSupportMemory.clearLevel(level);
 			ZombieFluidThreatMemory.clearLevel(level);
@@ -52,6 +64,7 @@ public final class MobsThinkNow implements ModInitializer {
 			ZombieFoodEquipment.restoreAll();
 		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			GiantZombieSpawnConversion.clear();
 			ZombieSquadCoordinator.clearAll();
 			ZombieArmory.clearShieldState();
 			ZombieFoodEquipment.clear();
@@ -83,6 +96,9 @@ public final class MobsThinkNow implements ModInitializer {
 				SpiderIntelligenceName.removeSyntheticMarker(spider);
 			} else if (entity instanceof EnderMan enderman) {
 				EndermanIntelligenceName.removeSyntheticMarker(enderman);
+			} else if (entity instanceof Giant giant) {
+				ZombieSquadCoordinator.onMemberDying(giant);
+				GiantIntelligenceName.removeSyntheticMarker(giant);
 			}
 			return true;
 		});
@@ -120,6 +136,9 @@ public final class MobsThinkNow implements ModInitializer {
 				&& spider.getType() == net.minecraft.world.entity.EntityType.SPIDER
 				&& damageSource.getEntity() instanceof LivingEntity attacker) {
 				ZombieSquadCoordinator.onSquadMemberAttacked(spider, attacker);
+			} else if (entity instanceof Giant giant
+				&& damageSource.getEntity() instanceof LivingEntity attacker) {
+				ZombieSquadCoordinator.onSquadMemberAttacked(giant, attacker);
 			}
 			return true;
 		});

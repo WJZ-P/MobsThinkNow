@@ -40,6 +40,12 @@ class MobsThinkNowConfigTest {
 		assertEquals(300, config.endermanCreeperDeliveryCooldownTicks);
 		assertEquals(3.0, config.endermanCreeperDropDistance);
 		assertEquals(0.80, config.endermanCreeperFrontDeliveryChance);
+		assertEquals(true, config.giantZombieAiEnabled);
+		assertEquals(0.01, config.giantZombieSpawnChance);
+		assertEquals(160.0, config.giantZombieMaximumHealth);
+		assertEquals(14.0, config.giantZombieAttackDamage);
+		assertEquals(0.16, config.giantZombieMovementSpeed);
+		assertEquals(true, config.giantZombiePayloadThrowing);
 	}
 
 	@Test
@@ -270,5 +276,20 @@ class MobsThinkNowConfigTest {
 		assertEquals(100, config.endermanCreeperDeliveryCooldownTicks);
 		assertEquals(2.0, config.endermanCreeperDropDistance);
 		assertEquals(0.0, config.endermanCreeperFrontDeliveryChance);
+	}
+
+	@Test
+	void clampsGiantZombieProfile() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.giantZombieSpawnChance = 5.0;
+		config.giantZombieMaximumHealth = 999.0;
+		config.giantZombieAttackDamage = -5.0;
+		config.giantZombieMovementSpeed = Double.NaN;
+		config.validate();
+
+		assertEquals(1.0, config.giantZombieSpawnChance);
+		assertEquals(400.0, config.giantZombieMaximumHealth);
+		assertEquals(4.0, config.giantZombieAttackDamage);
+		assertEquals(0.08, config.giantZombieMovementSpeed);
 	}
 }

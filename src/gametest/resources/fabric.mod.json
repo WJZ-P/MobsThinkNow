@@ -24,6 +24,8 @@
 			"com.wjz.mobsthinknow.command.SpiderShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.ai.enderman.EndermanTacticsGameTests",
 			"com.wjz.mobsthinknow.command.EndermanShowcaseCommandGameTests",
+			"com.wjz.mobsthinknow.ai.giant.GiantTacticsGameTests",
+			"com.wjz.mobsthinknow.command.GiantShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.command.AllShowcaseCommandGameTests"
 		]
 	},

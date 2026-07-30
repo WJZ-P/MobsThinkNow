@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.mixin.client;
 
+import com.wjz.mobsthinknow.client.render.GiantCarrierRenderStateAccess;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.monster.zombie.AbstractZombieModel;
@@ -24,6 +25,26 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(AbstractZombieModel.class)
 public abstract class AbstractZombieModelMixin {
+	/** 巨人两只装载手分别覆盖原版双臂前伸结果；空手侧仍保持原版动作。 */
+	@Inject(method = "setupAnim", at = @At("TAIL"))
+	private void mobsthinknow$poseGiantLoadedHands(
+		final ZombieRenderState state,
+		final CallbackInfo callbackInfo
+	) {
+		GiantCarrierRenderStateAccess carrier = (GiantCarrierRenderStateAccess)state;
+		HumanoidModel<?> model = (HumanoidModel<?>)(Object)this;
+		if (carrier.mobsthinknow$isGiantRightHandLoaded()) {
+			model.rightArm.xRot = -1.03F;
+			model.rightArm.yRot = -0.12F;
+			model.rightArm.zRot = 0.10F;
+		}
+		if (carrier.mobsthinknow$isGiantLeftHandLoaded()) {
+			model.leftArm.xRot = -1.03F;
+			model.leftArm.yRot = 0.12F;
+			model.leftArm.zRot = -0.10F;
+		}
+	}
+
 	@Inject(
 		method = "setupAnim",
 		at = @At(

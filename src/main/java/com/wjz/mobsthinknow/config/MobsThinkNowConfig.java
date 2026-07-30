@@ -57,6 +57,16 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE = 0.80;
 	public static final double MINIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE = 0.0;
 	public static final double MAXIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE = 1.0;
+	public static final double DEFAULT_GIANT_ZOMBIE_SPAWN_CHANCE = 0.01;
+	public static final double DEFAULT_GIANT_ZOMBIE_MAXIMUM_HEALTH = 160.0;
+	public static final double MINIMUM_GIANT_ZOMBIE_MAXIMUM_HEALTH = 40.0;
+	public static final double MAXIMUM_GIANT_ZOMBIE_MAXIMUM_HEALTH = 400.0;
+	public static final double DEFAULT_GIANT_ZOMBIE_ATTACK_DAMAGE = 14.0;
+	public static final double MINIMUM_GIANT_ZOMBIE_ATTACK_DAMAGE = 4.0;
+	public static final double MAXIMUM_GIANT_ZOMBIE_ATTACK_DAMAGE = 40.0;
+	public static final double DEFAULT_GIANT_ZOMBIE_MOVEMENT_SPEED = 0.16;
+	public static final double MINIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED = 0.08;
+	public static final double MAXIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED = 0.22;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
@@ -113,6 +123,18 @@ public final class MobsThinkNowConfig {
 	public double endermanCreeperDropDistance = DEFAULT_ENDERMAN_CREEPER_DROP_DISTANCE;
 	/** 投送到玩家当前视线正前方的概率；剩余概率保留后方奇袭变化。 */
 	public double endermanCreeperFrontDeliveryChance = DEFAULT_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE;
+	/** 原版普通僵尸出生时替换为有完整 AI 的巨人僵尸，并允许其加入混编小队。 */
+	public boolean giantZombieAiEnabled = true;
+	/** 普通难度的替换概率；简单乘 0.4、困难乘 2，空间容纳不下巨人时保留普通僵尸。 */
+	public double giantZombieSpawnChance = DEFAULT_GIANT_ZOMBIE_SPAWN_CHANCE;
+	/** 巨人的基础最大生命；生成后不会随难度重新洗点。 */
+	public double giantZombieMaximumHealth = DEFAULT_GIANT_ZOMBIE_MAXIMUM_HEALTH;
+	/** 巨人的基础近战伤害；原版 50 点会过度秒杀，因此使用更可控的重击值。 */
+	public double giantZombieAttackDamage = DEFAULT_GIANT_ZOMBIE_ATTACK_DAMAGE;
+	/** 巨人的基础移动速度；普通僵尸是 0.23。 */
+	public double giantZombieMovementSpeed = DEFAULT_GIANT_ZOMBIE_MOVEMENT_SPEED;
+	/** 是否启用头顶射手、双手抱取队友以及对目标的抛投战术。 */
+	public boolean giantZombiePayloadThrowing = true;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public boolean squadVisualEffects = true;
@@ -324,6 +346,22 @@ public final class MobsThinkNowConfig {
 			this.endermanCreeperFrontDeliveryChance,
 			MINIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE,
 			MAXIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE
+		);
+		this.giantZombieSpawnChance = clamp(this.giantZombieSpawnChance, 0.0, 1.0);
+		this.giantZombieMaximumHealth = clamp(
+			this.giantZombieMaximumHealth,
+			MINIMUM_GIANT_ZOMBIE_MAXIMUM_HEALTH,
+			MAXIMUM_GIANT_ZOMBIE_MAXIMUM_HEALTH
+		);
+		this.giantZombieAttackDamage = clamp(
+			this.giantZombieAttackDamage,
+			MINIMUM_GIANT_ZOMBIE_ATTACK_DAMAGE,
+			MAXIMUM_GIANT_ZOMBIE_ATTACK_DAMAGE
+		);
+		this.giantZombieMovementSpeed = clamp(
+			this.giantZombieMovementSpeed,
+			MINIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED,
+			MAXIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED
 		);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);

@@ -14,6 +14,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -59,11 +60,13 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"creeper",
 			"spider",
 			"enderman",
+			"giant",
 			"zombies",
 			"skeletons",
 			"creepers",
 			"spiders",
-			"endermen"
+			"endermen",
+			"giants"
 		));
 		Arrays.stream(ZombieShowcaseSpawner.ShowcaseArchetype.values())
 			.map(ZombieShowcaseSpawner.ShowcaseArchetype::commandId)
@@ -79,6 +82,9 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			.forEach(expected::add);
 		Arrays.stream(EndermanShowcaseSpawner.ShowcaseArchetype.values())
 			.map(EndermanShowcaseSpawner.ShowcaseArchetype::commandId)
+			.forEach(expected::add);
+		Arrays.stream(GiantShowcaseSpawner.ShowcaseArchetype.values())
+			.map(GiantShowcaseSpawner.ShowcaseArchetype::commandId)
 			.forEach(expected::add);
 
 		Set<String> actual = new HashSet<>();
@@ -106,6 +112,7 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		assertBaseAlias(helper, source, sourceBlock, "creeper", EntityType.CREEPER);
 		assertBaseAlias(helper, source, sourceBlock, "spider", EntityType.SPIDER);
 		assertBaseAlias(helper, source, sourceBlock, "enderman", EntityType.ENDERMAN);
+		assertBaseAlias(helper, source, sourceBlock, "giant", EntityType.GIANT);
 		helper.succeed();
 	}
 
@@ -117,8 +124,8 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			source,
 			command
 		);
-		// 20 根实体只占前方四排；使用定向盒，避免并行 GameTest 的相邻展示阵型混入计数。
-		AABB searchBox = new AABB(sourceBlock).move(0.0, 0.0, 8.0).inflate(10.0, 8.0, 10.0);
+		// 23 根实体只占前方五排；竖直范围覆盖 12 格高巨人与其头顶射手。
+		AABB searchBox = new AABB(sourceBlock).move(0.0, 0.0, 8.0).inflate(12.0, 16.0, 12.0);
 		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
 			Zombie.class,
 			searchBox,
@@ -144,14 +151,19 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			searchBox,
 			enderman -> enderman.getType() == EntityType.ENDERMAN && isShowcase(enderman)
 		);
+		List<Giant> giants = helper.getLevel().getEntitiesOfClass(
+			Giant.class,
+			searchBox,
+			giant -> giant.getType() == EntityType.GIANT && isShowcase(giant)
+		);
 
 		helper.assertTrue(
-			zombies.size() == 9,
-			"Global spawnall expected nine zombie archetypes but found " + zombies.size() + "."
+			zombies.size() == 10,
+			"Global spawnall expected nine roots plus one Giant-held zombie but found " + zombies.size() + "."
 		);
 		helper.assertTrue(
-			skeletons.size() == 3,
-			"Global spawnall expected three skeleton archetypes but found " + skeletons.size() + "."
+			skeletons.size() == 4,
+			"Global spawnall expected three roots plus one Giant head rider but found " + skeletons.size() + "."
 		);
 		helper.assertTrue(
 			spiders.size() == 4,
@@ -162,8 +174,8 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"Global spawnall expected two enderman archetypes but found " + endermen.size() + "."
 		);
 		helper.assertTrue(
-			creepers.size() == 6,
-			"Global spawnall expected six creepers including both payloads but found " + creepers.size() + "."
+			creepers.size() == 7,
+			"Global spawnall expected seven creepers including three mounted payloads but found " + creepers.size() + "."
 		);
 		helper.assertTrue(
 			creepers.stream().filter(creeper -> creeper.getVehicle() instanceof Spider).count() == 1,
@@ -174,24 +186,38 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"The global formation did not retain exactly one enderman-held creeper payload."
 		);
 		helper.assertTrue(
+			creepers.stream().filter(creeper -> creeper.getVehicle() instanceof Giant).count() == 1,
+			"The global formation did not retain exactly one Giant-held creeper payload."
+		);
+		helper.assertTrue(
 			creepers.stream().filter(creeper -> !creeper.isPassenger()).count() == 4,
 			"The global formation did not retain exactly four standalone creeper archetypes."
 		);
+		helper.assertTrue(giants.size() == 1, "Global spawnall did not create exactly one Giant root.");
+		helper.assertTrue(
+			zombies.stream().filter(zombie -> zombie.getVehicle() instanceof Giant).count() == 1,
+			"The global formation did not retain exactly one Giant-held zombie payload."
+		);
+		helper.assertTrue(
+			skeletons.stream().filter(skeleton -> skeleton.getVehicle() instanceof Giant).count() == 1,
+			"The global formation did not retain exactly one Giant head rider."
+		);
 
 		Set<BlockPos> rootPositions = new HashSet<>();
-		zombies.forEach(entity -> rootPositions.add(entity.blockPosition()));
-		skeletons.forEach(entity -> rootPositions.add(entity.blockPosition()));
+		zombies.stream().filter(zombie -> !zombie.isPassenger()).forEach(entity -> rootPositions.add(entity.blockPosition()));
+		skeletons.stream().filter(skeleton -> !skeleton.isPassenger()).forEach(entity -> rootPositions.add(entity.blockPosition()));
 		creepers.stream().filter(creeper -> !creeper.isPassenger())
 			.forEach(entity -> rootPositions.add(entity.blockPosition()));
 		spiders.forEach(entity -> rootPositions.add(entity.blockPosition()));
 		endermen.forEach(entity -> rootPositions.add(entity.blockPosition()));
+		giants.forEach(entity -> rootPositions.add(entity.blockPosition()));
 		helper.assertTrue(
 			rootPositions.size() == AllShowcaseSpawner.ARCHETYPE_COUNT,
 			"At least two global showcase roots occupied the same feet position."
 		);
 		helper.assertTrue(
-			zombies.size() + skeletons.size() + creepers.size() + spiders.size() + endermen.size() == 24,
-			"Global spawnall did not create exactly 24 entities including both mounted payloads."
+			zombies.size() + skeletons.size() + creepers.size() + spiders.size() + endermen.size() + giants.size() == 28,
+			"Global spawnall did not create exactly 28 entities including all mounted riders and payloads."
 		);
 		helper.succeed();
 	}
@@ -209,14 +235,21 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		);
 		List<Mob> spawned = helper.getLevel().getEntitiesOfClass(
 			Mob.class,
-			new AABB(sourceBlock).move(0.0, 0.0, 5.0).inflate(5.0, 8.0, 5.0),
+			new AABB(sourceBlock).move(0.0, 0.0, 5.0).inflate(8.0, 16.0, 8.0),
 			mob -> mob.getType() == expectedType && isShowcase(mob)
 		);
 		helper.assertTrue(
 			spawned.size() == 2,
 			"The /mtn spawn " + literal + " base alias did not create exactly two expected mobs."
 		);
-		spawned.forEach(Mob::discard);
+		spawned.forEach(AllShowcaseCommandGameTests::discardTree);
+	}
+
+	private static void discardTree(final net.minecraft.world.entity.Entity root) {
+		for (net.minecraft.world.entity.Entity passenger : List.copyOf(root.getPassengers())) {
+			discardTree(passenger);
+		}
+		root.discard();
 	}
 
 	private static boolean isShowcase(final Mob mob) {

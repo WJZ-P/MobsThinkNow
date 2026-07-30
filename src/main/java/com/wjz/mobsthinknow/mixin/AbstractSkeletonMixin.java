@@ -12,6 +12,7 @@ import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonCrossbowAttackGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.skeleton.SquadSkeletonHurtByTargetGoal;
+import com.wjz.mobsthinknow.ai.giant.GiantRiderBoardingGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -86,6 +87,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 		// 只替换 AbstractSkeleton 自己注册的精确原版类，不移除其他模组添加的 HurtByTargetGoal 子类。
 		this.targetSelector.removeAllGoals(goal -> goal.getClass() == HurtByTargetGoal.class);
 		this.targetSelector.addGoal(1, new SquadSkeletonHurtByTargetGoal(skeleton));
+		this.goalSelector.addGoal(2, new GiantRiderBoardingGoal(skeleton));
 	}
 
 	/**

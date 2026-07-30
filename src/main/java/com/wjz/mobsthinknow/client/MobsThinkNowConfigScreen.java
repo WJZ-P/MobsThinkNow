@@ -299,6 +299,66 @@ public final class MobsThinkNowConfigScreen {
 			))
 			.build());
 
+		ConfigCategory giantCategory = builder.getOrCreateCategory(
+			Component.translatable("mobsthinknow.config.category.giant")
+		);
+		giantCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.giant_zombie_ai_enabled"),
+			config.giantZombieAiEnabled
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.giant_zombie_ai_enabled.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombieAiEnabled = value))
+			.build());
+		giantCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.giant_zombie_spawn_chance"),
+			(int)Math.round(config.giantZombieSpawnChance * 1000.0),
+			0,
+			100
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_GIANT_ZOMBIE_SPAWN_CHANCE * 1000.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.giant_zombie_spawn_chance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombieSpawnChance = value / 1000.0))
+			.build());
+		giantCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.giant_zombie_maximum_health"),
+			(int)Math.round(config.giantZombieMaximumHealth),
+			(int)MobsThinkNowConfig.MINIMUM_GIANT_ZOMBIE_MAXIMUM_HEALTH,
+			(int)MobsThinkNowConfig.MAXIMUM_GIANT_ZOMBIE_MAXIMUM_HEALTH
+		)
+			.setDefaultValue((int)MobsThinkNowConfig.DEFAULT_GIANT_ZOMBIE_MAXIMUM_HEALTH)
+			.setTooltip(Component.translatable("mobsthinknow.config.giant_zombie_maximum_health.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombieMaximumHealth = value))
+			.build());
+		giantCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.giant_zombie_attack_damage"),
+			(int)Math.round(config.giantZombieAttackDamage),
+			(int)MobsThinkNowConfig.MINIMUM_GIANT_ZOMBIE_ATTACK_DAMAGE,
+			(int)MobsThinkNowConfig.MAXIMUM_GIANT_ZOMBIE_ATTACK_DAMAGE
+		)
+			.setDefaultValue((int)MobsThinkNowConfig.DEFAULT_GIANT_ZOMBIE_ATTACK_DAMAGE)
+			.setTooltip(Component.translatable("mobsthinknow.config.giant_zombie_attack_damage.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombieAttackDamage = value))
+			.build());
+		giantCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.giant_zombie_movement_speed"),
+			(int)Math.round(config.giantZombieMovementSpeed * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MINIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED * 100.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_GIANT_ZOMBIE_MOVEMENT_SPEED * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.giant_zombie_movement_speed.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombieMovementSpeed = value / 100.0))
+			.build());
+		giantCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.giant_zombie_payload_throwing"),
+			config.giantZombiePayloadThrowing
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.giant_zombie_payload_throwing.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombiePayloadThrowing = value))
+			.build());
+
 		// Mod Menu 位于客户端；这段提示避免玩家误以为它可以直接修改远程服务器规则。
 		squadCategory.addEntry(entries.startTextDescription(
 			Component.translatable("mobsthinknow.config.server_authority_note")

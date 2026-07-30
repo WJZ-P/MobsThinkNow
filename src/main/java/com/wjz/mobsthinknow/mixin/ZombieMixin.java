@@ -34,6 +34,8 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieWeaponPickupGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
+import com.wjz.mobsthinknow.ai.giant.GiantZombieProfile;
+import com.wjz.mobsthinknow.ai.giant.GiantZombieSpawnAccess;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.DifficultyInstance;
@@ -67,7 +69,8 @@ public abstract class ZombieMixin extends Monster implements
 	ZombieVoiceAccess,
 	ZombieFluidCarrierAccess,
 	ZombieFlightAccess,
-	ZombieAirAssaultStatusAccess {
+	ZombieAirAssaultStatusAccess,
+	GiantZombieSpawnAccess {
 	@Unique
 	private static final String mobsthinknow$INTELLIGENCE_TAG = "MobsThinkNowIntelligence";
 
@@ -93,6 +96,9 @@ public abstract class ZombieMixin extends Monster implements
 	private int mobsthinknow$rocketsLaunched;
 	@Unique
 	private int mobsthinknow$divesStarted;
+	/** finalizeSpawn 判定、实体真正加入世界后只消费一次的巨人替换标记。 */
+	@Unique
+	private boolean mobsthinknow$giantReplacement;
 
 	protected ZombieMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
@@ -226,6 +232,14 @@ public abstract class ZombieMixin extends Monster implements
 		ZombieAirAssault.equipForSpawn(zombie, difficulty.getDifficulty(), this.random, config);
 		// 最后掷工程兵身份；水/岩浆桶变体会并入工程兵，武装兵和空袭兵仍保持独立。
 		ZombieEngineerProfile.maybeAssignOnSpawn(zombie, difficulty, this.random, config);
+		if (GiantZombieProfile.shouldReplace(
+			difficulty.getDifficulty(),
+			spawnReason,
+			this.random.nextDouble(),
+			config
+		)) {
+			this.mobsthinknow$giantReplacement = true;
+		}
 	}
 
 	@Inject(method = "wantsToPickUp", at = @At("HEAD"), cancellable = true)
@@ -342,6 +356,18 @@ public abstract class ZombieMixin extends Monster implements
 	@Override
 	public void mobsthinknow$recordDiveStart() {
 		this.mobsthinknow$divesStarted++;
+	}
+
+	@Override
+	public void mobsthinknow$markGiantReplacement() {
+		this.mobsthinknow$giantReplacement = true;
+	}
+
+	@Override
+	public boolean mobsthinknow$consumeGiantReplacement() {
+		boolean marked = this.mobsthinknow$giantReplacement;
+		this.mobsthinknow$giantReplacement = false;
+		return marked;
 	}
 
 	/** 原版每次发声的小抖动保留，再乘固定个体声线，幼年僵尸的高音规则也照常叠加。 */

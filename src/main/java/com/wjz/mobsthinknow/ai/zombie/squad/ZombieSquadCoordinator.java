@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
+import com.wjz.mobsthinknow.ai.giant.GiantIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
@@ -34,6 +35,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -118,7 +120,7 @@ public final class ZombieSquadCoordinator {
 		onMemberDying(zombie);
 	}
 
-	/** 供仇恨 Goal 判断“攻击者是不是同队队友”；两个实体都登记在同一支四物种小队才算。 */
+	/** 供仇恨 Goal 判断“攻击者是不是同队队友”；两个实体都登记在同一支五物种小队才算。 */
 	public static boolean areSquadmates(final Mob first, final Mob second) {
 		if (first.level() != second.level() || !(first.level() instanceof ServerLevel serverLevel)) {
 			return false;
@@ -339,6 +341,75 @@ public final class ZombieSquadCoordinator {
 		return squad != null && squad.state == SquadState.ENGAGING
 			? this.assignedTransportPartnerFor(spider)
 			: null;
+	}
+
+	/** 返回分给巨人头顶火力位的射手；集结阶段同样保留预约关系。 */
+	public @Nullable AbstractSkeleton assignedGiantHeadRiderFor(final Giant giant) {
+		MemberRecord carrier = this.members.get(giant.getId());
+		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
+		Integer riderId = squad == null ? null : squad.giantHeadRiders.get(giant.getId());
+		MemberRecord rider = riderId == null ? null : this.members.get(riderId);
+		return rider != null
+			&& rider.squadId == squad.id
+			&& rider.mob.isAlive()
+			&& rider.mob instanceof AbstractSkeleton skeleton
+			? skeleton
+			: null;
+	}
+
+	/** 射手反向查询自己的巨人火力平台。 */
+	public @Nullable Giant assignedGiantMountFor(final AbstractSkeleton skeleton) {
+		MemberRecord rider = this.members.get(skeleton.getId());
+		ZombieSquad squad = rider == null ? null : this.squads.get(rider.squadId);
+		if (squad == null) {
+			return null;
+		}
+		for (Map.Entry<Integer, Integer> assignment : squad.giantHeadRiders.entrySet()) {
+			if (assignment.getValue() != skeleton.getId()) {
+				continue;
+			}
+			MemberRecord giant = this.members.get(assignment.getKey());
+			return giant != null && giant.squadId == squad.id && giant.mob.isAlive() && giant.mob instanceof Giant value
+				? value
+				: null;
+		}
+		return null;
+	}
+
+	/** 只有正式交战时，射手才从阵位跳上巨人头顶。 */
+	public @Nullable Giant activeGiantMountFor(final AbstractSkeleton skeleton) {
+		MemberRecord rider = this.members.get(skeleton.getId());
+		ZombieSquad squad = rider == null ? null : this.squads.get(rider.squadId);
+		return squad != null && squad.state == SquadState.ENGAGING
+			? this.assignedGiantMountFor(skeleton)
+			: null;
+	}
+
+	/** 返回巨人左右手的固定载荷预约，顺序即右手、左手。 */
+	public List<Mob> assignedGiantPayloadsFor(final Giant giant) {
+		MemberRecord carrier = this.members.get(giant.getId());
+		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
+		List<Integer> payloadIds = squad == null ? null : squad.giantHandPayloads.get(giant.getId());
+		if (payloadIds == null || payloadIds.isEmpty()) {
+			return List.of();
+		}
+		List<Mob> result = new ArrayList<>(payloadIds.size());
+		for (int payloadId : payloadIds) {
+			MemberRecord payload = this.members.get(payloadId);
+			if (payload != null && payload.squadId == squad.id && payload.mob.isAlive()) {
+				result.add(payload.mob);
+			}
+		}
+		return List.copyOf(result);
+	}
+
+	/** 巨人只在正式交战阶段离开阵位收取双手载荷。 */
+	public List<Mob> activeGiantPayloadsFor(final Giant giant) {
+		MemberRecord carrier = this.members.get(giant.getId());
+		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
+		return squad != null && squad.state == SquadState.ENGAGING
+			? this.assignedGiantPayloadsFor(giant)
+			: List.of();
 	}
 
 	/** 目标失效时立即注销；正常 Goal 切换则交给心跳超时，避免频繁退队又入队。 */
@@ -608,39 +679,89 @@ public final class ZombieSquadCoordinator {
 				squad.roles.put(memberId, SquadRole.RANGED);
 			} else if (memberId != squad.leaderId && member != null && isCreeperMember(member.mob)) {
 				squad.roles.put(memberId, SquadRole.BREACHER);
+			} else if (memberId != squad.leaderId && member != null && isGiantMember(member.mob)) {
+				squad.roles.put(memberId, SquadRole.PRESSURER);
 			}
 		}
 		this.rebuildTransportAssignments(squad, ordered);
 	}
 
 	/**
-	 * 每只蜘蛛最多接一名乘员，每名乘员最多分给一只蜘蛛。候选先按战术价值排序：
-	 * 苦力怕投送优先，其次是需要快速换点的骷髅，最后是近战僵尸；同类仍按智力排序。
+	 * 运输资源按固定层级一次性分配，保证同一成员不会被两种载具争抢：先给每个巨人一名头顶射手，
+	 * 再以轮转方式给每个巨人至多两枚苦力怕/僵尸载荷，最后才把剩余成员交给蜘蛛运输。
 	 */
 	private void rebuildTransportAssignments(final ZombieSquad squad, final List<Integer> ordered) {
 		squad.transportPartners.clear();
-		List<MemberRecord> carriers = new ArrayList<>();
-		List<MemberRecord> passengers = new ArrayList<>();
+		squad.giantHeadRiders.clear();
+		squad.giantHandPayloads.clear();
+		List<MemberRecord> giants = new ArrayList<>();
+		List<MemberRecord> spiders = new ArrayList<>();
+		List<MemberRecord> available = new ArrayList<>();
 		for (int memberId : ordered) {
 			MemberRecord member = this.members.get(memberId);
 			if (member == null) {
 				continue;
 			}
-			if (isSpiderMember(member.mob)) {
-				carriers.add(member);
+			if (isGiantMember(member.mob)) {
+				giants.add(member);
+			} else if (isSpiderMember(member.mob)) {
+				spiders.add(member);
 			} else {
-				passengers.add(member);
+				available.add(member);
 			}
 		}
-		passengers.sort(
+
+		List<MemberRecord> ranged = available.stream()
+			.filter(member -> isRangedMember(member.mob))
+			.sorted(Comparator.comparingInt((MemberRecord member) -> intelligenceOf(member.mob)).reversed()
+				.thenComparingInt(member -> member.mob.getId()))
+			.toList();
+		Set<Integer> reserved = new LinkedHashSet<>();
+		for (int index = 0; index < Math.min(giants.size(), ranged.size()); index++) {
+			MemberRecord giant = giants.get(index);
+			MemberRecord rider = ranged.get(index);
+			squad.giantHeadRiders.put(giant.mob.getId(), rider.mob.getId());
+			reserved.add(rider.mob.getId());
+			if (giant.mob.getId() != squad.leaderId) {
+				squad.roles.put(giant.mob.getId(), SquadRole.CARRIER);
+			}
+		}
+
+		List<MemberRecord> payloads = available.stream()
+			.filter(member -> !reserved.contains(member.mob.getId()))
+			.filter(member -> isCreeperMember(member.mob) || member.mob.getType() == EntityType.ZOMBIE)
+			.sorted(Comparator.comparingInt((MemberRecord member) -> giantPayloadPriority(member.mob))
+				.thenComparing(Comparator.comparingInt((MemberRecord member) -> intelligenceOf(member.mob)).reversed())
+				.thenComparingInt(member -> member.mob.getId()))
+			.toList();
+		int payloadIndex = 0;
+		for (int hand = 0; hand < 2 && payloadIndex < payloads.size(); hand++) {
+			for (MemberRecord giant : giants) {
+				if (payloadIndex >= payloads.size()) {
+					break;
+				}
+				MemberRecord payload = payloads.get(payloadIndex++);
+				squad.giantHandPayloads.computeIfAbsent(giant.mob.getId(), ignored -> new ArrayList<>(2))
+					.add(payload.mob.getId());
+				reserved.add(payload.mob.getId());
+				if (giant.mob.getId() != squad.leaderId) {
+					squad.roles.put(giant.mob.getId(), SquadRole.CARRIER);
+				}
+			}
+		}
+
+		List<MemberRecord> spiderPassengers = available.stream()
+			.filter(member -> !reserved.contains(member.mob.getId()))
+			.sorted(
 			Comparator.comparingInt((MemberRecord member) -> transportPriority(member.mob))
 				.thenComparing(Comparator.comparingInt((MemberRecord member) -> intelligenceOf(member.mob)).reversed())
 				.thenComparingInt(member -> member.mob.getId())
-		);
-		int pairCount = Math.min(carriers.size(), passengers.size());
+			)
+			.toList();
+		int pairCount = Math.min(spiders.size(), spiderPassengers.size());
 		for (int index = 0; index < pairCount; index++) {
-			MemberRecord carrier = carriers.get(index);
-			MemberRecord passenger = passengers.get(index);
+			MemberRecord carrier = spiders.get(index);
+			MemberRecord passenger = spiderPassengers.get(index);
 			squad.transportPartners.put(carrier.mob.getId(), passenger.mob.getId());
 			if (carrier.mob.getId() != squad.leaderId) {
 				squad.roles.put(carrier.mob.getId(), SquadRole.CARRIER);
@@ -819,15 +940,42 @@ public final class ZombieSquadCoordinator {
 					yield targetPosition.add(forward.scale(config.formationRadius + 1.5));
 				}
 				ZombieSquad memberSquad = member.squadId == 0L ? null : this.squads.get(member.squadId);
-				Integer passengerId = memberSquad == null
-					? null
-					: memberSquad.transportPartners.get(member.mob.getId());
+				Integer passengerId = this.firstTransportPartner(memberSquad, member.mob.getId());
 				MemberRecord passenger = passengerId == null ? null : this.members.get(passengerId);
 				yield passenger == null
 					? targetPosition.add(forward.scale(config.formationRadius + 1.5))
 					: passenger.mob.position();
 			}
 		};
+	}
+
+	/** 返回尚未登上对应载具的第一名预约成员，避免 CARRIER 阵位永久追着自己身上的乘员。 */
+	private @Nullable Integer firstTransportPartner(
+		final @Nullable ZombieSquad squad,
+		final int carrierId
+	) {
+		if (squad == null) {
+			return null;
+		}
+		List<Integer> giantPayloads = squad.giantHandPayloads.get(carrierId);
+		if (giantPayloads != null) {
+			for (int payloadId : giantPayloads) {
+				MemberRecord payload = this.members.get(payloadId);
+				if (payload != null && (payload.mob.getVehicle() == null || payload.mob.getVehicle().getId() != carrierId)) {
+					return payloadId;
+				}
+			}
+		}
+		Integer headRider = squad.giantHeadRiders.get(carrierId);
+		MemberRecord rider = headRider == null ? null : this.members.get(headRider);
+		if (rider != null && (rider.mob.getVehicle() == null || rider.mob.getVehicle().getId() != carrierId)) {
+			return headRider;
+		}
+		Integer spiderPassenger = squad.transportPartners.get(carrierId);
+		MemberRecord passenger = spiderPassenger == null ? null : this.members.get(spiderPassenger);
+		return passenger != null && (passenger.mob.getVehicle() == null || passenger.mob.getVehicle().getId() != carrierId)
+			? spiderPassenger
+			: null;
 	}
 
 	private boolean hasReachedQuorum(final ZombieSquad squad, final double requiredFraction) {
@@ -929,7 +1077,13 @@ public final class ZombieSquadCoordinator {
 			boolean removedCarrier = squad.transportPartners.remove(member.mob.getId()) != null;
 			boolean removedPassenger = squad.transportPartners.values()
 				.removeIf(passengerId -> passengerId == member.mob.getId());
-			boolean transportChanged = removedCarrier || removedPassenger;
+			boolean removedGiantRider = squad.giantHeadRiders.remove(member.mob.getId()) != null
+				|| squad.giantHeadRiders.values().removeIf(riderId -> riderId == member.mob.getId());
+			boolean removedGiantPayload = squad.giantHandPayloads.remove(member.mob.getId()) != null;
+			for (List<Integer> payloadIds : squad.giantHandPayloads.values()) {
+				removedGiantPayload |= payloadIds.removeIf(payloadId -> payloadId == member.mob.getId());
+			}
+			boolean transportChanged = removedCarrier || removedPassenger || removedGiantRider || removedGiantPayload;
 			if (transportChanged && !squad.memberIds.isEmpty()) {
 				this.rebuildRoles(squad);
 			}
@@ -982,7 +1136,9 @@ public final class ZombieSquadCoordinator {
 				continue;
 			}
 			// 载具 Goal 已使用独立的 1.10～配置上限速度曲线；再叠通用 +10% 会突破刚收紧的运输峰值。
-			if (isSpiderMember(member.mob) && squad.transportPartners.containsKey(memberId)) {
+			if ((isSpiderMember(member.mob) && squad.transportPartners.containsKey(memberId))
+				|| (isGiantMember(member.mob)
+					&& (squad.giantHeadRiders.containsKey(memberId) || squad.giantHandPayloads.containsKey(memberId)))) {
 				speed.removeModifier(SQUAD_SPEED_MODIFIER_ID);
 				continue;
 			}
@@ -1076,7 +1232,8 @@ public final class ZombieSquadCoordinator {
 			&& (config.zombieAiEnabled
 				|| config.skeletonAiEnabled
 				|| config.creeperAiEnabled
-				|| config.spiderAiEnabled);
+				|| config.spiderAiEnabled
+				|| config.giantZombieAiEnabled);
 	}
 
 	private static boolean isSupportedMember(final Mob mob) {
@@ -1084,7 +1241,8 @@ public final class ZombieSquadCoordinator {
 		return (mob.getType() == EntityType.ZOMBIE && config.zombieAiEnabled)
 			|| (mob.getType() == EntityType.SKELETON && config.skeletonAiEnabled)
 			|| (mob.getType() == EntityType.CREEPER && config.creeperAiEnabled)
-			|| (mob.getType() == EntityType.SPIDER && config.spiderAiEnabled);
+			|| (mob.getType() == EntityType.SPIDER && config.spiderAiEnabled)
+			|| (mob.getType() == EntityType.GIANT && config.giantZombieAiEnabled);
 	}
 
 	private static boolean isRangedMember(final @Nullable Mob mob) {
@@ -1099,9 +1257,16 @@ public final class ZombieSquadCoordinator {
 		return mob instanceof Spider && mob.getType() == EntityType.SPIDER;
 	}
 
+	private static boolean isGiantMember(final @Nullable Mob mob) {
+		return mob instanceof Giant && mob.getType() == EntityType.GIANT;
+	}
+
 	private static SquadRole defaultRole(final Mob mob) {
 		if (isRangedMember(mob)) {
 			return SquadRole.RANGED;
+		}
+		if (isGiantMember(mob)) {
+			return SquadRole.CARRIER;
 		}
 		return isCreeperMember(mob) ? SquadRole.BREACHER : SquadRole.PRESSURER;
 	}
@@ -1119,6 +1284,9 @@ public final class ZombieSquadCoordinator {
 		if (mob instanceof Spider spider) {
 			return SpiderIntelligence.get(spider);
 		}
+		if (mob instanceof Giant giant) {
+			return GiantIntelligence.get(giant);
+		}
 		return 1;
 	}
 
@@ -1127,6 +1295,10 @@ public final class ZombieSquadCoordinator {
 			return 0;
 		}
 		return isRangedMember(mob) ? 1 : 2;
+	}
+
+	private static int giantPayloadPriority(final Mob mob) {
+		return isCreeperMember(mob) ? 0 : 1;
 	}
 
 	private static long randomElectionTicket(final Mob mob) {
@@ -1166,6 +1338,8 @@ public final class ZombieSquadCoordinator {
 		private final Map<Integer, SquadRole> roles = new HashMap<>();
 		private final Map<Integer, SquadOrder> orders = new HashMap<>();
 		private final Map<Integer, Integer> transportPartners = new HashMap<>();
+		private final Map<Integer, Integer> giantHeadRiders = new HashMap<>();
+		private final Map<Integer, List<Integer>> giantHandPayloads = new HashMap<>();
 		private int leaderId;
 		private int term;
 		private int planEpoch;

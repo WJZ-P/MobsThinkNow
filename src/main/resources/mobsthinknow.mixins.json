@@ -7,6 +7,7 @@
 		"CreeperMixin",
 		"EnderManMixin",
 		"FireworkRocketEntityMixin",
+		"GiantMixin",
 		"LivingEntityMixin",
 		"SpiderMixin",
 		"ZombieMixin"
@@ -18,7 +19,9 @@
 		"client.EndermanModelMixin",
 		"client.EndermanRendererMixin",
 		"client.EndermanRenderStateMixin",
-		"client.LivingEntityRendererMixin"
+		"client.GiantMobRendererMixin",
+		"client.LivingEntityRendererMixin",
+		"client.ZombieRenderStateMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * 为无参数 {@code /mtn spawnall} 生成当前全部智能 AI 战术预设。
- * 二十二个根实体统一预检、统一准备并事务式加入世界；蜘蛛和末影人投送兵的苦力怕载荷随根实体加入。
+ * 二十三个根实体统一预检、统一准备并事务式加入世界；所有坐骑、射手和载荷随根实体加入。
  */
 public final class AllShowcaseSpawner {
 	public static final int ZOMBIE_ARCHETYPES = ZombieShowcaseSpawner.ShowcaseArchetype.values().length;
@@ -21,11 +21,13 @@ public final class AllShowcaseSpawner {
 	public static final int CREEPER_ARCHETYPES = CreeperShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int SPIDER_ARCHETYPES = SpiderShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int ENDERMAN_ARCHETYPES = EndermanShowcaseSpawner.ShowcaseArchetype.values().length;
+	public static final int GIANT_ARCHETYPES = GiantShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int ARCHETYPE_COUNT = ZOMBIE_ARCHETYPES
 		+ SKELETON_ARCHETYPES
 		+ CREEPER_ARCHETYPES
 		+ SPIDER_ARCHETYPES
-		+ ENDERMAN_ARCHETYPES;
+		+ ENDERMAN_ARCHETYPES
+		+ GIANT_ARCHETYPES;
 
 	private AllShowcaseSpawner() {
 	}
@@ -135,6 +137,21 @@ public final class AllShowcaseSpawner {
 						archetype
 					);
 					return prepared == null ? null : prepared.enderman();
+				}
+			));
+		}
+		for (GiantShowcaseSpawner.ShowcaseArchetype archetype
+			: GiantShowcaseSpawner.ShowcaseArchetype.values()) {
+			specs.add(new SpawnSpec(
+				EntityType.GIANT,
+				(level, feet, faceToward) -> {
+					GiantShowcaseSpawner.PreparedGiant prepared = GiantShowcaseSpawner.createGiant(
+						level,
+						feet,
+						faceToward,
+						archetype
+					);
+					return prepared == null ? null : prepared.giant();
 				}
 			));
 		}

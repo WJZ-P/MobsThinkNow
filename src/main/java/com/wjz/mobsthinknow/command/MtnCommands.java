@@ -7,6 +7,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
 import com.wjz.mobsthinknow.ai.enderman.SmartEndermanMetrics;
+import com.wjz.mobsthinknow.ai.giant.SmartGiantMetrics;
 import com.wjz.mobsthinknow.ai.spider.SmartSpiderMetrics;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
@@ -37,6 +38,7 @@ public final class MtnCommands {
 						.then(Commands.literal("creepers").executes(MtnCommands::spawnAllCreepers))
 						.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders))
 						.then(Commands.literal("endermen").executes(MtnCommands::spawnAllEndermen))
+						.then(Commands.literal("giants").executes(MtnCommands::spawnAllGiants))
 				)
 				.then(
 					Commands.literal("spawnzombies")
@@ -63,6 +65,11 @@ public final class MtnCommands {
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAllEndermen)
 				)
+				.then(
+					Commands.literal("spawngiants")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(MtnCommands::spawnAllGiants)
+				)
 				.then(spawnSpecificCommand())
 				.then(
 					Commands.literal("reload")
@@ -77,13 +84,14 @@ public final class MtnCommands {
 		LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("spawn")
 			.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 			.executes(MtnCommands::listSpawnTypes);
-		// 先注册全局、分类与基础实体入口；后面的二十二个战术预设仍保留独立 Tab literal。
+		// 先注册全局、分类与基础实体入口；后面的二十三个战术预设仍保留独立 Tab literal。
 		command.then(Commands.literal("all").executes(MtnCommands::spawnAll));
 		command.then(Commands.literal("zombies").executes(MtnCommands::spawnAllZombies));
 		command.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons));
 		command.then(Commands.literal("creepers").executes(MtnCommands::spawnAllCreepers));
 		command.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders));
 		command.then(Commands.literal("endermen").executes(MtnCommands::spawnAllEndermen));
+		command.then(Commands.literal("giants").executes(MtnCommands::spawnAllGiants));
 		command.then(
 			Commands.literal("zombie")
 				.executes(context -> spawnSpecific(
@@ -160,6 +168,22 @@ public final class MtnCommands {
 						.executes(context -> spawnSpecificEnderman(
 							context,
 							EndermanShowcaseSpawner.ShowcaseArchetype.HUNTER,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+				)
+		);
+		command.then(
+			Commands.literal("giant")
+				.executes(context -> spawnSpecificGiant(
+					context,
+					GiantShowcaseSpawner.ShowcaseArchetype.GIANT_SIEGE,
+					1
+				))
+				.then(
+					Commands.argument("count", IntegerArgumentType.integer(1, GiantShowcaseSpawner.MAX_BATCH_SIZE))
+						.executes(context -> spawnSpecificGiant(
+							context,
+							GiantShowcaseSpawner.ShowcaseArchetype.GIANT_SIEGE,
 							IntegerArgumentType.getInteger(context, "count")
 						))
 				)
@@ -249,6 +273,23 @@ public final class MtnCommands {
 					)
 			);
 		}
+		for (GiantShowcaseSpawner.ShowcaseArchetype archetype
+			: GiantShowcaseSpawner.ShowcaseArchetype.values()) {
+			command.then(
+				Commands.literal(archetype.commandId())
+					.executes(context -> spawnSpecificGiant(context, archetype, 1))
+					.then(
+						Commands.argument(
+							"count",
+							IntegerArgumentType.integer(1, GiantShowcaseSpawner.MAX_BATCH_SIZE)
+						).executes(context -> spawnSpecificGiant(
+							context,
+							archetype,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+					)
+			);
+		}
 		return command;
 	}
 
@@ -259,6 +300,7 @@ public final class MtnCommands {
 		SmartCreeperMetrics.Snapshot creeperMetrics = SmartCreeperMetrics.snapshot();
 		SmartSpiderMetrics.Snapshot spiderMetrics = SmartSpiderMetrics.snapshot();
 		SmartEndermanMetrics.Snapshot endermanMetrics = SmartEndermanMetrics.snapshot();
+		SmartGiantMetrics.Snapshot giantMetrics = SmartGiantMetrics.snapshot();
 		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d"
 			.formatted(
 				config.enabled,
@@ -326,6 +368,16 @@ public final class MtnCommands {
 				endermanMetrics.deliveryTeleports(),
 				endermanMetrics.payloadsIgnited()
 			);
+		message += ", giantAI=%s, giantGoals=%d, giantConversions=%d, giantRiders=%d, giantPayloadsPickedUp=%d, giantCreepersThrown=%d, giantZombiesThrown=%d"
+			.formatted(
+				config.giantZombieAiEnabled,
+				giantMetrics.installedGoals(),
+				giantMetrics.zombiesConverted(),
+				giantMetrics.ridersMounted(),
+				giantMetrics.payloadsPickedUp(),
+				giantMetrics.creepersThrown(),
+				giantMetrics.zombiesThrown()
+			);
 		String statusMessage = message;
 		context.getSource().sendSuccess(() -> Component.literal(statusMessage), false);
 		return Command.SINGLE_SUCCESS;
@@ -349,14 +401,15 @@ public final class MtnCommands {
 			context.getSource().sendSuccess(
 				() -> Component.translatableWithFallback(
 					"mobsthinknow.command.spawn_all.success",
-					"Spawned %s intelligent-AI archetypes (%s entities): %s zombies, %s skeletons, %s creepers, %s spiders, and %s endermen.",
+					"Spawned %s intelligent-AI archetypes (%s entities): %s zombies, %s skeletons, %s creepers, %s spiders, %s endermen, and %s giants.",
 					count,
 					result.totalEntities(),
 					AllShowcaseSpawner.ZOMBIE_ARCHETYPES,
 					AllShowcaseSpawner.SKELETON_ARCHETYPES,
 					AllShowcaseSpawner.CREEPER_ARCHETYPES,
 					AllShowcaseSpawner.SPIDER_ARCHETYPES,
-					AllShowcaseSpawner.ENDERMAN_ARCHETYPES
+					AllShowcaseSpawner.ENDERMAN_ARCHETYPES,
+					AllShowcaseSpawner.GIANT_ARCHETYPES
 				),
 				true
 			);
@@ -455,8 +508,15 @@ public final class MtnCommands {
 				.map(EndermanShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
-		String types = "all, zombie, skeleton, creeper, spider, enderman, zombies, skeletons, creepers, spiders, endermen, "
-			+ zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes + ", " + endermanTypes;
+		String giantTypes = String.join(
+			", ",
+			Arrays.stream(GiantShowcaseSpawner.ShowcaseArchetype.values())
+				.map(GiantShowcaseSpawner.ShowcaseArchetype::commandId)
+				.toList()
+		);
+		String types = "all, zombie, skeleton, creeper, spider, enderman, giant, zombies, skeletons, creepers, spiders, endermen, giants, "
+			+ zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes + ", " + endermanTypes
+			+ ", " + giantTypes;
 		context.getSource().sendSuccess(
 			() -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.types",
@@ -871,6 +931,94 @@ public final class MtnCommands {
 				requestedCount
 			);
 			case NONE -> throw new IllegalStateException("Successful enderman spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(error);
+		return 0;
+	}
+
+	private static int spawnAllGiants(final CommandContext<CommandSourceStack> context) {
+		GiantShowcaseSpawner.SpawnResult result = GiantShowcaseSpawner.spawnAll(context.getSource());
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_all_giants.success",
+					"Spawned %s giant siege platform archetypes (%s total entities).",
+					count,
+					count * 4
+				),
+				true
+			);
+			return count;
+		}
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_giants.no_space",
+				"No nearby ground has the full twelve-block clearance required by a giant siege platform."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_giants.create_failed",
+				"Preparing the giant, head rider, and two hand payloads failed; nothing was added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_giants.add_failed",
+				"Adding the giant siege platform failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful giant spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private static int spawnSpecificGiant(
+		final CommandContext<CommandSourceStack> context,
+		final GiantShowcaseSpawner.ShowcaseArchetype archetype,
+		final int requestedCount
+	) {
+		GiantShowcaseSpawner.SpawnResult result = GiantShowcaseSpawner.spawnBatch(
+			context.getSource(),
+			archetype,
+			requestedCount
+		);
+		if (result.success()) {
+			int spawnedCount = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn.success",
+					"Spawned %s × %s (%s).",
+					spawnedCount,
+					archetype.displayName(),
+					archetype.commandId()
+				),
+				true
+			);
+			return spawnedCount;
+		}
+		Component error = switch (result.failure()) {
+			case PEACEFUL -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.no_space",
+				"No safe nearby ground was found for all %s requested giant platforms; nothing was spawned.",
+				requestedCount
+			);
+			case CREATE_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.create_failed",
+				"Preparing the requested batch of %s giant platforms failed; nothing was spawned.",
+				requestedCount
+			);
+			case ADD_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.add_failed",
+				"Adding the requested batch of %s giant platforms failed; the entire batch was rolled back.",
+				requestedCount
+			);
+			case NONE -> throw new IllegalStateException("Successful giant spawn reached the failure branch.");
 		};
 		context.getSource().sendFailure(error);
 		return 0;
