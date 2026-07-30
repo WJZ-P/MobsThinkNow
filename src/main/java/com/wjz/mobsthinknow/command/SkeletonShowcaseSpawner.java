@@ -118,7 +118,7 @@ public final class SkeletonShowcaseSpawner {
 		return SpawnResult.succeeded(spawned);
 	}
 
-	private static Skeleton createSkeleton(
+	static Skeleton createSkeleton(
 		final ServerLevel level,
 		final BlockPos feet,
 		final Vec3 faceToward,

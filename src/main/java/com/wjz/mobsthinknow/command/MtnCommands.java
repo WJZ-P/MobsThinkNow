@@ -31,9 +31,15 @@ public final class MtnCommands {
 					Commands.literal("spawnall")
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAll)
+						.then(Commands.literal("zombies").executes(MtnCommands::spawnAllZombies))
 						.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons))
 						.then(Commands.literal("creepers").executes(MtnCommands::spawnAllCreepers))
 						.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders))
+				)
+				.then(
+					Commands.literal("spawnzombies")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(MtnCommands::spawnAllZombies)
 				)
 				.then(
 					Commands.literal("spawnskeletons")
@@ -215,14 +221,19 @@ public final class MtnCommands {
 	}
 
 	private static int spawnAll(final CommandContext<CommandSourceStack> context) {
-		ZombieShowcaseSpawner.SpawnResult result = ZombieShowcaseSpawner.spawnAll(context.getSource());
+		AllShowcaseSpawner.SpawnResult result = AllShowcaseSpawner.spawnAll(context.getSource());
 		if (result.success()) {
-			int count = result.spawned().size();
+			int count = result.spawnedRoots().size();
 			context.getSource().sendSuccess(
 				() -> Component.translatableWithFallback(
 					"mobsthinknow.command.spawn_all.success",
-					"Spawned %s tactical zombie archetypes in a 3x3 formation; behavior still follows the current configuration.",
-					count
+					"Spawned %s intelligent-AI archetypes (%s entities): %s zombies, %s skeletons, %s creepers, and %s spiders.",
+					count,
+					result.totalEntities(),
+					AllShowcaseSpawner.ZOMBIE_ARCHETYPES,
+					AllShowcaseSpawner.SKELETON_ARCHETYPES,
+					AllShowcaseSpawner.CREEPER_ARCHETYPES,
+					AllShowcaseSpawner.SPIDER_ARCHETYPES
 				),
 				true
 			);
@@ -236,17 +247,55 @@ public final class MtnCommands {
 			);
 			case NO_SPACE -> new ErrorMessage(
 				"mobsthinknow.command.spawn_all.no_space",
-				"No nearby ground has enough safe space for the complete 3x3 zombie formation."
+				"No nearby ground has enough safe space for the complete mixed intelligent-monster formation."
 			);
 			case CREATE_FAILED -> new ErrorMessage(
 				"mobsthinknow.command.spawn_all.create_failed",
-				"Zombie entity creation failed; no showcase formation was added."
+				"Preparing the mixed intelligent-monster formation failed; no showcase entities were added."
 			);
 			case ADD_FAILED -> new ErrorMessage(
 				"mobsthinknow.command.spawn_all.add_failed",
 				"Adding the formation to the world failed; this spawn attempt was rolled back."
 			);
 			case NONE -> throw new IllegalStateException("Successful spawn result reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private static int spawnAllZombies(final CommandContext<CommandSourceStack> context) {
+		ZombieShowcaseSpawner.SpawnResult result = ZombieShowcaseSpawner.spawnAll(context.getSource());
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_all_zombies.success",
+					"Spawned %s tactical zombie archetypes in a 3x3 formation.",
+					count
+				),
+				true
+			);
+			return count;
+		}
+
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_zombies.no_space",
+				"No nearby ground has enough safe space for the complete 3x3 zombie formation."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_zombies.create_failed",
+				"Zombie entity creation failed; no showcase formation was added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_zombies.add_failed",
+				"Adding the zombie formation failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful zombie spawn reached the failure branch.");
 		};
 		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
 		return 0;

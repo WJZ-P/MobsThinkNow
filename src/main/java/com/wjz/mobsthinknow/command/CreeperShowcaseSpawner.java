@@ -96,7 +96,7 @@ public final class CreeperShowcaseSpawner {
 		return SpawnResult.succeeded(spawned);
 	}
 
-	private static Creeper createCreeper(
+	static Creeper createCreeper(
 		final ServerLevel level,
 		final BlockPos feet,
 		final Vec3 faceToward,

@@ -152,7 +152,7 @@ public final class ZombieShowcaseSpawner {
 		return SpawnResult.succeeded(spawned);
 	}
 
-	private static @Nullable Zombie createZombie(
+	static @Nullable Zombie createZombie(
 		final ServerLevel level,
 		final BlockPos feet,
 		final Vec3 faceToward,

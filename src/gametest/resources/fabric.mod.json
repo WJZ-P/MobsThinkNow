@@ -21,7 +21,8 @@
 			"com.wjz.mobsthinknow.ai.creeper.CreeperTacticsGameTests",
 			"com.wjz.mobsthinknow.command.CreeperShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.ai.spider.SpiderTacticsGameTests",
-			"com.wjz.mobsthinknow.command.SpiderShowcaseCommandGameTests"
+			"com.wjz.mobsthinknow.command.SpiderShowcaseCommandGameTests",
+			"com.wjz.mobsthinknow.command.AllShowcaseCommandGameTests"
 		]
 	},
 	"depends": {

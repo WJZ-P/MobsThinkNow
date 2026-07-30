@@ -13,7 +13,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
-/** 僵尸与骷髅展示指令共用的安全落点和阵型规划。 */
+/** 所有战术怪物展示指令共用的安全落点和阵型规划。 */
 final class ShowcaseSpawnPlacement {
 	private static final double GRID_SPACING = 3.0;
 	private static final double FORMATION_FRONT_DISTANCE = 5.0;
@@ -52,6 +52,20 @@ final class ShowcaseSpawnPlacement {
 		final int count,
 		final EntityType<?> entityType
 	) {
+		return findMixedFormation(level, origin, yaw, java.util.Collections.nCopies(count, entityType));
+	}
+
+	/**
+	 * 为混合实体阵型逐格使用真实实体尺寸做地基、碰撞和预留检查。
+	 * 这样蜘蛛的宽碰撞箱、僵尸/骷髅的高度与苦力怕载荷都不会退化成单一模板估算。
+	 */
+	static List<BlockPos> findMixedFormation(
+		final ServerLevel level,
+		final Vec3 origin,
+		final float yaw,
+		final List<EntityType<?>> entityTypes
+	) {
+		int count = entityTypes.size();
 		double radians = Math.toRadians(yaw);
 		Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
 		Vec3 lateral = new Vec3(Math.cos(radians), 0.0, Math.sin(radians));
@@ -60,6 +74,7 @@ final class ShowcaseSpawnPlacement {
 		List<AABB> reservedBoxes = new ArrayList<>(count);
 
 		for (int index = 0; index < count; index++) {
+			EntityType<?> entityType = entityTypes.get(index);
 			int row = index / columns;
 			int rowStart = row * columns;
 			int rowSize = Math.min(columns, count - rowStart);

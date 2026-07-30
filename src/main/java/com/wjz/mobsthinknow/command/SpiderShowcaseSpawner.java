@@ -97,7 +97,7 @@ public final class SpiderShowcaseSpawner {
 		return SpawnResult.succeeded(spawned);
 	}
 
-	private static @Nullable PreparedSpider createSpider(
+	static @Nullable PreparedSpider createSpider(
 		final ServerLevel level,
 		final BlockPos feet,
 		final Vec3 faceToward,
@@ -233,6 +233,6 @@ public final class SpiderShowcaseSpawner {
 		}
 	}
 
-	private record PreparedSpider(ShowcaseArchetype archetype, Spider spider, @Nullable Creeper payload) {
+	record PreparedSpider(ShowcaseArchetype archetype, Spider spider, @Nullable Creeper payload) {
 	}
 }

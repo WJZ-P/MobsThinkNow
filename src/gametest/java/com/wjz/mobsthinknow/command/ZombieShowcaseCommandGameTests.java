@@ -118,7 +118,7 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 		maxTicks = 20,
 		padding = 4
 	)
-	public void spawnAllCommandCreatesOneOfEveryTacticalArchetype(final GameTestHelper helper) {
+	public void spawnAllZombiesSubcommandCreatesOneOfEveryTacticalArchetype(final GameTestHelper helper) {
 		BlockPos sourceBlock = helper.absolutePos(new BlockPos(32, 1, 8));
 		Vec3 sourcePosition = Vec3.atBottomCenterOf(sourceBlock);
 		var source = helper.getLevel()
@@ -129,7 +129,7 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 			.withRotation(Vec2.ZERO)
 			.withSuppressedOutput();
 
-		helper.getLevel().getServer().getCommands().performPrefixedCommand(source, "mtn spawnall");
+		helper.getLevel().getServer().getCommands().performPrefixedCommand(source, "mtn spawnall zombies");
 		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
 			Zombie.class,
 			new AABB(sourceBlock).inflate(20.0, 8.0, 20.0),
