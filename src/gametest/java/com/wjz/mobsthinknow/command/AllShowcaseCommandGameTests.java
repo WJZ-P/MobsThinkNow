@@ -13,6 +13,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -57,10 +58,12 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"skeleton",
 			"creeper",
 			"spider",
+			"enderman",
 			"zombies",
 			"skeletons",
 			"creepers",
-			"spiders"
+			"spiders",
+			"endermen"
 		));
 		Arrays.stream(ZombieShowcaseSpawner.ShowcaseArchetype.values())
 			.map(ZombieShowcaseSpawner.ShowcaseArchetype::commandId)
@@ -73,6 +76,9 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			.forEach(expected::add);
 		Arrays.stream(SpiderShowcaseSpawner.ShowcaseArchetype.values())
 			.map(SpiderShowcaseSpawner.ShowcaseArchetype::commandId)
+			.forEach(expected::add);
+		Arrays.stream(EndermanShowcaseSpawner.ShowcaseArchetype.values())
+			.map(EndermanShowcaseSpawner.ShowcaseArchetype::commandId)
 			.forEach(expected::add);
 
 		Set<String> actual = new HashSet<>();
@@ -99,6 +105,7 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		assertBaseAlias(helper, source, sourceBlock, "skeleton", EntityType.SKELETON);
 		assertBaseAlias(helper, source, sourceBlock, "creeper", EntityType.CREEPER);
 		assertBaseAlias(helper, source, sourceBlock, "spider", EntityType.SPIDER);
+		assertBaseAlias(helper, source, sourceBlock, "enderman", EntityType.ENDERMAN);
 		helper.succeed();
 	}
 
@@ -115,22 +122,27 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
 			Zombie.class,
 			searchBox,
-			zombie -> zombie.getType() == EntityType.ZOMBIE && zombie.isAlive()
+			zombie -> zombie.getType() == EntityType.ZOMBIE && isShowcase(zombie)
 		);
 		List<Skeleton> skeletons = helper.getLevel().getEntitiesOfClass(
 			Skeleton.class,
 			searchBox,
-			skeleton -> skeleton.getType() == EntityType.SKELETON && skeleton.isAlive()
+			skeleton -> skeleton.getType() == EntityType.SKELETON && isShowcase(skeleton)
 		);
 		List<Creeper> creepers = helper.getLevel().getEntitiesOfClass(
 			Creeper.class,
 			searchBox,
-			creeper -> creeper.getType() == EntityType.CREEPER && creeper.isAlive()
+			creeper -> creeper.getType() == EntityType.CREEPER && isShowcase(creeper)
 		);
 		List<Spider> spiders = helper.getLevel().getEntitiesOfClass(
 			Spider.class,
 			searchBox,
-			spider -> spider.getType() == EntityType.SPIDER && spider.isAlive()
+			spider -> spider.getType() == EntityType.SPIDER && isShowcase(spider)
+		);
+		List<EnderMan> endermen = helper.getLevel().getEntitiesOfClass(
+			EnderMan.class,
+			searchBox,
+			enderman -> enderman.getType() == EntityType.ENDERMAN && isShowcase(enderman)
 		);
 
 		helper.assertTrue(
@@ -146,12 +158,20 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"Global spawnall expected four spider archetypes but found " + spiders.size() + "."
 		);
 		helper.assertTrue(
-			creepers.size() == 5,
-			"Global spawnall expected five creepers including the payload but found " + creepers.size() + "."
+			endermen.size() == 2,
+			"Global spawnall expected two enderman archetypes but found " + endermen.size() + "."
+		);
+		helper.assertTrue(
+			creepers.size() == 6,
+			"Global spawnall expected six creepers including both payloads but found " + creepers.size() + "."
 		);
 		helper.assertTrue(
 			creepers.stream().filter(creeper -> creeper.getVehicle() instanceof Spider).count() == 1,
-			"The global formation did not retain exactly one mounted creeper payload."
+			"The global formation did not retain exactly one spider-mounted creeper payload."
+		);
+		helper.assertTrue(
+			creepers.stream().filter(creeper -> creeper.getVehicle() instanceof EnderMan).count() == 1,
+			"The global formation did not retain exactly one enderman-held creeper payload."
 		);
 		helper.assertTrue(
 			creepers.stream().filter(creeper -> !creeper.isPassenger()).count() == 4,
@@ -164,13 +184,14 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		creepers.stream().filter(creeper -> !creeper.isPassenger())
 			.forEach(entity -> rootPositions.add(entity.blockPosition()));
 		spiders.forEach(entity -> rootPositions.add(entity.blockPosition()));
+		endermen.forEach(entity -> rootPositions.add(entity.blockPosition()));
 		helper.assertTrue(
 			rootPositions.size() == AllShowcaseSpawner.ARCHETYPE_COUNT,
 			"At least two global showcase roots occupied the same feet position."
 		);
 		helper.assertTrue(
-			zombies.size() + skeletons.size() + creepers.size() + spiders.size() == 21,
-			"Global spawnall did not create exactly 21 entities including the mounted payload."
+			zombies.size() + skeletons.size() + creepers.size() + spiders.size() + endermen.size() == 24,
+			"Global spawnall did not create exactly 24 entities including both mounted payloads."
 		);
 		helper.succeed();
 	}
@@ -189,13 +210,17 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		List<Mob> spawned = helper.getLevel().getEntitiesOfClass(
 			Mob.class,
 			new AABB(sourceBlock).move(0.0, 0.0, 5.0).inflate(5.0, 8.0, 5.0),
-			mob -> mob.getType() == expectedType && mob.isAlive()
+			mob -> mob.getType() == expectedType && isShowcase(mob)
 		);
 		helper.assertTrue(
 			spawned.size() == 2,
 			"The /mtn spawn " + literal + " base alias did not create exactly two expected mobs."
 		);
 		spawned.forEach(Mob::discard);
+	}
+
+	private static boolean isShowcase(final Mob mob) {
+		return mob.isAlive() && mob.isPersistenceRequired() && mob.isCustomNameVisible() && mob.getCustomName() != null;
 	}
 
 	private static CommandSourceStack commandSource(final GameTestHelper helper, final BlockPos sourceBlock) {

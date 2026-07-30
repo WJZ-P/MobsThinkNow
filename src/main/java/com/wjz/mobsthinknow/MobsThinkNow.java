@@ -11,6 +11,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieRetreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieShieldMemory;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceName;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligenceName;
+import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligenceName;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.command.MtnCommands;
@@ -25,6 +26,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.spider.Spider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,6 +81,8 @@ public final class MobsThinkNow implements ModInitializer {
 			} else if (entity instanceof Spider spider && spider.getType() == net.minecraft.world.entity.EntityType.SPIDER) {
 				ZombieSquadCoordinator.onMemberDying(spider);
 				SpiderIntelligenceName.removeSyntheticMarker(spider);
+			} else if (entity instanceof EnderMan enderman) {
+				EndermanIntelligenceName.removeSyntheticMarker(enderman);
 			}
 			return true;
 		});

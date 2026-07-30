@@ -34,6 +34,11 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.spiderCreeperCoordination);
 		assertEquals(8.0, config.spiderCreeperSearchRadius);
 		assertEquals(1.40, config.spiderCreeperCarrierSpeed);
+		assertEquals(true, config.endermanAiEnabled);
+		assertEquals(true, config.endermanCreeperDelivery);
+		assertEquals(16.0, config.endermanCreeperSearchRadius);
+		assertEquals(300, config.endermanCreeperDeliveryCooldownTicks);
+		assertEquals(3.0, config.endermanCreeperDropDistance);
 	}
 
 	@Test
@@ -239,5 +244,26 @@ class MobsThinkNowConfigTest {
 		config.validate();
 		assertEquals(4.0, config.spiderCreeperSearchRadius);
 		assertEquals(1.10, config.spiderCreeperCarrierSpeed);
+	}
+
+	@Test
+	void clampsEndermanDeliveryEnvelope() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.endermanCreeperSearchRadius = 100.0;
+		config.endermanCreeperDeliveryCooldownTicks = 5000;
+		config.endermanCreeperDropDistance = 99.0;
+		config.validate();
+
+		assertEquals(32.0, config.endermanCreeperSearchRadius);
+		assertEquals(1200, config.endermanCreeperDeliveryCooldownTicks);
+		assertEquals(6.0, config.endermanCreeperDropDistance);
+
+		config.endermanCreeperSearchRadius = Double.NaN;
+		config.endermanCreeperDeliveryCooldownTicks = -5;
+		config.endermanCreeperDropDistance = -1.0;
+		config.validate();
+		assertEquals(6.0, config.endermanCreeperSearchRadius);
+		assertEquals(100, config.endermanCreeperDeliveryCooldownTicks);
+		assertEquals(2.0, config.endermanCreeperDropDistance);
 	}
 }

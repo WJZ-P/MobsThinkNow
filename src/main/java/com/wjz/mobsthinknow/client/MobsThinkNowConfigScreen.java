@@ -233,6 +233,58 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderCreeperCarrierSpeed = value / 100.0))
 			.build());
 
+		ConfigCategory endermanCategory = builder.getOrCreateCategory(
+			Component.translatable("mobsthinknow.config.category.enderman")
+		);
+		endermanCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.enderman_ai_enabled"),
+			config.endermanAiEnabled
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.enderman_ai_enabled.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.endermanAiEnabled = value))
+			.build());
+		endermanCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.enderman_creeper_delivery"),
+			config.endermanCreeperDelivery
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.enderman_creeper_delivery.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.endermanCreeperDelivery = value))
+			.build());
+		endermanCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.enderman_creeper_search_radius"),
+			(int)Math.round(config.endermanCreeperSearchRadius),
+			(int)MobsThinkNowConfig.MINIMUM_ENDERMAN_CREEPER_SEARCH_RADIUS,
+			(int)MobsThinkNowConfig.MAXIMUM_ENDERMAN_CREEPER_SEARCH_RADIUS
+		)
+			.setDefaultValue((int)MobsThinkNowConfig.DEFAULT_ENDERMAN_CREEPER_SEARCH_RADIUS)
+			.setTooltip(Component.translatable("mobsthinknow.config.enderman_creeper_search_radius.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.endermanCreeperSearchRadius = value))
+			.build());
+		endermanCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.enderman_creeper_delivery_cooldown_seconds"),
+			(int)Math.round(config.endermanCreeperDeliveryCooldownTicks / 20.0),
+			MobsThinkNowConfig.MINIMUM_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS / 20,
+			MobsThinkNowConfig.MAXIMUM_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS / 20
+		)
+			.setDefaultValue(MobsThinkNowConfig.DEFAULT_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS / 20)
+			.setTooltip(Component.translatable("mobsthinknow.config.enderman_creeper_delivery_cooldown_seconds.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(
+				updated -> updated.endermanCreeperDeliveryCooldownTicks = value * 20
+			))
+			.build());
+		endermanCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.enderman_creeper_drop_distance"),
+			(int)Math.round(config.endermanCreeperDropDistance),
+			(int)MobsThinkNowConfig.MINIMUM_ENDERMAN_CREEPER_DROP_DISTANCE,
+			(int)MobsThinkNowConfig.MAXIMUM_ENDERMAN_CREEPER_DROP_DISTANCE
+		)
+			.setDefaultValue((int)MobsThinkNowConfig.DEFAULT_ENDERMAN_CREEPER_DROP_DISTANCE)
+			.setTooltip(Component.translatable("mobsthinknow.config.enderman_creeper_drop_distance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.endermanCreeperDropDistance = value))
+			.build());
+
 		// Mod Menu 位于客户端；这段提示避免玩家误以为它可以直接修改远程服务器规则。
 		squadCategory.addEntry(entries.startTextDescription(
 			Component.translatable("mobsthinknow.config.server_authority_note")

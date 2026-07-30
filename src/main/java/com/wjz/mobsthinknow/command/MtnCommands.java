@@ -6,6 +6,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
+import com.wjz.mobsthinknow.ai.enderman.SmartEndermanMetrics;
 import com.wjz.mobsthinknow.ai.spider.SmartSpiderMetrics;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
@@ -35,6 +36,7 @@ public final class MtnCommands {
 						.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons))
 						.then(Commands.literal("creepers").executes(MtnCommands::spawnAllCreepers))
 						.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders))
+						.then(Commands.literal("endermen").executes(MtnCommands::spawnAllEndermen))
 				)
 				.then(
 					Commands.literal("spawnzombies")
@@ -56,6 +58,11 @@ public final class MtnCommands {
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAllSpiders)
 				)
+				.then(
+					Commands.literal("spawnendermen")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(MtnCommands::spawnAllEndermen)
+				)
 				.then(spawnSpecificCommand())
 				.then(
 					Commands.literal("reload")
@@ -70,12 +77,13 @@ public final class MtnCommands {
 		LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("spawn")
 			.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 			.executes(MtnCommands::listSpawnTypes);
-		// 先注册全局、分类与基础实体入口；后面的二十个战术预设仍保留独立 Tab literal。
+		// 先注册全局、分类与基础实体入口；后面的二十二个战术预设仍保留独立 Tab literal。
 		command.then(Commands.literal("all").executes(MtnCommands::spawnAll));
 		command.then(Commands.literal("zombies").executes(MtnCommands::spawnAllZombies));
 		command.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons));
 		command.then(Commands.literal("creepers").executes(MtnCommands::spawnAllCreepers));
 		command.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders));
+		command.then(Commands.literal("endermen").executes(MtnCommands::spawnAllEndermen));
 		command.then(
 			Commands.literal("zombie")
 				.executes(context -> spawnSpecific(
@@ -136,6 +144,22 @@ public final class MtnCommands {
 						.executes(context -> spawnSpecificSpider(
 							context,
 							SpiderShowcaseSpawner.ShowcaseArchetype.HUNTER,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+				)
+		);
+		command.then(
+			Commands.literal("enderman")
+				.executes(context -> spawnSpecificEnderman(
+					context,
+					EndermanShowcaseSpawner.ShowcaseArchetype.HUNTER,
+					1
+				))
+				.then(
+					Commands.argument("count", IntegerArgumentType.integer(1, EndermanShowcaseSpawner.MAX_BATCH_SIZE))
+						.executes(context -> spawnSpecificEnderman(
+							context,
+							EndermanShowcaseSpawner.ShowcaseArchetype.HUNTER,
 							IntegerArgumentType.getInteger(context, "count")
 						))
 				)
@@ -208,6 +232,23 @@ public final class MtnCommands {
 					)
 			);
 		}
+		for (EndermanShowcaseSpawner.ShowcaseArchetype archetype
+			: EndermanShowcaseSpawner.ShowcaseArchetype.values()) {
+			command.then(
+				Commands.literal(archetype.commandId())
+					.executes(context -> spawnSpecificEnderman(context, archetype, 1))
+					.then(
+						Commands.argument(
+							"count",
+							IntegerArgumentType.integer(1, EndermanShowcaseSpawner.MAX_BATCH_SIZE)
+						).executes(context -> spawnSpecificEnderman(
+							context,
+							archetype,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+					)
+			);
+		}
 		return command;
 	}
 
@@ -217,6 +258,7 @@ public final class MtnCommands {
 		SmartSkeletonMetrics.Snapshot skeletonMetrics = SmartSkeletonMetrics.snapshot();
 		SmartCreeperMetrics.Snapshot creeperMetrics = SmartCreeperMetrics.snapshot();
 		SmartSpiderMetrics.Snapshot spiderMetrics = SmartSpiderMetrics.snapshot();
+		SmartEndermanMetrics.Snapshot endermanMetrics = SmartEndermanMetrics.snapshot();
 		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d"
 			.formatted(
 				config.enabled,
@@ -274,6 +316,16 @@ public final class MtnCommands {
 				spiderMetrics.creepersMounted(),
 				spiderMetrics.deliveryFuses()
 			);
+		message += ", endermanAI=%s, endermanGoals=%d, endermanCarrierSearches=%d, endermanCandidateChecks=%d, endermanPayloadsPickedUp=%d, endermanDeliveryTeleports=%d, endermanPayloadsIgnited=%d"
+			.formatted(
+				config.endermanAiEnabled,
+				endermanMetrics.installedGoals(),
+				endermanMetrics.carrierSearches(),
+				endermanMetrics.candidateChecks(),
+				endermanMetrics.payloadsPickedUp(),
+				endermanMetrics.deliveryTeleports(),
+				endermanMetrics.payloadsIgnited()
+			);
 		String statusMessage = message;
 		context.getSource().sendSuccess(() -> Component.literal(statusMessage), false);
 		return Command.SINGLE_SUCCESS;
@@ -297,13 +349,14 @@ public final class MtnCommands {
 			context.getSource().sendSuccess(
 				() -> Component.translatableWithFallback(
 					"mobsthinknow.command.spawn_all.success",
-					"Spawned %s intelligent-AI archetypes (%s entities): %s zombies, %s skeletons, %s creepers, and %s spiders.",
+					"Spawned %s intelligent-AI archetypes (%s entities): %s zombies, %s skeletons, %s creepers, %s spiders, and %s endermen.",
 					count,
 					result.totalEntities(),
 					AllShowcaseSpawner.ZOMBIE_ARCHETYPES,
 					AllShowcaseSpawner.SKELETON_ARCHETYPES,
 					AllShowcaseSpawner.CREEPER_ARCHETYPES,
-					AllShowcaseSpawner.SPIDER_ARCHETYPES
+					AllShowcaseSpawner.SPIDER_ARCHETYPES,
+					AllShowcaseSpawner.ENDERMAN_ARCHETYPES
 				),
 				true
 			);
@@ -396,8 +449,14 @@ public final class MtnCommands {
 				.map(SpiderShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
-		String types = "all, zombie, skeleton, creeper, spider, zombies, skeletons, creepers, spiders, "
-			+ zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes;
+		String endermanTypes = String.join(
+			", ",
+			Arrays.stream(EndermanShowcaseSpawner.ShowcaseArchetype.values())
+				.map(EndermanShowcaseSpawner.ShowcaseArchetype::commandId)
+				.toList()
+		);
+		String types = "all, zombie, skeleton, creeper, spider, enderman, zombies, skeletons, creepers, spiders, endermen, "
+			+ zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes + ", " + endermanTypes;
 		context.getSource().sendSuccess(
 			() -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.types",
@@ -723,6 +782,95 @@ public final class MtnCommands {
 				requestedCount
 			);
 			case NONE -> throw new IllegalStateException("Successful spider spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(error);
+		return 0;
+	}
+
+	private static int spawnAllEndermen(final CommandContext<CommandSourceStack> context) {
+		EndermanShowcaseSpawner.SpawnResult result = EndermanShowcaseSpawner.spawnAll(context.getSource());
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_all_endermen.success",
+					"Spawned %s tactical enderman archetypes.",
+					count
+				),
+				true
+			);
+			return count;
+		}
+
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_endermen.no_space",
+				"No nearby ground has enough safe space for all tactical enderman archetypes."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_endermen.create_failed",
+				"Enderman or creeper payload creation failed; no showcase formation was added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_endermen.add_failed",
+				"Adding the enderman formation failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful enderman spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private static int spawnSpecificEnderman(
+		final CommandContext<CommandSourceStack> context,
+		final EndermanShowcaseSpawner.ShowcaseArchetype archetype,
+		final int requestedCount
+	) {
+		EndermanShowcaseSpawner.SpawnResult result = EndermanShowcaseSpawner.spawnBatch(
+			context.getSource(),
+			archetype,
+			requestedCount
+		);
+		if (result.success()) {
+			int spawnedCount = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn.success",
+					"Spawned %s × %s (%s).",
+					spawnedCount,
+					archetype.displayName(),
+					archetype.commandId()
+				),
+				true
+			);
+			return spawnedCount;
+		}
+
+		Component error = switch (result.failure()) {
+			case PEACEFUL -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.no_space",
+				"No safe nearby ground was found for all %s requested mobs; nothing was spawned.",
+				requestedCount
+			);
+			case CREATE_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.create_failed",
+				"Preparing the requested batch of %s mobs failed; nothing was spawned.",
+				requestedCount
+			);
+			case ADD_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.add_failed",
+				"Adding the requested batch of %s mobs failed; the entire batch was rolled back.",
+				requestedCount
+			);
+			case NONE -> throw new IllegalStateException("Successful enderman spawn reached the failure branch.");
 		};
 		context.getSource().sendFailure(error);
 		return 0;

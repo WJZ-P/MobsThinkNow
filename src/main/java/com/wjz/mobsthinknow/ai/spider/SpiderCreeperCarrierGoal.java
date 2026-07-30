@@ -19,6 +19,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -618,7 +619,8 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 
 	public static boolean isTransportControlled(final Creeper creeper) {
 		return creeper.getVehicle() instanceof Spider
-			|| ((CreeperTransportAccess)creeper).mobsthinknow$isReservedForAnySpider(creeper.level().getGameTime());
+			|| creeper.getVehicle() instanceof EnderMan
+			|| ((CreeperTransportAccess)creeper).mobsthinknow$isReservedForAnyCarrier(creeper.level().getGameTime());
 	}
 
 	private static boolean transportEnabled() {

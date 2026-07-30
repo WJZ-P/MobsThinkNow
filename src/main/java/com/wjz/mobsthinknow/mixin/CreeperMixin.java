@@ -50,9 +50,9 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 	@Unique
 	private CreeperTacticalController mobsthinknow$tacticalController;
 	@Unique
-	private UUID mobsthinknow$reservedSpiderId;
+	private UUID mobsthinknow$reservedCarrierId;
 	@Unique
-	private long mobsthinknow$spiderReservationExpiry = Long.MIN_VALUE;
+	private long mobsthinknow$carrierReservationExpiry = Long.MIN_VALUE;
 
 	protected CreeperMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
@@ -128,45 +128,45 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 	}
 
 	@Override
-	public boolean mobsthinknow$tryReserveForSpider(
-		final UUID spiderId,
+	public boolean mobsthinknow$tryReserveForCarrier(
+		final UUID carrierId,
 		final long currentTick,
 		final long expiresAtTick
 	) {
-		this.mobsthinknow$clearExpiredSpiderReservation(currentTick);
-		if (this.mobsthinknow$reservedSpiderId != null && !this.mobsthinknow$reservedSpiderId.equals(spiderId)) {
+		this.mobsthinknow$clearExpiredCarrierReservation(currentTick);
+		if (this.mobsthinknow$reservedCarrierId != null && !this.mobsthinknow$reservedCarrierId.equals(carrierId)) {
 			return false;
 		}
-		this.mobsthinknow$reservedSpiderId = spiderId;
-		this.mobsthinknow$spiderReservationExpiry = Math.max(currentTick + 1L, expiresAtTick);
+		this.mobsthinknow$reservedCarrierId = carrierId;
+		this.mobsthinknow$carrierReservationExpiry = Math.max(currentTick + 1L, expiresAtTick);
 		return true;
 	}
 
 	@Override
-	public boolean mobsthinknow$isReservedForSpider(final UUID spiderId, final long currentTick) {
-		this.mobsthinknow$clearExpiredSpiderReservation(currentTick);
-		return spiderId.equals(this.mobsthinknow$reservedSpiderId);
+	public boolean mobsthinknow$isReservedForCarrier(final UUID carrierId, final long currentTick) {
+		this.mobsthinknow$clearExpiredCarrierReservation(currentTick);
+		return carrierId.equals(this.mobsthinknow$reservedCarrierId);
 	}
 
 	@Override
-	public boolean mobsthinknow$isReservedForAnySpider(final long currentTick) {
-		this.mobsthinknow$clearExpiredSpiderReservation(currentTick);
-		return this.mobsthinknow$reservedSpiderId != null;
+	public boolean mobsthinknow$isReservedForAnyCarrier(final long currentTick) {
+		this.mobsthinknow$clearExpiredCarrierReservation(currentTick);
+		return this.mobsthinknow$reservedCarrierId != null;
 	}
 
 	@Override
-	public void mobsthinknow$releaseSpiderReservation(final UUID spiderId) {
-		if (spiderId.equals(this.mobsthinknow$reservedSpiderId)) {
-			this.mobsthinknow$reservedSpiderId = null;
-			this.mobsthinknow$spiderReservationExpiry = Long.MIN_VALUE;
+	public void mobsthinknow$releaseCarrierReservation(final UUID carrierId) {
+		if (carrierId.equals(this.mobsthinknow$reservedCarrierId)) {
+			this.mobsthinknow$reservedCarrierId = null;
+			this.mobsthinknow$carrierReservationExpiry = Long.MIN_VALUE;
 		}
 	}
 
 	@Unique
-	private void mobsthinknow$clearExpiredSpiderReservation(final long currentTick) {
-		if (this.mobsthinknow$reservedSpiderId != null && currentTick >= this.mobsthinknow$spiderReservationExpiry) {
-			this.mobsthinknow$reservedSpiderId = null;
-			this.mobsthinknow$spiderReservationExpiry = Long.MIN_VALUE;
+	private void mobsthinknow$clearExpiredCarrierReservation(final long currentTick) {
+		if (this.mobsthinknow$reservedCarrierId != null && currentTick >= this.mobsthinknow$carrierReservationExpiry) {
+			this.mobsthinknow$reservedCarrierId = null;
+			this.mobsthinknow$carrierReservationExpiry = Long.MIN_VALUE;
 		}
 	}
 }

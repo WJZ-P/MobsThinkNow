@@ -13,17 +13,19 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * 为无参数 {@code /mtn spawnall} 生成当前全部智能 AI 战术预设。
- * 二十个根实体统一预检、统一准备并事务式加入世界；蜘蛛投送兵的苦力怕载荷随根实体加入。
+ * 二十二个根实体统一预检、统一准备并事务式加入世界；蜘蛛和末影人投送兵的苦力怕载荷随根实体加入。
  */
 public final class AllShowcaseSpawner {
 	public static final int ZOMBIE_ARCHETYPES = ZombieShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int SKELETON_ARCHETYPES = SkeletonShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int CREEPER_ARCHETYPES = CreeperShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int SPIDER_ARCHETYPES = SpiderShowcaseSpawner.ShowcaseArchetype.values().length;
+	public static final int ENDERMAN_ARCHETYPES = EndermanShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int ARCHETYPE_COUNT = ZOMBIE_ARCHETYPES
 		+ SKELETON_ARCHETYPES
 		+ CREEPER_ARCHETYPES
-		+ SPIDER_ARCHETYPES;
+		+ SPIDER_ARCHETYPES
+		+ ENDERMAN_ARCHETYPES;
 
 	private AllShowcaseSpawner() {
 	}
@@ -118,6 +120,21 @@ public final class AllShowcaseSpawner {
 						archetype
 					);
 					return prepared == null ? null : prepared.spider();
+				}
+			));
+		}
+		for (EndermanShowcaseSpawner.ShowcaseArchetype archetype
+			: EndermanShowcaseSpawner.ShowcaseArchetype.values()) {
+			specs.add(new SpawnSpec(
+				EntityType.ENDERMAN,
+				(level, feet, faceToward) -> {
+					EndermanShowcaseSpawner.PreparedEnderman prepared = EndermanShowcaseSpawner.createEnderman(
+						level,
+						feet,
+						faceToward,
+						archetype
+					);
+					return prepared == null ? null : prepared.enderman();
 				}
 			));
 		}

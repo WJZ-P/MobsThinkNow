@@ -22,6 +22,8 @@
 			"com.wjz.mobsthinknow.command.CreeperShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.ai.spider.SpiderTacticsGameTests",
 			"com.wjz.mobsthinknow.command.SpiderShowcaseCommandGameTests",
+			"com.wjz.mobsthinknow.ai.enderman.EndermanTacticsGameTests",
+			"com.wjz.mobsthinknow.command.EndermanShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.command.AllShowcaseCommandGameTests"
 		]
 	},

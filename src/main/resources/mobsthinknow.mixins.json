@@ -5,6 +5,7 @@
 	"mixins": [
 		"AbstractSkeletonMixin",
 		"CreeperMixin",
+		"EnderManMixin",
 		"FireworkRocketEntityMixin",
 		"LivingEntityMixin",
 		"SpiderMixin",
@@ -14,6 +15,9 @@
 		"client.AbstractSkeletonRendererMixin",
 		"client.AbstractZombieModelMixin",
 		"client.AbstractZombieRendererMixin",
+		"client.EndermanModelMixin",
+		"client.EndermanRendererMixin",
+		"client.EndermanRenderStateMixin",
 		"client.LivingEntityRendererMixin"
 	],
 	"injectors": {

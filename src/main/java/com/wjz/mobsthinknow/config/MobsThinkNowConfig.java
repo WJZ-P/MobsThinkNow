@@ -45,6 +45,15 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_SPIDER_CREEPER_CARRIER_SPEED = 1.40;
 	public static final double MINIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.10;
 	public static final double MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.70;
+	public static final double DEFAULT_ENDERMAN_CREEPER_SEARCH_RADIUS = 16.0;
+	public static final double MINIMUM_ENDERMAN_CREEPER_SEARCH_RADIUS = 6.0;
+	public static final double MAXIMUM_ENDERMAN_CREEPER_SEARCH_RADIUS = 32.0;
+	public static final int DEFAULT_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS = 300;
+	public static final int MINIMUM_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS = 100;
+	public static final int MAXIMUM_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS = 1200;
+	public static final double DEFAULT_ENDERMAN_CREEPER_DROP_DISTANCE = 3.0;
+	public static final double MINIMUM_ENDERMAN_CREEPER_DROP_DISTANCE = 2.0;
+	public static final double MAXIMUM_ENDERMAN_CREEPER_DROP_DISTANCE = 6.0;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
@@ -89,6 +98,16 @@ public final class MobsThinkNowConfig {
 	public double spiderCreeperSearchRadius = DEFAULT_SPIDER_CREEPER_SEARCH_RADIUS;
 	/** 合体运输的寻路速度上限；智力与难度决定个体从 1.15 向该上限插值。 */
 	public double spiderCreeperCarrierSpeed = DEFAULT_SPIDER_CREEPER_CARRIER_SPEED;
+	/** 普通末影人保留原版中立/凝视仇恨，只在已经敌对生存玩家后启用额外战术。 */
+	public boolean endermanAiEnabled = true;
+	/** 敌对玩家距离足够远时，末影人可抱取附近未起爆苦力怕并传送投放。 */
+	public boolean endermanCreeperDelivery = true;
+	/** 末影人每轮局部候选查询的配置上限；低智力个体只使用其中一部分。 */
+	public double endermanCreeperSearchRadius = DEFAULT_ENDERMAN_CREEPER_SEARCH_RADIUS;
+	/** 一次成功投放后的基础冷却；智力会小幅缩短、个体随机量会重新错峰。 */
+	public int endermanCreeperDeliveryCooldownTicks = DEFAULT_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS;
+	/** 投放点相对玩家的期望水平距离；优先选择玩家视线后方并检查安全落脚。 */
+	public double endermanCreeperDropDistance = DEFAULT_ENDERMAN_CREEPER_DROP_DISTANCE;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public boolean squadVisualEffects = true;
@@ -280,6 +299,21 @@ public final class MobsThinkNowConfig {
 			this.spiderCreeperCarrierSpeed,
 			MINIMUM_SPIDER_CREEPER_CARRIER_SPEED,
 			MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED
+		);
+		this.endermanCreeperSearchRadius = clamp(
+			this.endermanCreeperSearchRadius,
+			MINIMUM_ENDERMAN_CREEPER_SEARCH_RADIUS,
+			MAXIMUM_ENDERMAN_CREEPER_SEARCH_RADIUS
+		);
+		this.endermanCreeperDeliveryCooldownTicks = clamp(
+			this.endermanCreeperDeliveryCooldownTicks,
+			MINIMUM_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS,
+			MAXIMUM_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS
+		);
+		this.endermanCreeperDropDistance = clamp(
+			this.endermanCreeperDropDistance,
+			MINIMUM_ENDERMAN_CREEPER_DROP_DISTANCE,
+			MAXIMUM_ENDERMAN_CREEPER_DROP_DISTANCE
 		);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);
