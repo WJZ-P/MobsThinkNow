@@ -9,14 +9,22 @@ import com.wjz.mobsthinknow.ai.creeper.SmartCreeperApproachGoal;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperSwellGoal;
 import com.wjz.mobsthinknow.ai.spider.CreeperTransportAccess;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadFriendlyFireGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
+import com.wjz.mobsthinknow.config.ConfigManager;
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.UUID;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.SwellGoal;
+import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import org.spongepowered.asm.mixin.Final;
@@ -56,8 +64,15 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 		// 只替换原版精确类，保留其他 Mod 注入的派生 Goal。
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == SwellGoal.class || goal.getClass() == MeleeAttackGoal.class);
 		this.mobsthinknow$tacticalController = new CreeperTacticalController(creeper);
+		this.goalSelector.addGoal(1, new SquadPreparationGoal(creeper, 1.12));
 		this.goalSelector.addGoal(2, new SmartCreeperSwellGoal(creeper, this.mobsthinknow$tacticalController));
 		this.goalSelector.addGoal(4, new SmartCreeperApproachGoal(creeper, this.mobsthinknow$tacticalController));
+		boolean hasVanillaHurtByGoal = this.targetSelector.getAvailableGoals().stream()
+			.anyMatch(wrapped -> wrapped.getGoal().getClass() == HurtByTargetGoal.class);
+		if (hasVanillaHurtByGoal) {
+			this.targetSelector.removeAllGoals(goal -> goal.getClass() == HurtByTargetGoal.class);
+			this.targetSelector.addGoal(1, new SquadFriendlyFireGoal(creeper));
+		}
 		SmartCreeperMetrics.goalsInstalled();
 	}
 
@@ -83,7 +98,15 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 		int saved = input.getIntOr(mobsthinknow$INTELLIGENCE_TAG, 0);
 		this.mobsthinknow$creeperIntelligence = saved == 0 ? 0 : CreeperIntelligence.clamp(saved);
 		Creeper creeper = (Creeper)(Object)this;
+		SquadTheatrics.stripLeftoverRoleTag(creeper);
 		CreeperIntelligenceName.apply(creeper, this.mobsthinknow$getCreeperIntelligence());
+	}
+
+	@Override
+	protected void customServerAiStep(final ServerLevel serverLevel) {
+		super.customServerAiStep(serverLevel);
+		MobsThinkNowConfig config = ConfigManager.get();
+		SquadMemberHeartbeat.tick(serverLevel, (Creeper)(Object)this, config.creeperAiEnabled);
 	}
 
 	@Override

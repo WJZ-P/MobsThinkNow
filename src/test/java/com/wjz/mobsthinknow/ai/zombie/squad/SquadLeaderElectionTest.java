@@ -8,12 +8,12 @@ import org.junit.jupiter.api.Test;
 
 class SquadLeaderElectionTest {
 	@Test
-	void intelligenceWinsBeforeHealth() {
+	void intelligenceAlwaysWinsBeforeTheRandomTicket() {
 		int leader = SquadLeaderElection.elect(
 			List.of(
-				new SquadLeaderCandidate(10, 6, 20.0F),
-				new SquadLeaderCandidate(11, 9, 1.0F),
-				new SquadLeaderCandidate(12, 7, 20.0F)
+				new SquadLeaderCandidate(10, 6, 1L),
+				new SquadLeaderCandidate(11, 9, 99L),
+				new SquadLeaderCandidate(12, 7, 0L)
 			)
 		).orElseThrow();
 
@@ -21,16 +21,16 @@ class SquadLeaderElectionTest {
 	}
 
 	@Test
-	void healthThenEntityIdBreakTiesDeterministically() {
-		int healthyLeader = SquadLeaderElection.elect(
-			List.of(new SquadLeaderCandidate(8, 7, 18.0F), new SquadLeaderCandidate(3, 7, 12.0F))
+	void randomTicketBreaksMaximumIntelligenceTieBeforeEntityId() {
+		int randomWinner = SquadLeaderElection.elect(
+			List.of(new SquadLeaderCandidate(3, 7, 80L), new SquadLeaderCandidate(8, 7, 12L))
 		).orElseThrow();
-		int lowerIdLeader = SquadLeaderElection.elect(
-			List.of(new SquadLeaderCandidate(8, 7, 18.0F), new SquadLeaderCandidate(3, 7, 18.0F))
+		int idFallback = SquadLeaderElection.elect(
+			List.of(new SquadLeaderCandidate(8, 7, 12L), new SquadLeaderCandidate(3, 7, 12L))
 		).orElseThrow();
 
-		assertEquals(8, healthyLeader);
-		assertEquals(3, lowerIdLeader);
+		assertEquals(8, randomWinner);
+		assertEquals(3, idFallback);
 	}
 
 	@Test

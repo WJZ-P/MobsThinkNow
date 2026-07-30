@@ -392,7 +392,8 @@ final class ZombieTacticalController {
 			case LEADER, PRESSURER -> ZombieTactic.PRESSURE;
 			case FLANK_LEFT -> ZombieTactic.FLANK_LEFT;
 			case FLANK_RIGHT -> ZombieTactic.FLANK_RIGHT;
-			case CUTOFF, SUPPORT, RANGED -> ZombieTactic.SURROUND;
+			case CUTOFF, SUPPORT, RANGED, CARRIER -> ZombieTactic.SURROUND;
+			case BREACHER -> ZombieTactic.PRESSURE;
 		};
 	}
 

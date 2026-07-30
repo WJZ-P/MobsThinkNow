@@ -18,6 +18,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import org.jspecify.annotations.Nullable;
 
@@ -148,6 +150,8 @@ public final class SquadTheatrics {
 			case CUTOFF -> "[Cutoff]";
 			case SUPPORT -> "[Support]";
 			case RANGED -> "[Ranged]";
+			case BREACHER -> "[Breacher]";
+			case CARRIER -> "[Carrier]";
 		};
 	}
 
@@ -160,6 +164,8 @@ public final class SquadTheatrics {
 			case CUTOFF -> ChatFormatting.LIGHT_PURPLE;
 			case SUPPORT -> ChatFormatting.BLUE;
 			case RANGED -> ChatFormatting.WHITE;
+			case BREACHER -> ChatFormatting.DARK_GREEN;
+			case CARRIER -> ChatFormatting.DARK_PURPLE;
 		};
 	}
 
@@ -172,6 +178,8 @@ public final class SquadTheatrics {
 			case CUTOFF -> new DustParticleOptions(0xB05CE6, 0.9F);
 			case SUPPORT -> new DustParticleOptions(0x3F72E0, 0.9F);
 			case RANGED -> new DustParticleOptions(0xE6E6E6, 0.9F);
+			case BREACHER -> new DustParticleOptions(0x3D9B45, 0.9F);
+			case CARRIER -> new DustParticleOptions(0x8D55C7, 0.9F);
 		};
 	}
 
@@ -295,8 +303,16 @@ public final class SquadTheatrics {
 			);
 			return;
 		}
-		// 骷髅没有僵尸声线字段；UUID 哈希提供稳定的小幅个体差异，重进世界后也不会变声。
 		float individual = 0.92F + Math.floorMod(mob.getUUID().hashCode(), 17) / 100.0F;
+		if (mob instanceof Creeper) {
+			level.playSound(null, mob, SoundEvents.CREEPER_HURT, SoundSource.HOSTILE, volume * 0.45F, expression * individual);
+			return;
+		}
+		if (mob instanceof Spider) {
+			level.playSound(null, mob, SoundEvents.SPIDER_AMBIENT, SoundSource.HOSTILE, volume, expression * individual);
+			return;
+		}
+		// 骷髅没有僵尸声线字段；UUID 哈希提供稳定的小幅个体差异，重进世界后也不会变声。
 		level.playSound(
 			null,
 			mob,

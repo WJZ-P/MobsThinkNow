@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.spider;
 
 import com.wjz.mobsthinknow.ai.creeper.CreeperCombatMath;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.EnumSet;
@@ -15,6 +16,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.spider.Spider;
@@ -64,8 +66,16 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			return false;
 		}
 
+		ZombieSquadCoordinator coordinator = this.spider.level() instanceof net.minecraft.server.level.ServerLevel level
+			? ZombieSquadCoordinator.forLevel(level)
+			: null;
+		boolean belongsToSquad = coordinator != null && coordinator.viewFor(this.spider) != null;
+		Mob squadAssignment = coordinator == null ? null : coordinator.assignedTransportPartnerFor(this.spider);
 		Creeper mounted = mountedCreeper();
 		if (mounted != null) {
+			if (belongsToSquad && squadAssignment != mounted) {
+				return false;
+			}
 			this.creeper = mounted;
 			this.target = preferredTarget(this.spider.getTarget(), mounted.getTarget());
 			return isValidTarget(this.target);
@@ -75,6 +85,10 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		}
 
 		long now = this.spider.level().getGameTime();
+		if (belongsToSquad) {
+			Mob activeAssignment = coordinator.activeTransportPartnerFor(this.spider);
+			return activeAssignment instanceof Creeper assigned && this.reserveAssignedCreeper(assigned, now);
+		}
 		if (this.creeper != null && now > this.assemblyDeadlineTick) {
 			reservation(this.creeper).mobsthinknow$releaseSpiderReservation(this.spiderId);
 			this.creeper = null;
@@ -109,14 +123,50 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			return false;
 		}
 		if (current.getVehicle() == this.spider) {
-			return true;
+			return this.squadAssignmentStillAllows(current);
 		}
 		long now = this.spider.level().getGameTime();
 		double maximumSeparation = ConfigManager.get().spiderCreeperSearchRadius * 1.75;
 		return !current.isPassenger()
+			&& this.squadAssignmentStillAllows(current)
 			&& now <= this.assemblyDeadlineTick
 			&& reservation(current).mobsthinknow$isReservedForSpider(this.spiderId, now)
 			&& this.spider.distanceToSqr(current) <= maximumSeparation * maximumSeparation;
+	}
+
+	private boolean reserveAssignedCreeper(final Creeper assigned, final long now) {
+		if (this.creeper != null && this.creeper != assigned) {
+			reservation(this.creeper).mobsthinknow$releaseSpiderReservation(this.spiderId);
+		}
+		LivingEntity selectedTarget = preferredTarget(this.spider.getTarget(), assigned.getTarget());
+		if (!isValidTarget(selectedTarget)
+			|| !compatibleTargets(this.spider.getTarget(), assigned.getTarget())
+			|| !this.isAvailable(assigned, now)) {
+			return false;
+		}
+		CreeperTransportAccess access = reservation(assigned);
+		if (!access.mobsthinknow$tryReserveForSpider(this.spiderId, now, now + RESERVATION_TICKS)) {
+			return false;
+		}
+		this.creeper = assigned;
+		this.target = selectedTarget;
+		this.assemblyDeadlineTick = now + ASSEMBLY_TIMEOUT_TICKS;
+		this.resetBoardingLeap();
+		this.nextBoardingLeapTick = now;
+		this.carrierSpeedRandomSample = this.spider.getRandom().nextDouble();
+		assigned.setSwellDir(-1);
+		this.spider.setTarget(selectedTarget);
+		assigned.setTarget(selectedTarget);
+		return true;
+	}
+
+	private boolean squadAssignmentStillAllows(final Creeper current) {
+		if (!(this.spider.level() instanceof net.minecraft.server.level.ServerLevel level)) {
+			return true;
+		}
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(level);
+		return coordinator.viewFor(this.spider) == null
+			|| coordinator.assignedTransportPartnerFor(this.spider) == current;
 	}
 
 	@Override
@@ -146,6 +196,7 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			|| !current.isAlive()
 			|| !isValidTarget(this.target)
 			|| this.boardingFailed
+			|| (current != null && !this.squadAssignmentStillAllows(current))
 			|| this.assemblyLinkIsInvalid(current);
 		if (abandon) {
 			this.abandonTransport();

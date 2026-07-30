@@ -3,7 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 import java.util.Collection;
 import java.util.OptionalInt;
 
-/** 确定性首领选举：智力优先，其次当前生命值，最后选择实体 ID 更小者。 */
+/** 跨物种首领选举：只比较智力；并列最高智力者再按出生时已经随机化的 UUID 票抽签。 */
 public final class SquadLeaderElection {
 	private SquadLeaderElection() {
 	}
@@ -23,8 +23,9 @@ public final class SquadLeaderElection {
 		if (challenger.intelligence() != incumbent.intelligence()) {
 			return challenger.intelligence() > incumbent.intelligence();
 		}
-		if (Float.compare(challenger.health(), incumbent.health()) != 0) {
-			return challenger.health() > incumbent.health();
+		int ticketComparison = Long.compareUnsigned(challenger.randomTicket(), incumbent.randomTicket());
+		if (ticketComparison != 0) {
+			return ticketComparison < 0;
 		}
 		return challenger.entityId() < incumbent.entityId();
 	}

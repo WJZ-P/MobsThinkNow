@@ -133,7 +133,7 @@ public final class SquadRolePlanner {
 				case NONE -> 1;
 				case AXE -> 0;
 			};
-			case LEADER, SUPPORT, RANGED -> 0;
+			case LEADER, SUPPORT, RANGED, BREACHER, CARRIER -> 0;
 		};
 	}
 }

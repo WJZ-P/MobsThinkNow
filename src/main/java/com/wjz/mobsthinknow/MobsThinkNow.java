@@ -74,8 +74,10 @@ public final class MobsThinkNow implements ModInitializer {
 				ZombieSquadCoordinator.onMemberDying(skeleton);
 				SkeletonIntelligenceName.removeSyntheticMarker(skeleton);
 			} else if (entity instanceof Creeper creeper) {
+				ZombieSquadCoordinator.onMemberDying(creeper);
 				CreeperIntelligenceName.removeSyntheticMarker(creeper);
 			} else if (entity instanceof Spider spider && spider.getType() == net.minecraft.world.entity.EntityType.SPIDER) {
+				ZombieSquadCoordinator.onMemberDying(spider);
 				SpiderIntelligenceName.removeSyntheticMarker(spider);
 			}
 			return true;
@@ -107,6 +109,13 @@ public final class MobsThinkNow implements ModInitializer {
 			} else if (entity instanceof AbstractSkeleton skeleton
 				&& damageSource.getEntity() instanceof LivingEntity attacker) {
 				ZombieSquadCoordinator.onSquadMemberAttacked(skeleton, attacker);
+			} else if (entity instanceof Creeper creeper
+				&& damageSource.getEntity() instanceof LivingEntity attacker) {
+				ZombieSquadCoordinator.onSquadMemberAttacked(creeper, attacker);
+			} else if (entity instanceof Spider spider
+				&& spider.getType() == net.minecraft.world.entity.EntityType.SPIDER
+				&& damageSource.getEntity() instanceof LivingEntity attacker) {
+				ZombieSquadCoordinator.onSquadMemberAttacked(spider, attacker);
 			}
 			return true;
 		});

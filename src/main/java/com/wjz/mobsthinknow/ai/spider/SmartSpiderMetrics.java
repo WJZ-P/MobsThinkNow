@@ -2,7 +2,7 @@ package com.wjz.mobsthinknow.ai.spider;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-/** 蜘蛛个人战术与苦力怕运输战术的诊断计数器，不反向参与决策。 */
+	/** 蜘蛛个人战术与跨物种运输战术的诊断计数器，不反向参与决策。 */
 public final class SmartSpiderMetrics {
 	private static final AtomicLong INSTALLED_GOALS = new AtomicLong();
 	private static final AtomicLong FLANKS = new AtomicLong();
@@ -17,7 +17,7 @@ public final class SmartSpiderMetrics {
 	}
 
 	public static void goalsInstalled() {
-		INSTALLED_GOALS.addAndGet(3L);
+		INSTALLED_GOALS.addAndGet(5L);
 	}
 
 	public static void flankStarted() {

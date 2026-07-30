@@ -1,14 +1,16 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import com.wjz.mobsthinknow.MobsThinkNow;
+import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
-import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
@@ -31,14 +33,16 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+import net.minecraft.world.entity.monster.spider.Spider;
+import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 每个 {@link ServerLevel} 唯一的僵尸—骷髅混编小队协调器。
+ * 每个 {@link ServerLevel} 唯一的僵尸、骷髅、苦力怕与蜘蛛混编小队协调器。
  *
  * <p>敌对生物 AI 和 {@code END_LEVEL_TICK} 都在服务器主线程执行，所以这里故意不加锁。导航、视线和
  * 实体状态仍只在主线程读取或修改；未来如果把纯数学评分搬到工作线程，也只能传不可变快照，不能把
@@ -114,7 +118,7 @@ public final class ZombieSquadCoordinator {
 		onMemberDying(zombie);
 	}
 
-	/** 供仇恨 Goal 判断“攻击者是不是同队队友”；两个受支持 Mob 都在同一支小队才算。 */
+	/** 供仇恨 Goal 判断“攻击者是不是同队队友”；两个实体都登记在同一支四物种小队才算。 */
 	public static boolean areSquadmates(final Mob first, final Mob second) {
 		if (first.level() != second.level() || !(first.level() instanceof ServerLevel serverLevel)) {
 			return false;
@@ -307,6 +311,34 @@ public final class ZombieSquadCoordinator {
 			return null;
 		}
 		return new SquadView(squad.id, squad.state, squad.leaderId, squad.term, squad.planEpoch, squad.memberIds.size());
+	}
+
+	/**
+	 * 返回协调器给蜘蛛固定分配的乘员。形成/开会阶段也保留此关系，供其他运输 Goal
+	 * 判断自己是否应该让路；真正开始接送则由 {@link #activeTransportPartnerFor(Spider)} 控制。
+	 */
+	public @Nullable Mob assignedTransportPartnerFor(final Spider spider) {
+		MemberRecord carrier = this.members.get(spider.getId());
+		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
+		if (squad == null) {
+			return null;
+		}
+		Integer passengerId = squad.transportPartners.get(spider.getId());
+		MemberRecord passenger = passengerId == null ? null : this.members.get(passengerId);
+		return passenger != null
+			&& passenger.squadId == squad.id
+			&& passenger.mob.isAlive()
+			? passenger.mob
+			: null;
+	}
+
+	/** 只有小队正式交战后，蜘蛛才离开阵位去接取乘员。 */
+	public @Nullable Mob activeTransportPartnerFor(final Spider spider) {
+		MemberRecord carrier = this.members.get(spider.getId());
+		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
+		return squad != null && squad.state == SquadState.ENGAGING
+			? this.assignedTransportPartnerFor(spider)
+			: null;
 	}
 
 	/** 目标失效时立即注销；正常 Goal 切换则交给心跳超时，避免频繁退队又入队。 */
@@ -551,7 +583,7 @@ public final class ZombieSquadCoordinator {
 			MemberRecord member = this.members.get(memberId);
 			if (member != null && member.mob.isAlive()) {
 				candidates.add(
-					new SquadLeaderCandidate(memberId, intelligenceOf(member.mob), member.mob.getHealth())
+					new SquadLeaderCandidate(memberId, intelligenceOf(member.mob), randomElectionTicket(member.mob))
 				);
 			}
 		}
@@ -574,6 +606,44 @@ public final class ZombieSquadCoordinator {
 			MemberRecord member = this.members.get(memberId);
 			if (memberId != squad.leaderId && member != null && isRangedMember(member.mob)) {
 				squad.roles.put(memberId, SquadRole.RANGED);
+			} else if (memberId != squad.leaderId && member != null && isCreeperMember(member.mob)) {
+				squad.roles.put(memberId, SquadRole.BREACHER);
+			}
+		}
+		this.rebuildTransportAssignments(squad, ordered);
+	}
+
+	/**
+	 * 每只蜘蛛最多接一名乘员，每名乘员最多分给一只蜘蛛。候选先按战术价值排序：
+	 * 苦力怕投送优先，其次是需要快速换点的骷髅，最后是近战僵尸；同类仍按智力排序。
+	 */
+	private void rebuildTransportAssignments(final ZombieSquad squad, final List<Integer> ordered) {
+		squad.transportPartners.clear();
+		List<MemberRecord> carriers = new ArrayList<>();
+		List<MemberRecord> passengers = new ArrayList<>();
+		for (int memberId : ordered) {
+			MemberRecord member = this.members.get(memberId);
+			if (member == null) {
+				continue;
+			}
+			if (isSpiderMember(member.mob)) {
+				carriers.add(member);
+			} else {
+				passengers.add(member);
+			}
+		}
+		passengers.sort(
+			Comparator.comparingInt((MemberRecord member) -> transportPriority(member.mob))
+				.thenComparing(Comparator.comparingInt((MemberRecord member) -> intelligenceOf(member.mob)).reversed())
+				.thenComparingInt(member -> member.mob.getId())
+		);
+		int pairCount = Math.min(carriers.size(), passengers.size());
+		for (int index = 0; index < pairCount; index++) {
+			MemberRecord carrier = carriers.get(index);
+			MemberRecord passenger = passengers.get(index);
+			squad.transportPartners.put(carrier.mob.getId(), passenger.mob.getId());
+			if (carrier.mob.getId() != squad.leaderId) {
+				squad.roles.put(carrier.mob.getId(), SquadRole.CARRIER);
 			}
 		}
 	}
@@ -743,6 +813,20 @@ public final class ZombieSquadCoordinator {
 				.add(forward.scale(config.formationRadius + 2.5))
 				.add(lateral.scale((pressureIndex & 1) == 0 ? 2.0 : -2.0));
 			case RANGED -> targetPosition.add(forward.scale(config.skeletonPreferredRange));
+			case BREACHER -> engaging ? null : targetPosition.add(forward.scale(config.formationRadius + 0.75));
+			case CARRIER -> {
+				if (member == null) {
+					yield targetPosition.add(forward.scale(config.formationRadius + 1.5));
+				}
+				ZombieSquad memberSquad = member.squadId == 0L ? null : this.squads.get(member.squadId);
+				Integer passengerId = memberSquad == null
+					? null
+					: memberSquad.transportPartners.get(member.mob.getId());
+				MemberRecord passenger = passengerId == null ? null : this.members.get(passengerId);
+				yield passenger == null
+					? targetPosition.add(forward.scale(config.formationRadius + 1.5))
+					: passenger.mob.position();
+			}
 		};
 	}
 
@@ -842,6 +926,13 @@ public final class ZombieSquadCoordinator {
 			squad.memberIds.remove(member.mob.getId());
 			squad.roles.remove(member.mob.getId());
 			squad.orders.remove(member.mob.getId());
+			boolean removedCarrier = squad.transportPartners.remove(member.mob.getId()) != null;
+			boolean removedPassenger = squad.transportPartners.values()
+				.removeIf(passengerId -> passengerId == member.mob.getId());
+			boolean transportChanged = removedCarrier || removedPassenger;
+			if (transportChanged && !squad.memberIds.isEmpty()) {
+				this.rebuildRoles(squad);
+			}
 		}
 		member.squadId = 0L;
 		this.theatrics.restoreName(member.mob);
@@ -888,6 +979,11 @@ public final class ZombieSquadCoordinator {
 			}
 			AttributeInstance speed = member.mob.getAttribute(Attributes.MOVEMENT_SPEED);
 			if (speed == null) {
+				continue;
+			}
+			// 载具 Goal 已使用独立的 1.10～配置上限速度曲线；再叠通用 +10% 会突破刚收紧的运输峰值。
+			if (isSpiderMember(member.mob) && squad.transportPartners.containsKey(memberId)) {
+				speed.removeModifier(SQUAD_SPEED_MODIFIER_ID);
 				continue;
 			}
 			if (config.squadSpeedBonus <= 0.0) {
@@ -977,19 +1073,37 @@ public final class ZombieSquadCoordinator {
 	private static boolean squadsEnabled(final MobsThinkNowConfig config) {
 		return config.enabled
 			&& config.packSurrounding
-			&& (config.zombieAiEnabled || config.skeletonAiEnabled);
+			&& (config.zombieAiEnabled
+				|| config.skeletonAiEnabled
+				|| config.creeperAiEnabled
+				|| config.spiderAiEnabled);
 	}
 
 	private static boolean isSupportedMember(final Mob mob) {
-		return mob.getType() == EntityType.ZOMBIE || mob.getType() == EntityType.SKELETON;
+		MobsThinkNowConfig config = ConfigManager.get();
+		return (mob.getType() == EntityType.ZOMBIE && config.zombieAiEnabled)
+			|| (mob.getType() == EntityType.SKELETON && config.skeletonAiEnabled)
+			|| (mob.getType() == EntityType.CREEPER && config.creeperAiEnabled)
+			|| (mob.getType() == EntityType.SPIDER && config.spiderAiEnabled);
 	}
 
 	private static boolean isRangedMember(final @Nullable Mob mob) {
 		return mob instanceof AbstractSkeleton && mob.getType() == EntityType.SKELETON;
 	}
 
+	private static boolean isCreeperMember(final @Nullable Mob mob) {
+		return mob instanceof Creeper && mob.getType() == EntityType.CREEPER;
+	}
+
+	private static boolean isSpiderMember(final @Nullable Mob mob) {
+		return mob instanceof Spider && mob.getType() == EntityType.SPIDER;
+	}
+
 	private static SquadRole defaultRole(final Mob mob) {
-		return isRangedMember(mob) ? SquadRole.RANGED : SquadRole.PRESSURER;
+		if (isRangedMember(mob)) {
+			return SquadRole.RANGED;
+		}
+		return isCreeperMember(mob) ? SquadRole.BREACHER : SquadRole.PRESSURER;
 	}
 
 	private static int intelligenceOf(final Mob mob) {
@@ -999,7 +1113,25 @@ public final class ZombieSquadCoordinator {
 		if (mob instanceof AbstractSkeleton skeleton) {
 			return SkeletonIntelligence.get(skeleton);
 		}
+		if (mob instanceof Creeper creeper) {
+			return CreeperIntelligence.get(creeper);
+		}
+		if (mob instanceof Spider spider) {
+			return SpiderIntelligence.get(spider);
+		}
 		return 1;
+	}
+
+	private static int transportPriority(final Mob mob) {
+		if (isCreeperMember(mob)) {
+			return 0;
+		}
+		return isRangedMember(mob) ? 1 : 2;
+	}
+
+	private static long randomElectionTicket(final Mob mob) {
+		return mob.getUUID().getMostSignificantBits()
+			^ Long.rotateLeft(mob.getUUID().getLeastSignificantBits(), 23);
 	}
 
 	public record SquadView(
@@ -1033,6 +1165,7 @@ public final class ZombieSquadCoordinator {
 		private final Set<Integer> memberIds = new LinkedHashSet<>();
 		private final Map<Integer, SquadRole> roles = new HashMap<>();
 		private final Map<Integer, SquadOrder> orders = new HashMap<>();
+		private final Map<Integer, Integer> transportPartners = new HashMap<>();
 		private int leaderId;
 		private int term;
 		private int planEpoch;

@@ -1,6 +1,11 @@
 package com.wjz.mobsthinknow.ai.spider;
 
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import java.lang.reflect.Method;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
@@ -10,20 +15,22 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
+import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.level.block.Blocks;
 
 /** 从真实实体、GoalSelector、骑乘关系和引信数据验证蜘蛛战术。 */
 public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
-	public void spiderMixinInstallsThreeGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
+	public void spiderMixinInstallsFiveGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
 		long before = SmartSpiderMetrics.snapshot().installedGoals();
 		Spider spider = helper.spawn(EntityType.SPIDER, 2, 2, 2);
 
 		helper.assertTrue(
-			SmartSpiderMetrics.snapshot().installedGoals() == before + 3,
-			"Spider construction did not replace pounce/melee and install carrier coordination."
+			SmartSpiderMetrics.snapshot().installedGoals() == before + 5,
+			"Spider construction did not install preparation, personal combat, and both carrier goals."
 		);
 		int intelligence = SpiderIntelligence.get(spider);
 		helper.assertTrue(intelligence >= 1 && intelligence <= 10, "Spider intelligence escaped the 1-10 range.");
@@ -147,6 +154,118 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(speed.getAmplifier() == 1, "Rare top-tier roll did not produce Speed II.");
 		helper.assertTrue(speed.isInfiniteDuration(), "Spawn speed trait did not persist for the spider's lifetime.");
 		helper.assertTrue(speed.isVisible(), "Spawn speed trait hid its potion particles.");
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 80, padding = 4)
+	public void zombieSkeletonCreeperAndSpiderFormOneSquadWithCreeperLeader(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 2, 2);
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 3, 2, 3);
+		Creeper creeper = helper.spawn(EntityType.CREEPER, 4, 2, 2);
+		Spider spider = helper.spawn(EntityType.SPIDER, 3, 2, 1);
+		Villager target = helper.spawn(EntityType.VILLAGER, 11, 2, 2);
+		zombie.setNoAi(true);
+		skeleton.setNoAi(true);
+		creeper.setNoAi(true);
+		spider.setNoAi(true);
+		target.setNoAi(true);
+		ZombieIntelligence.set(zombie, 8);
+		SkeletonIntelligence.set(skeleton, 7);
+		CreeperIntelligence.set(creeper, 10);
+		SpiderIntelligence.set(spider, 9);
+		zombie.setTarget(target);
+		skeleton.setTarget(target);
+		creeper.setTarget(target);
+		spider.setTarget(target);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			coordinator.heartbeat(zombie, target, true, target.position(), now);
+			coordinator.heartbeat(skeleton, target, true, target.position(), now);
+			coordinator.heartbeat(creeper, target, true, target.position(), now);
+			coordinator.heartbeat(spider, target, true, target.position(), now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(creeper);
+			if (view == null) {
+				return;
+			}
+			helper.assertTrue(view.memberCount() == 4, "The four-species squad omitted one of its hostile members.");
+			helper.assertTrue(view.leaderEntityId() == creeper.getId(), "The unique IQ-10 creeper was not elected leader.");
+			SquadDirective creeperOrder = coordinator.directiveFor(creeper);
+			SquadDirective spiderOrder = coordinator.directiveFor(spider);
+			SquadDirective skeletonOrder = coordinator.directiveFor(skeleton);
+			helper.assertTrue(creeperOrder != null && creeperOrder.role() == SquadRole.LEADER, "Creeper leader lost its leader role.");
+			helper.assertTrue(spiderOrder != null && spiderOrder.role() == SquadRole.CARRIER, "Assigned spider was not marked as carrier.");
+			helper.assertTrue(skeletonOrder != null && skeletonOrder.role() == SquadRole.RANGED, "Skeleton lost its ranged role.");
+			helper.assertTrue(coordinator.assignedTransportPartnerFor(spider) == creeper, "Carrier did not prioritize the creeper payload.");
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 60, padding = 4)
+	public void squadSpiderPhysicallyBoardsAndAcceleratesSkeleton(final GameTestHelper helper) {
+		Spider spider = helper.spawn(EntityType.SPIDER, 2, 2, 2);
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 4, 2, 2);
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 3, 2, 3);
+		Villager target = helper.spawn(EntityType.VILLAGER, 7, 2, 2);
+		spider.setNoAi(true);
+		skeleton.setNoAi(true);
+		zombie.setNoAi(true);
+		target.setNoAi(true);
+		SpiderIntelligence.set(spider, 10);
+		SkeletonIntelligence.set(skeleton, 8);
+		ZombieIntelligence.set(zombie, 6);
+		spider.setTarget(target);
+		skeleton.setTarget(target);
+		zombie.setTarget(target);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		SpiderSquadCarrierGoal carrierGoal = new SpiderSquadCarrierGoal(spider);
+		boolean[] started = {false};
+		int[] elapsed = {0};
+
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			long now = helper.getLevel().getGameTime();
+			coordinator.heartbeat(spider, target, true, target.position(), now);
+			coordinator.heartbeat(skeleton, target, true, target.position(), now);
+			coordinator.heartbeat(zombie, target, true, target.position(), now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			if (!started[0] && carrierGoal.canUse()) {
+				started[0] = true;
+				carrierGoal.start();
+			}
+			if (started[0]) {
+				carrierGoal.tick();
+			}
+			if (skeleton.getVehicle() == spider) {
+				double configuredMaximum = ConfigManager.get().spiderCreeperCarrierSpeed;
+				double actualMaximum = carrierGoal.carrierSpeedMaximum();
+				helper.assertTrue(carrierGoal.isCarryingSquadmate(), "Carrier state did not retain its skeleton passenger.");
+				helper.assertTrue(spider.getControllingPassenger() == null, "Skeleton became a driver and disabled spider navigation.");
+				helper.assertTrue(actualMaximum >= Math.max(1.10, configuredMaximum * 0.88)
+					&& actualMaximum <= configuredMaximum, "Squad carrier escaped its randomized acceleration cap.");
+				helper.succeed();
+			}
+			if (elapsed[0] >= 45) {
+				helper.assertTrue(false, "Squad spider did not complete the visible boarding sequence.");
+			}
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void unrelatedVanillaSpiderJockeyKeepsItsNormalDriverSemantics(final GameTestHelper helper) {
+		Spider spider = helper.spawn(EntityType.SPIDER, 2, 2, 2);
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 2, 2, 3);
+		skeleton.setNoAi(true);
+		helper.assertTrue(skeleton.startRiding(spider, true, true), "Vanilla spider-jockey fixture could not mount.");
+		helper.assertTrue(
+			spider.getControllingPassenger() == skeleton,
+			"Squad carrier override leaked into an unrelated vanilla spider jockey."
+		);
+		skeleton.stopRiding();
+		skeleton.discard();
+		spider.discard();
 		helper.succeed();
 	}
 
