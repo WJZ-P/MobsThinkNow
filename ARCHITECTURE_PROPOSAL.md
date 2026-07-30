@@ -266,10 +266,13 @@ com.wjz.mobsthinknow
   客户端 `EndermanRendererMixin` 从真实乘客关系提取一位瞬时 RenderState，`EndermanModelMixin` 在
   原版动画完成后把双臂设为前伸、轻微内收的实体环抱姿态；苦力怕仍由原版实体渲染器绘制，避免
   复制材质、闪白、名称与资源包兼容逻辑；
-- IQ 决定 8～17 tick 抱稳时间。投送按玩家水平视线优先选择侧后方配置距离，使用原版末影人
-  `randomTeleport` 做落点/碰撞校验；抵达后保留 8 tick 展示窗，再在 12 个环形候选中检查坚固地基、
-  两格流体与碰撞，执行 `stopRiding`、设置原玩家目标并调用原版 `ignite()`。2 tick 后末影人尝试
-  传送远离目标，成功投送进入默认 300 tick、带 IQ 缩放与随机量的冷却；
+- IQ 决定 8～17 tick 抱稳时间。每轮方向只抽取一次：默认 80% 在玩家水平视线正前方 `±0.32 rad`
+  窄视锥内选近身位并额外验证载荷对玩家可见，20% 选择后方；地形后备点继续保持已选方向。
+  原版末影人 `randomTeleport` 负责落点/碰撞校验，正面抵达一旦提交便不再被新产生的凝视中断；
+- 抵达后保留 8 tick 展示窗，再检查坚固地基、两格流体与碰撞，执行 `stopRiding`、设置原玩家目标并
+  调用原版 `ignite()`。载荷旁停留随机 5～8 tick 后，以载荷位置而非易失的目标引用为撤离威胁点，
+  每 2 tick 重试远距传送并要求水平拉开至少 12 格；20 tick 后扩大候选数，失败期间同步向外寻路。
+  因此目标丢失不会卡死已提交撤离；成功后进入默认 300 tick、带 IQ 缩放与随机量的冷却；
 - 目标、载荷、传送或凝视条件中途失效时，未投放载荷会下车、退火并清租约；已经释放点燃的载荷
   不会在 Goal 结束时被反向解除。爆炸半径、30 tick 引信、声音、伤害、`mobGriefing` 和猫克制均
   沿用苦力怕原版规则。
@@ -486,7 +489,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `endermanCreeperDelivery` | `true` | 已敌对玩家的末影人是否抱取、传送并点燃附近苦力怕 |
 | `endermanCreeperSearchRadius` | `16.0` | 局部搜索配置半径，范围 `6～32` 格，再按末影人 IQ 缩放 |
 | `endermanCreeperDeliveryCooldownTicks` | `300` | 成功投送基础冷却，范围 `100～1200` tick，再按 IQ 和随机量错峰 |
-| `endermanCreeperDropDistance` | `3.0` | 玩家侧后方期望投放距离，范围 `2～6` 格 |
+| `endermanCreeperDropDistance` | `3.0` | 玩家正面或后方的期望投放距离，范围 `2～6` 格 |
+| `endermanCreeperFrontDeliveryChance` | `0.80` | 玩家当前视线正面可视投送概率，范围 `0～1`；其余概率选择后方 |
 | `packSurrounding` | `true` | 小队系统开关 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
