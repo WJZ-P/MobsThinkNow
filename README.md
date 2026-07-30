@@ -347,9 +347,13 @@ Goal 数、战术决策数、活跃小队、首领选举/换届、候选检查�
 
 使用 `/mtn spawn` 可以查看兵种与批量语法，随后执行 `/mtn spawn <类型> [数量]`，在命令源
 正前方安全地生成指定兵种；`<类型>` 支持 Tab 补全，省略数量时保持原行为、默认生成一只，
-数量参数允许 `1～100`：
+数量参数允许 `1～100`。基础入口 `zombie`、`skeleton`、`creeper`、`spider` 分别生成对应
+智能生物的默认代表兵种；`/mtn spawn all` 等价于全局 `/mtn spawnall`，复数入口
+`zombies`、`skeletons`、`creepers`、`spiders` 则一次生成对应分类的全部预设：
 
 ```text
+all             zombie          skeleton        creeper          spider
+zombies         skeletons       creepers        spiders
 unarmed        swordsman       axeman
 sword_shield   axe_shield      builder
 water_support  lava_harasser   air_assault
