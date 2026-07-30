@@ -120,7 +120,7 @@
 	"mobsthinknow.command.spawn_all_creepers.no_space": "附近没有足够安全的地面容纳完整的苦力怕测试阵型。",
 	"mobsthinknow.command.spawn_all_creepers.create_failed": "创建苦力怕实体失败，未生成测试阵型。",
 	"mobsthinknow.command.spawn_all_creepers.add_failed": "向世界添加苦力怕阵型失败，本次生成已回滚。",
-	"mobsthinknow.command.spawn.types": "可生成的战术怪物类型（用法：/mtn spawn <类型> [数量]，数量 1-%s）：%s",
+	"mobsthinknow.command.spawn.types": "可用生成入口（基础生物/战术预设支持数量 1-%s；all/复数分类会生成完整组）：%s",
 	"mobsthinknow.command.spawn.success": "已生成 %s 只%s（%s）。",
 	"mobsthinknow.command.spawn.no_space": "附近没有足够安全的地面容纳所请求的 %s 只怪物，未生成任何实体。",
 	"mobsthinknow.command.spawn.create_failed": "准备所请求的 %s 只怪物时失败，未生成任何实体。",

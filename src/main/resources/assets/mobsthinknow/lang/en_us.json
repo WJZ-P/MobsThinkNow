@@ -120,7 +120,7 @@
 	"mobsthinknow.command.spawn_all_creepers.no_space": "No nearby ground has enough safe space for the complete creeper test formation.",
 	"mobsthinknow.command.spawn_all_creepers.create_failed": "Creeper entity creation failed; no test formation was added.",
 	"mobsthinknow.command.spawn_all_creepers.add_failed": "Adding the creeper formation failed; this spawn attempt was rolled back.",
-	"mobsthinknow.command.spawn.types": "Available tactical monster types (usage: /mtn spawn <type> [count], count 1-%s): %s",
+	"mobsthinknow.command.spawn.types": "Available spawn entries (base/variant count 1-%s; all/plural entries spawn a complete group): %s",
 	"mobsthinknow.command.spawn.success": "Spawned %s × %s (%s).",
 	"mobsthinknow.command.spawn.no_space": "No safe nearby ground was found for all %s requested mobs; nothing was spawned.",
 	"mobsthinknow.command.spawn.create_failed": "Preparing the requested batch of %s mobs failed; nothing was spawned.",

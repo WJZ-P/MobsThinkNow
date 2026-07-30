@@ -70,6 +70,76 @@ public final class MtnCommands {
 		LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("spawn")
 			.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 			.executes(MtnCommands::listSpawnTypes);
+		// 先注册全局、分类与基础实体入口；后面的二十个战术预设仍保留独立 Tab literal。
+		command.then(Commands.literal("all").executes(MtnCommands::spawnAll));
+		command.then(Commands.literal("zombies").executes(MtnCommands::spawnAllZombies));
+		command.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons));
+		command.then(Commands.literal("creepers").executes(MtnCommands::spawnAllCreepers));
+		command.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders));
+		command.then(
+			Commands.literal("zombie")
+				.executes(context -> spawnSpecific(
+					context,
+					ZombieShowcaseSpawner.ShowcaseArchetype.UNARMED,
+					1
+				))
+				.then(
+					Commands.argument("count", IntegerArgumentType.integer(1, ZombieShowcaseSpawner.MAX_BATCH_SIZE))
+						.executes(context -> spawnSpecific(
+							context,
+							ZombieShowcaseSpawner.ShowcaseArchetype.UNARMED,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+				)
+		);
+		command.then(
+			Commands.literal("skeleton")
+				.executes(context -> spawnSpecificSkeleton(
+					context,
+					SkeletonShowcaseSpawner.ShowcaseArchetype.BOW,
+					1
+				))
+				.then(
+					Commands.argument("count", IntegerArgumentType.integer(1, SkeletonShowcaseSpawner.MAX_BATCH_SIZE))
+						.executes(context -> spawnSpecificSkeleton(
+							context,
+							SkeletonShowcaseSpawner.ShowcaseArchetype.BOW,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+				)
+		);
+		command.then(
+			Commands.literal("creeper")
+				.executes(context -> spawnSpecificCreeper(
+					context,
+					CreeperShowcaseSpawner.ShowcaseArchetype.HUNTER,
+					1
+				))
+				.then(
+					Commands.argument("count", IntegerArgumentType.integer(1, CreeperShowcaseSpawner.MAX_BATCH_SIZE))
+						.executes(context -> spawnSpecificCreeper(
+							context,
+							CreeperShowcaseSpawner.ShowcaseArchetype.HUNTER,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+				)
+		);
+		command.then(
+			Commands.literal("spider")
+				.executes(context -> spawnSpecificSpider(
+					context,
+					SpiderShowcaseSpawner.ShowcaseArchetype.HUNTER,
+					1
+				))
+				.then(
+					Commands.argument("count", IntegerArgumentType.integer(1, SpiderShowcaseSpawner.MAX_BATCH_SIZE))
+						.executes(context -> spawnSpecificSpider(
+							context,
+							SpiderShowcaseSpawner.ShowcaseArchetype.HUNTER,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+				)
+		);
 		for (ZombieShowcaseSpawner.ShowcaseArchetype archetype
 			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
 			command.then(
@@ -326,11 +396,12 @@ public final class MtnCommands {
 				.map(SpiderShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
-		String types = zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes;
+		String types = "all, zombie, skeleton, creeper, spider, zombies, skeletons, creepers, spiders, "
+			+ zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes;
 		context.getSource().sendSuccess(
 			() -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.types",
-				"Available tactical monster types (usage: /mtn spawn <type> [count], count 1-%s): %s",
+				"Available spawn entries (base/variant count 1-%s; all/plural entries spawn a complete group): %s",
 				ZombieShowcaseSpawner.MAX_BATCH_SIZE,
 				types
 			),
