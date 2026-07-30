@@ -1,11 +1,12 @@
 # 《怪物不再愚蠢 / Mobs Think Now》技术架构
 
-> 当前状态：普通僵尸、普通骷髅、普通苦力怕战术与僵尸—骷髅混编小队已经实现。目标版本为 Minecraft Java
+> 当前状态：普通僵尸、普通骷髅、普通苦力怕、普通蜘蛛战术与僵尸—骷髅混编小队已经实现。目标版本为 Minecraft Java
 > 26.1.2、Fabric Loader 0.19.3、Fabric API 0.155.2+26.1.2、Java 25。
 
 ## 1. 首版边界
 
-- 只改造原版普通僵尸 `minecraft:zombie`、普通骷髅 `minecraft:skeleton` 与普通苦力怕 `minecraft:creeper`；
+- 只改造原版普通僵尸 `minecraft:zombie`、普通骷髅 `minecraft:skeleton`、普通苦力怕 `minecraft:creeper`
+  与普通蜘蛛 `minecraft:spider`；
 - 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩等姿态；
 - 不提高生成量；个体速度、最大生命、伤害与追踪距离围绕随难度变化的均值随机浮动；
 - 复用原版视线、GoalSelector、导航、近战距离和命中判定；
@@ -107,6 +108,13 @@ com.wjz.mobsthinknow
 │  ├─ CreeperBreachPlanner              第一层软障碍射线、抗性和游戏规则检查
 │  ├─ SmartCreeperApproachGoal          直接追击、速度截击与观察感知绕后
 │  └─ SmartCreeperSwellGoal             移动引信、预测爆点、软墙提交与安全退火
+├─ ai/spider
+│  ├─ SpiderIntelligence               难度化出生区间、持久智力与名称标记
+│  ├─ SpiderCombatMath                 绕侧、预判跳扑、拉扯和运输冲锋纯数学
+│  ├─ SmartSpiderPounceGoal            2.5～7 格速度预测跳扑与原版热切换
+│  ├─ SmartSpiderCombatGoal            截击、观察绕侧、命中后重定位
+│  ├─ CreeperTransportAccess           单目标、带租约的瞬时苦力怕预约
+│  └─ SpiderCreeperCarrierGoal         会合、骑乘、运输、退火和最终冲锋状态机
 ├─ ai/zombie
 │  ├─ SmartZombieAttackGoal             原版 Goal 生命周期与武器命中边界
 │  ├─ ReactiveRetreatGoal               低血/单次重伤撤退与限时重返战斗
@@ -153,11 +161,13 @@ com.wjz.mobsthinknow
 ├─ command/ZombieShowcaseSpawner        安全落点检查、确定兵种装备与命令生成事务
 ├─ command/SkeletonShowcaseSpawner      弓/弩/爆炸弩测试兵种与批量生成事务
 ├─ command/CreeperShowcaseSpawner       猎手/绕后/破墙/带电预设与批量生成事务
+├─ command/SpiderShowcaseSpawner        猎手/伏击/首领/苦力怕投送组生成事务
 ├─ command/ShowcaseSpawnPlacement       跨物种共用的碰撞、地基与阵型预检
 ├─ config                               JSON 配置、校验和热重载
 ├─ mixin/ZombieMixin                    僵尸 Goal 替换与智力存档注入
 ├─ mixin/AbstractSkeletonMixin          骷髅 Goal、智力、负载与混编心跳注入
 ├─ mixin/CreeperMixin                   苦力怕 Goal 替换、智力存档与带电测试访问
+├─ mixin/SpiderMixin                    蜘蛛 Goal、智力存档与载荷非驾驶者语义
 └─ mixin/client                         盾牌/进食/举矛与骷髅双手弩姿态仲裁
 ```
 
@@ -190,7 +200,27 @@ com.wjz.mobsthinknow
   不高于 20。它不把黑曜石/基岩当目标，也不绕过原版爆炸、伤害和方块保护规则；
 - 猫与豹猫 Goal 保持优先级 3；智能接敌位于 4，因此仍会被猫克制。引信 Goal 继续使用原版优先级 2。
 
-## 2.3 工程兵技能生命周期
+## 2.3 蜘蛛个人战术与苦力怕投送边界
+
+- `SmartSpiderPounceGoal` 包装原版 `LeapAtTargetGoal`。IQ 4 起把有效距离扩展为 `2.5～7` 格，
+  对目标水平速度做有限提前量；水平速度最终再次裁剪到 `0.60`，垂直速度最高 `0.46`；
+- `SmartSpiderCombatGoal` 在 IQ 6 起识别目标水平注视和举盾，按 UUID 稳定选择左右侧；IQ 5 起
+  命中后保持 LOOK 控制，向侧后方约 3～4 格的下一次跳扑位置撤出；攀墙始终交给原版
+  `WallClimberNavigation`，不直接修改 Y 速度；
+- `SpiderCreeperCarrierGoal` 优先级 2，高于个人跳扑和近战。相同目标的双方先进入 `ASSEMBLING`，
+  2.6 格内通过 `startRiding` 建立真实乘客树，再进入 `DELIVERING` 与 `FINAL_CHARGE`；实体调度造成的
+  前 20% 非强制引信可先退火后会合，外部点燃和中后段引信不纳入候选；
+- 原版 `Mob#getControllingPassenger` 会把第一只 Mob 乘客视为驾驶者并暂停坐骑 MOVE/LOOK。
+  `SpiderMixin` 只对“普通蜘蛛 + 苦力怕乘客”返回空控制者，使苦力怕成为载荷；骷髅骑士等关系继续
+  委托 `super`；
+- 运输速度由双方较高 IQ 和难度从 `1.15` 向配置上限插值，默认上限 `1.55`。进入苦力怕自身起爆
+  距离后才设置正向 swell，继续使用原版 30 tick 计时、声音、半径与伤害；早期被拉开六格额外距离
+  时退火，目标失效时下车并清理预约；
+- 配对每只蜘蛛错峰 `10～20 tick` 执行一次局部空间查询，单轮最多评估 32 个候选。苦力怕上的
+  60 tick 可续租 UUID 预约保证一对一归属；预约态和骑乘态都会临时暂停苦力怕自己的接敌/引信 Goal。
+  会合阶段另有 100 tick 硬时限，不可达组合会释放预约并恢复双方个人战斗。
+
+## 2.4 工程兵技能生命周期
 
 “会搭方块”是高智力僵尸的通用地形能力；“工程兵”则是少量个体的持久职业。普通自然候选
 必须成年、双手为空、智力达到 `terrainMinimumIntelligence` 且不是持矛空袭；
@@ -361,10 +391,14 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
    源坐标，不查询同伴，不形成 N² 互扫。
 12. 苦力怕接敌每 4～11 tick 才重建一次路径；目标观察判断只做固定向量点积。左右分流由 UUID
    决定，不扫描同伴；软墙射线只在高智力近距引信候选或已经提交的破墙阶段执行一次局部方块射线。
+13. 蜘蛛配对按实体随机错峰每 10～20 tick 查询一次局部索引，搜索半径默认 8、硬上限 16；即使
+   局部返回更多实体，决策层单轮最多检查 32 只苦力怕。每个候选只有一个 UUID 租约，不发生蜘蛛间
+   的全量两两比较；运输和个人战斗寻路均按 IQ 每 3～8 tick 重建一次。
 
 `/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
 50、100、200 只激活僵尸的 MSPT 实机基准；同时输出累计采集、放置、俯击、工程兵 TNT、
 水、岩浆与目标点燃次数，用于判断地形和工程战术在真实服务器中的触发频率。
+蜘蛛部分同时输出配对查询、候选检查、成功合体和投送引信计数，便于定位高密度刷怪塔中的触发频率。
 
 ## 8. 关键配置
 
@@ -386,6 +420,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `creeperWallBreaching` | `true` | IQ 8 以上对近期目标后的可炸软墙保留引信 |
 | `creeperMaximumFuseStartDistance` | `4.0` | 普通高智力个体起爆距离上限，范围 `3～5` 格 |
 | `creeperFuseMovementSpeed` | `1.25` | 移动引信寻路速度硬上限，范围 `1.0～1.5` |
+| `spiderAiEnabled` | `true` | 普通蜘蛛智力、截击、侧袭、跳扑和拉扯总开关 |
+| `spiderPredictivePounce` | `true` | IQ 4 以上是否启用 2.5～7 格速度预测跳扑 |
+| `spiderHitAndRun` | `true` | IQ 5 以上命中后是否绕回下一次跳扑距离 |
+| `spiderCreeperCoordination` | `true` | 蜘蛛与同目标普通苦力怕是否会合并执行骑乘投送 |
+| `spiderCreeperSearchRadius` | `8.0` | 局部配对搜索半径，范围 `4～16` 格 |
+| `spiderCreeperCarrierSpeed` | `1.55` | 合体冲锋速度上限，范围 `1.10～2.0` |
 | `packSurrounding` | `true` | 小队系统开关 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
@@ -707,7 +747,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 
 ## 9. 验证体系
 
-- JUnit：效用选择、配置边界、苦力怕难度智力区间、观察点积、稳定绕后点、起爆/退火边界与移动引信速度硬上限、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
+- JUnit：效用选择、配置边界、苦力怕难度智力区间、观察点积、稳定绕后点、起爆/退火边界与移动引信速度硬上限、
+  蜘蛛难度智力区间、水平注视、绕侧/命中后重定位、预判跳扑边界与运输速度上限、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
   四格上限、IQ 8～10 拆柱概率、
   觅食半血边界、个体声线映射、难度属性均值、特殊桶概率分区与原版掉落率、智力
   概率和换手选择、工程兵 6～10 秒调度边界、水/岩浆保留时间与五秒点燃常量、智力名字结构、
@@ -737,7 +778,10 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   流体事务与正式身份存读，以及九兵种样本中 `builder`、`water_support`、`lava_harasser`
   恰好三种带工程兵标记；苦力怕另覆盖生产 Mixin 的双 Goal 替换、观察目标触发真实绕后路径、
   鸣响后继续导航到预测爆点、近期泥土墙提交与黑曜石拒绝，以及真实 Brigadier 的四种预设、
-  批量带电破墙手和两个全预设快捷入口；当前共 72 项
+  批量带电破墙手和两个全预设快捷入口；蜘蛛另覆盖生产 Mixin 的三 Goal 接入、真实速度预判跳扑、
+  附近苦力怕的一对一预约与真实骑乘、载荷不会夺取坐骑控制权、投送距离内起爆，以及真实 Brigadier
+  的四种预设、批量蜘蛛苦力怕投送组和两个全预设快捷入口，并以跨真实 tick 的端到端用例验证
+  五格会合、骑乘运输和进入攻击距离后才起爆；当前共 81 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
