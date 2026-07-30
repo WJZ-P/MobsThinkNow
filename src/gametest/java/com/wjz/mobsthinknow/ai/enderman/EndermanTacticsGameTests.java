@@ -50,7 +50,7 @@ public final class EndermanTacticsGameTests implements CustomTestMethodInvoker {
 		helper.succeed();
 	}
 
-	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 40, padding = 4)
 	public void hostileEndermanPicksTeleportsDropsAndIgnitesNearbyCreeper(final GameTestHelper helper) {
 		EnderMan enderman = helper.spawn(EntityType.ENDERMAN, 4, 2, 4);
 		Creeper creeper = helper.spawn(EntityType.CREEPER, 5, 2, 4);
@@ -92,6 +92,10 @@ public final class EndermanTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(goal.phase() == EndermanCreeperDeliveryGoal.Phase.HOLDING, "Pickup skipped the visible holding phase.");
 
 		for (int tick = 0; tick < 30 && !goal.hasReleasedPayload(); tick++) {
+			helper.assertTrue(
+				goal.canContinueToUse(),
+				"A committed delivery was cancelled after appearing inside the player's view."
+			);
 			goal.tick();
 		}
 		helper.assertTrue(goal.hasReleasedPayload(), "The held creeper was never released near the hostile player.");
@@ -101,6 +105,39 @@ public final class EndermanTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(
 			creeper.position().subtract(player.position()).multiply(1.0, 0.0, 1.0).lengthSqr() <= 7.0 * 7.0,
 			"Delivered creeper landed too far from the target player."
+		);
+
+		EndermanCreeperDeliveryGoal.DeliverySide side = goal.deliverySide();
+		helper.assertTrue(side != null, "The delivery never committed a front/rear side.");
+		Vec3 playerLook = player.getLookAngle().multiply(1.0, 0.0, 1.0).normalize();
+		Vec3 playerToPayload = creeper.position().subtract(player.position()).multiply(1.0, 0.0, 1.0).normalize();
+		double alignment = playerLook.dot(playerToPayload);
+		if (side == EndermanCreeperDeliveryGoal.DeliverySide.FRONT) {
+			helper.assertTrue(alignment >= 0.70, "Front delivery escaped the visible forward cone: " + alignment);
+			helper.assertTrue(player.hasLineOfSight(creeper), "Front delivery was geometrically ahead but visually occluded.");
+		} else {
+			helper.assertTrue(alignment <= -0.50, "Rear delivery crossed into the player's forward half: " + alignment);
+		}
+
+		int retreatDelay = goal.retreatDelayTicks();
+		helper.assertTrue(retreatDelay >= 5 && retreatDelay <= 8, "Retreat pause escaped the 5-8 tick window.");
+		Vec3 revealPosition = enderman.position();
+		for (int tick = 1; tick < retreatDelay; tick++) {
+			helper.assertTrue(goal.canContinueToUse(), "Retreat stopped during the deliberate reveal pause.");
+			goal.tick();
+			helper.assertTrue(
+				enderman.position().distanceToSqr(revealPosition) < 1.0E-6,
+				"Enderman left before its short post-drop reveal pause elapsed."
+			);
+		}
+		for (int tick = 0; tick < 30 && !goal.hasCompletedRetreat(); tick++) {
+			helper.assertTrue(goal.canContinueToUse(), "Enderman abandoned a failed retreat teleport instead of retrying.");
+			goal.tick();
+		}
+		helper.assertTrue(goal.hasCompletedRetreat(), "Enderman never completed its repeated post-drop retreat attempts.");
+		helper.assertTrue(
+			enderman.position().subtract(creeper.position()).multiply(1.0, 0.0, 1.0).lengthSqr() >= 12.0 * 12.0,
+			"Enderman retreat remained inside the delivered creeper's blast pressure zone."
 		);
 		goal.stop();
 		player.discard();

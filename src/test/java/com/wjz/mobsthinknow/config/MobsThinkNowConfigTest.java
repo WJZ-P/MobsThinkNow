@@ -39,6 +39,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(16.0, config.endermanCreeperSearchRadius);
 		assertEquals(300, config.endermanCreeperDeliveryCooldownTicks);
 		assertEquals(3.0, config.endermanCreeperDropDistance);
+		assertEquals(0.80, config.endermanCreeperFrontDeliveryChance);
 	}
 
 	@Test
@@ -252,18 +253,22 @@ class MobsThinkNowConfigTest {
 		config.endermanCreeperSearchRadius = 100.0;
 		config.endermanCreeperDeliveryCooldownTicks = 5000;
 		config.endermanCreeperDropDistance = 99.0;
+		config.endermanCreeperFrontDeliveryChance = 4.0;
 		config.validate();
 
 		assertEquals(32.0, config.endermanCreeperSearchRadius);
 		assertEquals(1200, config.endermanCreeperDeliveryCooldownTicks);
 		assertEquals(6.0, config.endermanCreeperDropDistance);
+		assertEquals(1.0, config.endermanCreeperFrontDeliveryChance);
 
 		config.endermanCreeperSearchRadius = Double.NaN;
 		config.endermanCreeperDeliveryCooldownTicks = -5;
 		config.endermanCreeperDropDistance = -1.0;
+		config.endermanCreeperFrontDeliveryChance = Double.NaN;
 		config.validate();
 		assertEquals(6.0, config.endermanCreeperSearchRadius);
 		assertEquals(100, config.endermanCreeperDeliveryCooldownTicks);
 		assertEquals(2.0, config.endermanCreeperDropDistance);
+		assertEquals(0.0, config.endermanCreeperFrontDeliveryChance);
 	}
 }

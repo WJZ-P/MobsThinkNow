@@ -54,6 +54,9 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_ENDERMAN_CREEPER_DROP_DISTANCE = 3.0;
 	public static final double MINIMUM_ENDERMAN_CREEPER_DROP_DISTANCE = 2.0;
 	public static final double MAXIMUM_ENDERMAN_CREEPER_DROP_DISTANCE = 6.0;
+	public static final double DEFAULT_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE = 0.80;
+	public static final double MINIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE = 0.0;
+	public static final double MAXIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE = 1.0;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
@@ -106,8 +109,10 @@ public final class MobsThinkNowConfig {
 	public double endermanCreeperSearchRadius = DEFAULT_ENDERMAN_CREEPER_SEARCH_RADIUS;
 	/** 一次成功投放后的基础冷却；智力会小幅缩短、个体随机量会重新错峰。 */
 	public int endermanCreeperDeliveryCooldownTicks = DEFAULT_ENDERMAN_CREEPER_DELIVERY_COOLDOWN_TICKS;
-	/** 投放点相对玩家的期望水平距离；优先选择玩家视线后方并检查安全落脚。 */
+	/** 投放点相对玩家的期望水平距离；正面与后方候选都会检查安全落脚。 */
 	public double endermanCreeperDropDistance = DEFAULT_ENDERMAN_CREEPER_DROP_DISTANCE;
+	/** 投送到玩家当前视线正前方的概率；剩余概率保留后方奇袭变化。 */
+	public double endermanCreeperFrontDeliveryChance = DEFAULT_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public boolean squadVisualEffects = true;
@@ -314,6 +319,11 @@ public final class MobsThinkNowConfig {
 			this.endermanCreeperDropDistance,
 			MINIMUM_ENDERMAN_CREEPER_DROP_DISTANCE,
 			MAXIMUM_ENDERMAN_CREEPER_DROP_DISTANCE
+		);
+		this.endermanCreeperFrontDeliveryChance = clamp(
+			this.endermanCreeperFrontDeliveryChance,
+			MINIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE,
+			MAXIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE
 		);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);

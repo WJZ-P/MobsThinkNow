@@ -284,6 +284,20 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.enderman_creeper_drop_distance.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.endermanCreeperDropDistance = value))
 			.build());
+		endermanCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.enderman_creeper_front_delivery_chance"),
+			(int)Math.round(config.endermanCreeperFrontDeliveryChance * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MINIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE * 100.0)
+		)
+			.setDefaultValue((int)Math.round(
+				MobsThinkNowConfig.DEFAULT_ENDERMAN_CREEPER_FRONT_DELIVERY_CHANCE * 100.0
+			))
+			.setTooltip(Component.translatable("mobsthinknow.config.enderman_creeper_front_delivery_chance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(
+				updated -> updated.endermanCreeperFrontDeliveryChance = value / 100.0
+			))
+			.build());
 
 		// Mod Menu 位于客户端；这段提示避免玩家误以为它可以直接修改远程服务器规则。
 		squadCategory.addEntry(entries.startTextDescription(

@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * 末影人苦力怕投送状态机。它不参与末影人的仇恨建立：只有原版机制已经给出存活的生存玩家目标后，
- * 才会限频搜索一只未进入引信的普通苦力怕，抱到胸前，传送到玩家侧后方，放下并点燃载荷。
+ * 才会限频搜索一只未进入引信的普通苦力怕，抱到胸前，传送到玩家近身位，放下并点燃载荷。
  * 搜索每轮最多检查 24 个候选，且与蜘蛛运输共用单目标租约，避免两类载具争抢同一实体。
  */
 public final class EndermanCreeperDeliveryGoal extends Goal {
@@ -36,7 +36,18 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 	private static final int APPROACH_TIMEOUT_TICKS = 100;
 	private static final int MINIMUM_HOLD_TICKS = 8;
 	private static final int ARRIVAL_REVEAL_TICKS = 8;
-	private static final int RETREAT_DELAY_TICKS = 2;
+	private static final int MINIMUM_RETREAT_DELAY_TICKS = 5;
+	private static final int MAXIMUM_RETREAT_DELAY_TICKS = 8;
+	private static final int RETREAT_RETRY_INTERVAL_TICKS = 2;
+	private static final int RETREAT_ESCALATION_TICKS = 20;
+	private static final int ABANDON_FINISHED_PAYLOAD_TICKS = 40;
+	private static final double SAFE_RETREAT_DISTANCE_SQUARED = 12.0 * 12.0;
+	private static final double FRONT_SPREAD_RADIANS = 0.32;
+	private static final double REAR_SPREAD_RADIANS = 0.75;
+	private static final double MINIMUM_FRONT_ALIGNMENT = 0.90;
+	private static final double MAXIMUM_REAR_ALIGNMENT = -0.72;
+	private static final double[] DROP_FALLBACK_SPREADS = {0.0, 0.16, -0.16, 0.30, -0.30, 0.46, -0.46};
+	private static final double[] DROP_FALLBACK_SCALES = {1.0, 0.88, 1.12};
 	private static final double PICKUP_DISTANCE_SQUARED = 2.35 * 2.35;
 	private static final double MINIMUM_USE_DISTANCE_SQUARED = 5.0 * 5.0;
 
@@ -50,7 +61,11 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 	private long nextDeliveryAt;
 	private int phaseTicks;
 	private int repathCooldown;
+	private int retreatDelayTicks;
+	private @Nullable Vec3 retreatThreatPosition;
+	private @Nullable DeliverySide deliverySide;
 	private boolean payloadReleased;
+	private boolean retreatCompleted;
 	private boolean finished;
 
 	public EndermanCreeperDeliveryGoal(final EnderMan enderman) {
@@ -90,16 +105,24 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 
 	@Override
 	public boolean canContinueToUse() {
-		if (!enabled() || !this.enderman.isAlive() || this.finished) {
+		if (!this.enderman.isAlive() || this.finished) {
+			return false;
+		}
+		// 载荷已经点燃后，即使目标死亡、切换模式或清除了仇恨，也必须先完成撤离。
+		if (this.phase == Phase.RETREATING) {
+			return true;
+		}
+		if (!enabled()) {
 			return false;
 		}
 		Player currentTarget = this.target;
-		if (!isValidTarget(currentTarget) || this.enderman.getTarget() != currentTarget
-			|| this.isPlayerStaring(currentTarget)) {
+		if (!isValidTarget(currentTarget)) {
 			return false;
 		}
-		if (this.phase == Phase.RETREATING) {
-			return true;
+		// 正面投送抵达后，玩家自然会看见末影人；此时不再让凝视规则中断已提交的放置动作。
+		if (this.phase != Phase.ARRIVED
+			&& (this.enderman.getTarget() != currentTarget || this.isPlayerStaring(currentTarget))) {
+			return false;
 		}
 
 		Creeper current = this.creeper;
@@ -119,7 +142,14 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 	public void start() {
 		this.phaseTicks = 0;
 		this.repathCooldown = 0;
+		this.retreatDelayTicks = 0;
+		this.retreatThreatPosition = null;
+		this.deliverySide = chooseDeliverySide(
+			this.enderman.getRandom().nextDouble(),
+			ConfigManager.get().endermanCreeperFrontDeliveryChance
+		);
 		this.payloadReleased = false;
+		this.retreatCompleted = false;
 		this.finished = false;
 		this.enderman.getNavigation().stop();
 		if (mountedCreeper(this.enderman) != null) {
@@ -155,23 +185,36 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 		this.approachDeadline = Long.MIN_VALUE;
 		this.phaseTicks = 0;
 		this.repathCooldown = 0;
+		this.retreatDelayTicks = 0;
+		this.retreatThreatPosition = null;
+		this.deliverySide = null;
 		this.payloadReleased = false;
+		this.retreatCompleted = false;
 		this.finished = false;
 	}
 
 	@Override
 	public void tick() {
+		this.phaseTicks++;
+		if (this.phase == Phase.RETREATING) {
+			Player retreatTarget = this.target;
+			if (isValidTarget(retreatTarget)) {
+				this.faceTarget(retreatTarget);
+			}
+			this.tickRetreat();
+			return;
+		}
 		Player currentTarget = this.target;
 		if (!isValidTarget(currentTarget)) {
 			return;
 		}
 		this.faceTarget(currentTarget);
-		this.phaseTicks++;
 		switch (this.phase) {
 			case APPROACHING -> this.tickApproach(currentTarget);
 			case HOLDING -> this.tickHolding(currentTarget);
 			case ARRIVED -> this.tickArrival(currentTarget);
-			case RETREATING -> this.tickRetreat(currentTarget);
+			case RETREATING -> {
+			}
 			case IDLE -> {
 			}
 		}
@@ -192,6 +235,18 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 
 	public boolean hasReleasedPayload() {
 		return this.payloadReleased;
+	}
+
+	public boolean hasCompletedRetreat() {
+		return this.retreatCompleted;
+	}
+
+	public int retreatDelayTicks() {
+		return this.retreatDelayTicks;
+	}
+
+	public @Nullable DeliverySide deliverySide() {
+		return this.deliverySide;
 	}
 
 	private void tickApproach(final Player currentTarget) {
@@ -248,22 +303,63 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 			return;
 		}
 		this.releaseAndIgnite(currentTarget);
-		this.phase = Phase.RETREATING;
-		this.phaseTicks = 0;
-	}
-
-	private void tickRetreat(final Player currentTarget) {
-		if (this.phaseTicks < RETREAT_DELAY_TICKS) {
+		if (!this.payloadReleased) {
 			return;
 		}
-		this.teleportAwayFrom(currentTarget);
+		this.phase = Phase.RETREATING;
+		this.phaseTicks = 0;
+		this.retreatDelayTicks = MINIMUM_RETREAT_DELAY_TICKS + this.enderman.getRandom().nextInt(
+			MAXIMUM_RETREAT_DELAY_TICKS - MINIMUM_RETREAT_DELAY_TICKS + 1
+		);
+	}
+
+	private void tickRetreat() {
+		Vec3 threat = this.retreatThreatPosition;
+		if (threat == null) {
+			threat = this.target != null ? this.target.position() : this.enderman.position();
+		}
+		if (horizontalDistanceSquared(this.enderman.position(), threat) >= SAFE_RETREAT_DISTANCE_SQUARED) {
+			this.finishRetreat();
+			return;
+		}
+		if (this.phaseTicks < this.retreatDelayTicks) {
+			return;
+		}
+		if ((this.phaseTicks - this.retreatDelayTicks) % RETREAT_RETRY_INTERVAL_TICKS != 0) {
+			return;
+		}
+
+		int attempts = this.phaseTicks >= RETREAT_ESCALATION_TICKS ? 16 : 8;
+		if (this.teleportAwayFrom(threat, attempts)) {
+			this.finishRetreat();
+			return;
+		}
+
+		// 极端封闭地形里先实际跑离载荷，并继续低频重试传送；不会像旧逻辑那样失败一次便宣告完成。
+		Vec3 away = horizontalDirection(this.enderman.position().subtract(threat));
+		Vec3 fallback = this.enderman.position().add(away.scale(16.0));
+		this.enderman.getNavigation().moveTo(fallback.x, fallback.y, fallback.z, 1.35);
+		Creeper released = this.creeper;
+		if (this.phaseTicks >= ABANDON_FINISHED_PAYLOAD_TICKS && (released == null || !released.isAlive())) {
+			this.scheduleDeliveryCooldown();
+			this.finished = true;
+		}
+	}
+
+	private void finishRetreat() {
+		this.enderman.getNavigation().stop();
+		this.retreatCompleted = true;
+		this.scheduleDeliveryCooldown();
+		this.finished = true;
+	}
+
+	private void scheduleDeliveryCooldown() {
 		int intelligence = EndermanIntelligence.get(this.enderman);
 		int baseCooldown = ConfigManager.get().endermanCreeperDeliveryCooldownTicks;
 		int adjusted = Math.max(40, Mth.floor(baseCooldown * (1.15 - intelligence * 0.03)));
 		this.nextDeliveryAt = this.enderman.level().getGameTime()
 			+ adjusted
 			+ this.enderman.getRandom().nextInt(Math.max(1, adjusted / 4 + 1));
-		this.finished = true;
 	}
 
 	private boolean findAndReservePayload(final Player hostilePlayer, final long now) {
@@ -367,19 +463,25 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 		if (current == null || current.getVehicle() != this.enderman) {
 			return false;
 		}
-		Vec3 horizontalLook = currentTarget.getLookAngle().multiply(1.0, 0.0, 1.0);
-		if (horizontalLook.lengthSqr() < 1.0E-6) {
-			horizontalLook = new Vec3(0.0, 0.0, 1.0);
-		} else {
-			horizontalLook = horizontalLook.normalize();
-		}
+		Vec3 horizontalLook = horizontalDirection(currentTarget.getLookAngle());
 		double distance = ConfigManager.get().endermanCreeperDropDistance;
-		Vec3 behind = horizontalLook.scale(-distance);
+		DeliverySide side = this.deliverySide;
+		if (side == null) {
+			side = chooseDeliverySide(
+				this.enderman.getRandom().nextDouble(),
+				ConfigManager.get().endermanCreeperFrontDeliveryChance
+			);
+			this.deliverySide = side;
+		}
 		int attempts = 6 + EndermanIntelligence.get(this.enderman);
 		Vec3 oldPosition = this.enderman.position();
 		for (int attempt = 0; attempt < attempts; attempt++) {
-			float spread = (this.enderman.getRandom().nextFloat() - 0.5F) * 1.5F;
-			Vec3 offset = behind.yRot(spread).scale(0.88 + this.enderman.getRandom().nextDouble() * 0.24);
+			double maximumSpread = side == DeliverySide.FRONT ? FRONT_SPREAD_RADIANS : REAR_SPREAD_RADIANS;
+			double spread = (this.enderman.getRandom().nextDouble() - 0.5) * maximumSpread * 2.0;
+			double scale = side == DeliverySide.FRONT
+				? 0.88 + this.enderman.getRandom().nextDouble() * 0.14
+				: 0.88 + this.enderman.getRandom().nextDouble() * 0.24;
+			Vec3 offset = deliveryOffset(horizontalLook, distance, side, spread, scale);
 			double x = currentTarget.getX() + offset.x;
 			double y = currentTarget.getY() + 2.0 + this.enderman.getRandom().nextInt(4);
 			double z = currentTarget.getZ() + offset.z;
@@ -390,22 +492,33 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 			this.enderman.positionRider(current);
 			if (!this.enderman.level().noCollision(current)
 				|| this.enderman.level().containsAnyLiquid(current.getBoundingBox())) {
-				this.enderman.teleportTo(oldPosition.x, oldPosition.y, oldPosition.z);
+				this.rollbackDeliveryTeleport(oldPosition, current);
 				continue;
 			}
 			double verticalDifference = Math.abs(this.enderman.getY() - currentTarget.getY());
-			double horizontalDistanceSquared = this.enderman.position()
+			Vec3 targetToCarrier = this.enderman.position()
 				.subtract(currentTarget.position())
-				.multiply(1.0, 0.0, 1.0)
-				.lengthSqr();
-			if (verticalDifference <= 5.0 && horizontalDistanceSquared <= (distance + 2.5) * (distance + 2.5)) {
+				.multiply(1.0, 0.0, 1.0);
+			double horizontalDistanceSquared = targetToCarrier.lengthSqr();
+			double alignment = horizontalLook.dot(horizontalDirection(targetToCarrier));
+			boolean correctSide = side == DeliverySide.FRONT
+				? alignment >= MINIMUM_FRONT_ALIGNMENT && currentTarget.hasLineOfSight(current)
+				: alignment <= MAXIMUM_REAR_ALIGNMENT;
+			if (correctSide
+				&& verticalDifference <= 5.0
+				&& horizontalDistanceSquared <= (distance + 2.5) * (distance + 2.5)) {
 				this.playTeleportEffects(oldPosition);
 				SmartEndermanMetrics.deliveryTeleport();
 				return true;
 			}
-			this.enderman.teleportTo(oldPosition.x, oldPosition.y, oldPosition.z);
+			this.rollbackDeliveryTeleport(oldPosition, current);
 		}
 		return false;
+	}
+
+	private void rollbackDeliveryTeleport(final Vec3 oldPosition, final Creeper current) {
+		this.enderman.teleportTo(oldPosition.x, oldPosition.y, oldPosition.z);
+		this.enderman.positionRider(current);
 	}
 
 	private boolean teleportNear(final Vec3 center, final double minimumRadius, final double maximumRadius, final int attempts) {
@@ -441,63 +554,78 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 		current.setSwellDir(1);
 		current.ignite();
 		this.payloadReleased = true;
+		this.retreatThreatPosition = current.position();
 		SmartEndermanMetrics.payloadIgnited();
 	}
 
 	private Vec3 findSafeDropFeet(final Vec3 preferred, final Player currentTarget) {
 		ServerLevel level = (ServerLevel)this.enderman.level();
-		for (int attempt = -1; attempt < 12; attempt++) {
-			Vec3 sample;
-			if (attempt < 0) {
-				sample = new Vec3(preferred.x, this.enderman.getY(), preferred.z);
-			} else {
-				double angle = attempt * (Math.PI * 2.0 / 12.0);
-				double radius = ConfigManager.get().endermanCreeperDropDistance;
-				sample = currentTarget.position().add(Math.cos(angle) * radius, 2.0, Math.sin(angle) * radius);
-			}
-			BlockPos.MutableBlockPos feet = new BlockPos.MutableBlockPos(sample.x, sample.y, sample.z);
-			for (int down = 0; down < 7 && feet.getY() > level.getMinY(); down++) {
-				BlockPos below = feet.below();
-				if (level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) {
-					double x = feet.getX() + 0.5;
-					double y = feet.getY();
-					double z = feet.getZ() + 0.5;
-					AABB box = EntityType.CREEPER.getSpawnAABB(x, y, z);
-					if (level.getBlockState(feet).getFluidState().isEmpty()
-						&& level.getBlockState(feet.above()).getFluidState().isEmpty()
-						&& level.noCollision(box)) {
-						return new Vec3(x, y, z);
-					}
-					break;
+		Vec3 safe = this.findGroundedDropFeet(level, new Vec3(preferred.x, this.enderman.getY(), preferred.z));
+		if (safe != null) {
+			return safe;
+		}
+
+		// 后备点仍严格保留本轮抽中的正面/后方语义，避免地形回退把 80% 正面投送悄悄改成背刺。
+		DeliverySide side = this.deliverySide != null ? this.deliverySide : DeliverySide.FRONT;
+		Vec3 horizontalLook = horizontalDirection(currentTarget.getLookAngle());
+		double distance = ConfigManager.get().endermanCreeperDropDistance;
+		for (double scale : DROP_FALLBACK_SCALES) {
+			for (double spread : DROP_FALLBACK_SPREADS) {
+				Vec3 offset = deliveryOffset(horizontalLook, distance, side, spread, scale);
+				Vec3 sample = currentTarget.position().add(offset).add(0.0, 3.0, 0.0);
+				safe = this.findGroundedDropFeet(level, sample);
+				if (safe != null) {
+					return safe;
 				}
-				feet.move(Direction.DOWN);
 			}
 		}
 		return this.enderman.position();
 	}
 
-	private void teleportAwayFrom(final Player currentTarget) {
-		Vec3 away = this.enderman.position().subtract(currentTarget.position()).multiply(1.0, 0.0, 1.0);
-		if (away.lengthSqr() < 1.0E-6) {
-			away = new Vec3(1.0, 0.0, 0.0);
-		} else {
-			away = away.normalize();
+	private @Nullable Vec3 findGroundedDropFeet(final ServerLevel level, final Vec3 sample) {
+		BlockPos.MutableBlockPos feet = new BlockPos.MutableBlockPos(sample.x, sample.y, sample.z);
+		for (int down = 0; down < 7 && feet.getY() > level.getMinY(); down++) {
+			BlockPos below = feet.below();
+			if (level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) {
+				double x = feet.getX() + 0.5;
+				double y = feet.getY();
+				double z = feet.getZ() + 0.5;
+				AABB box = EntityType.CREEPER.getSpawnAABB(x, y, z);
+				if (level.getBlockState(feet).getFluidState().isEmpty()
+					&& level.getBlockState(feet.above()).getFluidState().isEmpty()
+					&& level.noCollision(box)) {
+					return new Vec3(x, y, z);
+				}
+				return null;
+			}
+			feet.move(Direction.DOWN);
 		}
+		return null;
+	}
+
+	private boolean teleportAwayFrom(final Vec3 threat, final int attempts) {
+		Vec3 away = horizontalDirection(this.enderman.position().subtract(threat));
 		Vec3 oldPosition = this.enderman.position();
-		for (int attempt = 0; attempt < 12; attempt++) {
-			Vec3 direction = away.yRot((this.enderman.getRandom().nextFloat() - 0.5F) * 1.4F);
-			double distance = 16.0 + this.enderman.getRandom().nextDouble() * 16.0;
-			Vec3 candidate = this.enderman.position().add(direction.scale(distance));
+		double[] fan = {0.0, 0.35, -0.35, 0.70, -0.70, 1.05, -1.05, Math.PI};
+		for (int attempt = 0; attempt < attempts; attempt++) {
+			double jitter = (this.enderman.getRandom().nextDouble() - 0.5) * 0.20;
+			Vec3 direction = away.yRot((float)(fan[attempt % fan.length] + jitter));
+			double distance = 18.0 + this.enderman.getRandom().nextDouble() * 16.0;
+			Vec3 candidate = oldPosition.add(direction.scale(distance));
 			if (this.enderman.randomTeleport(
 				candidate.x,
-				candidate.y + this.enderman.getRandom().nextInt(16) - 8,
+				candidate.y + this.enderman.getRandom().nextInt(15) - 5,
 				candidate.z,
 				true
 			)) {
-				this.playTeleportEffects(oldPosition);
-				return;
+				if (horizontalDistanceSquared(this.enderman.position(), threat) >= SAFE_RETREAT_DISTANCE_SQUARED) {
+					this.playTeleportEffects(oldPosition);
+					return true;
+				}
+				this.enderman.teleportTo(oldPosition.x, oldPosition.y, oldPosition.z);
 			}
 		}
+		return false;
 	}
 
 	private void faceTarget(final Player currentTarget) {
@@ -556,9 +684,44 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 		return (CreeperTransportAccess)creeper;
 	}
 
+	static DeliverySide chooseDeliverySide(final double roll, final double frontChance) {
+		double chance = Double.isFinite(frontChance) ? Mth.clamp(frontChance, 0.0, 1.0) : 0.0;
+		return Double.isFinite(roll) && roll >= 0.0 && roll < chance
+			? DeliverySide.FRONT
+			: DeliverySide.REAR;
+	}
+
+	static Vec3 deliveryOffset(
+		final Vec3 horizontalLook,
+		final double distance,
+		final DeliverySide side,
+		final double spreadRadians,
+		final double distanceScale
+	) {
+		Vec3 direction = horizontalDirection(horizontalLook);
+		if (side == DeliverySide.REAR) {
+			direction = direction.scale(-1.0);
+		}
+		return direction.yRot((float)spreadRadians).scale(distance * distanceScale);
+	}
+
+	private static Vec3 horizontalDirection(final Vec3 vector) {
+		Vec3 horizontal = vector.multiply(1.0, 0.0, 1.0);
+		return horizontal.lengthSqr() < 1.0E-6 ? new Vec3(0.0, 0.0, 1.0) : horizontal.normalize();
+	}
+
+	private static double horizontalDistanceSquared(final Vec3 first, final Vec3 second) {
+		return first.subtract(second).multiply(1.0, 0.0, 1.0).lengthSqr();
+	}
+
 	private static boolean enabled() {
 		MobsThinkNowConfig config = ConfigManager.get();
 		return config.enabled && config.endermanAiEnabled && config.endermanCreeperDelivery;
+	}
+
+	public enum DeliverySide {
+		FRONT,
+		REAR
 	}
 
 	public enum Phase {
