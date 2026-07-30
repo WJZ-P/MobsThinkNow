@@ -1,6 +1,6 @@
 # 《怪物不再愚蠢 / Mobs Think Now》技术架构
 
-> 当前状态：普通僵尸、普通骷髅、普通苦力怕、普通蜘蛛战术与僵尸—骷髅混编小队已经实现。目标版本为 Minecraft Java
+> 当前状态：普通僵尸、普通骷髅、普通苦力怕、普通蜘蛛战术与四物种混编小队已经实现。目标版本为 Minecraft Java
 > 26.1.2、Fabric Loader 0.19.3、Fabric API 0.155.2+26.1.2、Java 25。
 
 ## 1. 首版边界
@@ -66,7 +66,7 @@ flowchart TD
     Tick["END_LEVEL_TICK"] --> Coordinator
     Coordinator --> Registry["活跃成员表"]
     Coordinator --> Spatial["按目标 + 空间格分桶"]
-    Spatial --> Election["最高智力首领选举"]
+    Spatial --> Election["最高智力 + UUID 随机票选举"]
     Election --> Blackboard["共享最后目击黑板"]
     Blackboard --> StateMachine["集结会议状态机"]
     StateMachine --> Orders["带 term / planEpoch 的成员命令"]
@@ -114,7 +114,8 @@ com.wjz.mobsthinknow
 │  ├─ SmartSpiderPounceGoal            2.5～7 格速度预测跳扑与原版热切换
 │  ├─ SmartSpiderCombatGoal            截击、观察绕侧、命中后重定位
 │  ├─ CreeperTransportAccess           单目标、带租约的瞬时苦力怕预约
-│  └─ SpiderCreeperCarrierGoal         会合、骑乘、运输、退火和最终冲锋状态机
+│  ├─ SpiderCreeperCarrierGoal         苦力怕会合、骑乘、退火和最终冲锋状态机
+│  └─ SpiderSquadCarrierGoal           小队骷髅/僵尸的跳跃登乘与加速换位
 ├─ ai/zombie
 │  ├─ SmartZombieAttackGoal             原版 Goal 生命周期与武器命中边界
 │  ├─ ReactiveRetreatGoal               低血/单次重伤撤退与限时重返战斗
@@ -150,9 +151,11 @@ com.wjz.mobsthinknow
 │  ├─ ZombieShieldCombat                举盾接近、随机守候、延迟反击与放盾收招
 │  ├─ SmartZombieMetrics                运行指标
 │  └─ squad
-│     ├─ ZombieSquadCoordinator         僵尸—骷髅混编、黑板、状态机与命令
-│     ├─ SquadLeaderElection            确定性首领选举
+│     ├─ ZombieSquadCoordinator         四物种混编、黑板、载具分配、状态机与命令
+│     ├─ SquadLeaderElection            最高智力 + UUID 随机票首领选举
 │     ├─ SquadRolePlanner                智力到战术复杂度的映射 + 兵种职位偏好
+│     ├─ SquadPreparationGoal            苦力怕/蜘蛛集结与部署命令适配
+│     ├─ SquadMemberHeartbeat            苦力怕/蜘蛛 O(1) 感知心跳
 │     ├─ SquadTheatrics                 职业名牌、首领光环与会议声画表现层
 │     ├─ WeaponClass                    主手武器的战术分类
 │     ├─ UtilityClass                   水/岩浆战场工具分类
@@ -182,9 +185,9 @@ com.wjz.mobsthinknow
   `0.68/0.76/0.84`，上界均为 `1.0`，所以旧智力速度曲线仍是绝对上限；
 - 弩使用物品组件中的真实 `CHARGED_PROJECTILES` 状态，爆炸烟花是有限库存。小于六格时
   保留已装填弹药并优先拉开，烟花耗尽后 `Monster#getProjectile` 自然回落到普通箭；
-- 混编协调器仍按“相同目标 + 空间格”分桶。骷髅提交与僵尸相同的 O(1) 心跳，参与统一
-  选举和换届，但非首领骷髅强制使用 `RANGED` 角色及智力化射击站位；
-- 同队僵尸/骷髅的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
+- 混编协调器仍按“相同目标 + 空间格”分桶。四种普通怪物都提交 O(1) 心跳并参与统一选举、换届；
+  非首领骷髅强制使用 `RANGED` 角色及智力化射击站位；
+- 同队四物种的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
 
 ## 2.2 苦力怕威胁与反制边界
 
@@ -198,6 +201,8 @@ com.wjz.mobsthinknow
   在近距离且仍有近期目标证据时提交，保留听声撤离的反制窗口；
 - 软墙提交要求 IQ 8、40 tick 目击记忆、`mobGriefing=true`、射线第一层方块可破坏且爆炸抗性
   不高于 20。它不把黑曜石/基岩当目标，也不绕过原版爆炸、伤害和方块保护规则；
+- 普通苦力怕进入统一小队后可直接参与最高智力选举；非首领固定为 `BREACHER`，载具不足时继续
+  使用自己的绕后/引信状态机，存在蜘蛛时则进入一对一优先投送；
 - 猫与豹猫 Goal 保持优先级 3；智能接敌位于 4，因此仍会被猫克制。引信 Goal 继续使用原版优先级 2。
 
 ## 2.3 蜘蛛个人战术与苦力怕投送边界
@@ -224,6 +229,10 @@ com.wjz.mobsthinknow
 - 配对每只蜘蛛错峰 `10～20 tick` 执行一次局部空间查询，单轮最多评估 32 个候选。苦力怕上的
   60 tick 可续租 UUID 预约保证一对一归属；预约态和骑乘态都会临时暂停苦力怕自己的接敌/引信 Goal。
   会合阶段另有 100 tick 硬时限，不可达组合会释放预约并恢复双方个人战斗。
+- 小队内每只蜘蛛最多分配一名乘员，优先级为苦力怕、骷髅、僵尸；每名乘员也只属于一只蜘蛛。
+  `SpiderSquadCarrierGoal` 负责非苦力怕乘员的 3～9 tick 真实跳跃登乘、骑乘朝向与预测换点；
+  `getControllingPassenger` 对三类载荷返回空控制者，乘员不会夺走蜘蛛的 MOVE/LOOK。已有独立速度曲线的
+  载具蜘蛛不再叠加小队通用移速，未获乘员的蜘蛛仍使用个人侧袭和跳扑。
 
 ## 2.4 工程兵技能生命周期
 
@@ -270,7 +279,7 @@ TNT、桶、空桶与打火石只是表现工具；`ZombieEngineerEquipment` 会
 
 ```mermaid
 stateDiagram-v2
-    [*] --> FORMING: 至少 3 只附近僵尸锁定同一目标
+    [*] --> FORMING: 至少 3 只受支持怪物锁定同一目标
     FORMING --> RALLYING: 组队窗口结束
     RALLYING --> BRIEFING: 到达人数满足法定比例或超时
     BRIEFING --> DEPLOYING: 首领完成任务分配
@@ -321,11 +330,9 @@ Identifier 的原版永久 AttributeModifier，由实体属性存档负责保存
 
 ## 5. 首领与职位
 
-首领选举顺序固定为：
-
-1. 智力值更高；
-2. 智力相同时当前生命值更高；
-3. 仍相同时实体 ID 更小。
+首领不绑定僵尸种族。协调器先筛出全队最高智力成员，再比较由实体 UUID 混合得到的无符号随机票；
+票更小者胜出，极小概率票相同才用实体 ID 保证稳定结果。UUID 在实体出生时已经随机，因此并列最高智力的
+僵尸、骷髅、苦力怕和蜘蛛都有机会当选，同时同一次选举不会因集合遍历顺序抖动。
 
 职位复杂度由首领智力决定：
 
@@ -336,8 +343,9 @@ Identifier 的原版永久 AttributeModifier，由实体属性存档负责保存
 | `7～8` | 增加右翼形成双侧包抄 |
 | `9～10` | 增加截断退路位 |
 
-职位包括 `LEADER`、`PRESSURER`、`FLANK_LEFT`、`FLANK_RIGHT`、`CUTOFF` 和
-`SUPPORT`。携带水桶/岩浆桶的非首领成员先锁定 `SUPPORT`，剩余普通成员再竞争智力
+职位包括 `LEADER`、`PRESSURER`、`FLANK_LEFT`、`FLANK_RIGHT`、`CUTOFF`、`SUPPORT`、
+`RANGED`、`BREACHER` 与 `CARRIER`。携带水桶/岩浆桶的非首领僵尸先锁定 `SUPPORT`，骷髅锁定
+`RANGED`，苦力怕锁定 `BREACHER`，获得乘员的蜘蛛锁定 `CARRIER`；剩余普通成员再竞争智力
 解锁的阵型槽；工具兵成为首领时仍保留 `LEADER`。源方块被玩家拿走后，协调器在同一
 tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 交战中两翼与截断位实时判断目标水平视线（约 60° 锥角）：被盯住时沿协调器给的
@@ -430,7 +438,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `spiderHitAndRun` | `true` | IQ 5 以上命中后是否绕回下一次跳扑距离 |
 | `spiderCreeperCoordination` | `true` | 蜘蛛与同目标普通苦力怕是否会合并执行骑乘投送 |
 | `spiderCreeperSearchRadius` | `8.0` | 局部配对搜索半径，范围 `4～16` 格 |
-| `spiderCreeperCarrierSpeed` | `1.40` | 合体冲锋配置上限，范围 `1.10～1.70`；每组再随机取其 88%～100% |
+| `spiderCreeperCarrierSpeed` | `1.40` | 蜘蛛载具冲锋配置上限，范围 `1.10～1.70`；三类乘员每组再随机取其 88%～100% |
 | `packSurrounding` | `true` | 小队系统开关 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
@@ -709,8 +717,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   时收盾；终止时主动停掉逃跑路径并释放控制权，正常战斗随后重新竞争执行。撤退
   Goal 自己维持小队心跳，因此首领撤退时黑板与命令调度仍照常工作；整个撤退状态不
   采集或放置方块。
-- **同队仇恨免疫**：`SquadHurtByTargetGoal` 替换原版 `HurtByTargetGoal`
-  （保留对僵尸猪灵的警报豁免）。攻击者是同队僵尸时 `canUse` 直接返回
+- **同队仇恨免疫**：僵尸/骷髅专用包装与苦力怕/蜘蛛共用的 `SquadFriendlyFireGoal` 替换原版
+  `HurtByTargetGoal`（僵尸仍保留对僵尸猪灵的警报豁免）。攻击者是同队成员时 `canUse` 直接返回
   false——既不反击也不向周围广播错误仇恨；队外来源照常反击。
 
 ## 8.2 火焰/日光生存与智能通行
@@ -761,7 +769,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   低/高智力职位规划、武器攻速冷却换算与圆弧目的地、空手软方块破坏时长以及
   草方块到泥土的采集语义；
 - Minecraft 服务端 GameTest：生产 Mixin 安装、智力经过真实实体存读链保持不变、
-  最高智力首领当选、首领移除后自动换届、受击撤退触发与 5 格安全半径终止、
+  四物种小队与非僵尸最高智力首领当选、UUID 票并列抽签、首领移除后自动换届、受击撤退触发与 5 格安全半径终止、
   盾卫无攻击时随机试探/成功格挡后延迟 2～4 tick 放盾反击/挥击后延迟重举、
   斧手真实下落跳劈 1.5 倍伤害、
   剑手按 13 tick 组件冷却周旋且不跳跃、IQ 门槛/无食物不接管、面包单份消费、
@@ -783,13 +791,14 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   流体事务与正式身份存读，以及九兵种样本中 `builder`、`water_support`、`lava_harasser`
   恰好三种带工程兵标记；苦力怕另覆盖生产 Mixin 的双 Goal 替换、观察目标触发真实绕后路径、
   鸣响后继续导航到预测爆点、近期泥土墙提交与黑曜石拒绝，以及真实 Brigadier 的四种预设、
-  批量带电破墙手和两个全预设快捷入口；蜘蛛另覆盖生产 Mixin 的三 Goal 接入、真实速度预判跳扑、
+  批量带电破墙手和两个全预设快捷入口；蜘蛛另覆盖生产 Mixin 的五 Goal 接入、真实速度预判跳扑、
   附近苦力怕的一对一预约、三 tick 真实跳跃登乘、骑乘后持续注视目标、随机降速上限与真实骑乘、
   载荷不会夺取坐骑控制权、投送距离内起爆、永久速度 II 特质，以及真实 Brigadier
   的四种预设、批量蜘蛛苦力怕投送组和两个全预设快捷入口，并以跨真实 tick 的端到端用例验证
-  五格会合、骑乘运输和进入攻击距离后才起爆；全局 `spawnall` 另验证一次事务式生成九种僵尸、
+  五格会合、骑乘运输和进入攻击距离后才起爆，并验证蜘蛛让骷髅真实跳跃登乘、四物种共享队伍及
+  苦力怕成为最高智力首领；全局 `spawnall` 另验证一次事务式生成九种僵尸、
   三种骷髅、四种苦力怕、四种蜘蛛及一只真实骑乘载荷；`spawn` 子树另验证 `all`、四个基础
-  生物名、四个复数分类与二十个战术 literal 全量注册，并真实批量生成四类基础实体；当前共 86 项
+  生物名、四个复数分类与二十个战术 literal 全量注册，并真实批量生成四类基础实体；当前共 89 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
