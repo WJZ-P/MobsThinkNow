@@ -1,13 +1,13 @@
 # 《怪物不再愚蠢 / Mobs Think Now》技术架构
 
-> 当前状态：普通僵尸、普通骷髅、普通苦力怕、普通蜘蛛、普通末影人战术与四物种混编小队已经实现。目标版本为 Minecraft Java
+> 当前状态：普通僵尸、普通骷髅、普通苦力怕、普通蜘蛛、普通末影人、巨人战术与五物种混编小队已经实现。目标版本为 Minecraft Java
 > 26.1.2、Fabric Loader 0.19.3、Fabric API 0.155.2+26.1.2、Java 25。
 
 ## 1. 首版边界
 
 - 只改造原版普通僵尸 `minecraft:zombie`、普通骷髅 `minecraft:skeleton`、普通苦力怕 `minecraft:creeper`、
-  普通蜘蛛 `minecraft:spider` 与普通末影人 `minecraft:enderman`；
-- 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩、末影人抱实体等姿态；
+  普通蜘蛛 `minecraft:spider`、普通末影人 `minecraft:enderman` 与原版巨人 `minecraft:giant`；
+- 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩、末影人抱实体、巨人托举实体等姿态；
 - 不提高生成量；个体速度、最大生命、伤害与追踪距离围绕随难度变化的均值随机浮动；
 - 复用原版视线、GoalSelector、导航、近战距离和命中判定；
 - 世界对象只在服务器主线程访问，不把实体和导航器交给工作线程；
@@ -95,6 +95,17 @@ flowchart TD
     RealPassenger --> PassengerSync["原版同步 / 存档 / 随传送移动"]
     RealPassenger --> EntityCarryPose["client RenderState + 双臂环抱姿态"]
     DeliveryGoal --> DropAndIgnite["安全落点 → stopRiding → 原版 ignite"]
+
+    ZombieFinalize["普通僵尸 finalizeSpawn"] --> GiantRoll["难度化巨人概率 / 一次性标记"]
+    GiantRoll --> EntityLoad["ENTITY_LOAD 排队"]
+    EntityLoad --> GiantConvert["END_LEVEL_TICK 事务替换"]
+    GiantConvert --> GiantMixin["GiantMixin / 完整 Goal + IQ"]
+    GiantMixin --> GiantHeartbeat["五物种混编心跳"]
+    GiantHeartbeat --> GiantAllocation["头顶射手 + 两只手部载荷预约"]
+    GiantAllocation --> RiderGoal["GiantRiderBoardingGoal / 真实跳跃登顶"]
+    GiantAllocation --> ThrowGoal["GiantPayloadThrowGoal / 双手错峰抛投"]
+    ThrowGoal --> GiantPassenger["真实 passenger / 独立三挂点"]
+    GiantPassenger --> GiantPose["client RenderState / 单侧手臂托举"]
 ```
 
 主要职责：
@@ -130,6 +141,15 @@ com.wjz.mobsthinknow
 │  ├─ EndermanIntelligence             难度化出生区间、持久智力与名称标记
 │  ├─ EndermanCreeperDeliveryGoal      预约、抱取、传送投放、点燃和撤离状态机
 │  └─ SmartEndermanMetrics             搜索、抱取、投送与点燃诊断指标
+├─ ai/giant
+│  ├─ GiantZombieSpawnConversion       EntityLoad 排队与维度 tick 末事务替换
+│  ├─ GiantZombieProfile               难度化出生率与重型属性边界
+│  ├─ GiantIntelligence                难度化出生区间、持久智力与名称标记
+│  ├─ GiantPassengerLayout             头顶、右手、左手三个真实乘客挂点
+│  ├─ GiantRiderBoardingGoal           小队射手的跳跃登顶状态机
+│  ├─ GiantPayloadThrowGoal            双手收取、瞄准、错峰抛投状态机
+│  ├─ GiantThrowMath                   有限提前量、重力补偿与速度硬上限
+│  └─ SmartGiantMetrics                替换、登乘、拾取与抛投诊断指标
 ├─ ai/zombie
 │  ├─ SmartZombieAttackGoal             原版 Goal 生命周期与武器命中边界
 │  ├─ ReactiveRetreatGoal               低血/单次重伤撤退与限时重返战斗
@@ -165,11 +185,11 @@ com.wjz.mobsthinknow
 │  ├─ ZombieShieldCombat                举盾接近、随机守候、延迟反击与放盾收招
 │  ├─ SmartZombieMetrics                运行指标
 │  └─ squad
-│     ├─ ZombieSquadCoordinator         四物种混编、黑板、载具分配、状态机与命令
+│     ├─ ZombieSquadCoordinator         五物种混编、黑板、分层载具分配、状态机与命令
 │     ├─ SquadLeaderElection            最高智力 + UUID 随机票首领选举
 │     ├─ SquadRolePlanner                智力到战术复杂度的映射 + 兵种职位偏好
-│     ├─ SquadPreparationGoal            苦力怕/蜘蛛集结与部署命令适配
-│     ├─ SquadMemberHeartbeat            苦力怕/蜘蛛 O(1) 感知心跳
+│     ├─ SquadPreparationGoal            苦力怕/蜘蛛/巨人集结与部署命令适配
+│     ├─ SquadMemberHeartbeat            苦力怕/蜘蛛/巨人 O(1) 感知心跳
 │     ├─ SquadTheatrics                 职业名牌、首领光环与会议声画表现层
 │     ├─ WeaponClass                    主手武器的战术分类
 │     ├─ UtilityClass                   水/岩浆战场工具分类
@@ -180,6 +200,7 @@ com.wjz.mobsthinknow
 ├─ command/CreeperShowcaseSpawner       猎手/绕后/破墙/带电预设与批量生成事务
 ├─ command/SpiderShowcaseSpawner        猎手/伏击/首领/苦力怕投送组生成事务
 ├─ command/EndermanShowcaseSpawner      猎手/预装真实苦力怕投送组生成事务
+├─ command/GiantShowcaseSpawner         头顶射手/双手载荷攻城平台生成事务
 ├─ command/ShowcaseSpawnPlacement       跨物种共用的碰撞、地基与阵型预检
 ├─ config                               JSON 配置、校验和热重载
 ├─ mixin/ZombieMixin                    僵尸 Goal 替换与智力存档注入
@@ -187,7 +208,8 @@ com.wjz.mobsthinknow
 ├─ mixin/CreeperMixin                   苦力怕 Goal 替换、智力存档与带电测试访问
 ├─ mixin/SpiderMixin                    蜘蛛 Goal、智力存档与载荷非驾驶者语义
 ├─ mixin/EnderManMixin                  末影人 Goal、智力存档、胸前乘客挂点与载荷非驾驶者语义
-└─ mixin/client                         盾牌/进食/举矛、骷髅双手弩与末影人实体环抱姿态仲裁
+├─ mixin/GiantMixin                     原版空 Goal Giant 的战斗、小队、三挂点与智力存档
+└─ mixin/client                         盾牌/进食/举矛、骷髅双手弩、末影人环抱与巨人双手托举姿态仲裁
 ```
 
 ## 2.1 骷髅远程战术与混编边界
@@ -201,9 +223,9 @@ com.wjz.mobsthinknow
   `0.68/0.76/0.84`，上界均为 `1.0`，所以旧智力速度曲线仍是绝对上限；
 - 弩使用物品组件中的真实 `CHARGED_PROJECTILES` 状态，爆炸烟花是有限库存。小于六格时
   保留已装填弹药并优先拉开，烟花耗尽后 `Monster#getProjectile` 自然回落到普通箭；
-- 混编协调器仍按“相同目标 + 空间格”分桶。四种普通怪物都提交 O(1) 心跳并参与统一选举、换届；
+- 混编协调器仍按“相同目标 + 空间格”分桶。僵尸、骷髅、苦力怕、蜘蛛与巨人都提交 O(1) 心跳并参与统一选举、换届；
   非首领骷髅强制使用 `RANGED` 角色及智力化射击站位；
-- 同队四物种的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
+- 同队五物种的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
 
 ## 2.2 苦力怕威胁与反制边界
 
@@ -277,7 +299,34 @@ com.wjz.mobsthinknow
   不会在 Goal 结束时被反向解除。爆炸半径、30 tick 引信、声音、伤害、`mobGriefing` 和猫克制均
   沿用苦力怕原版规则。
 
-## 2.5 工程兵技能生命周期
+## 2.5 巨人出生替换、三挂点与抛投边界
+
+- `ZombieMixin.finalizeSpawn` 只在自然类出生原因下掷一次概率并写瞬时标记；`ENTITY_LOAD` 消费标记后
+  按 `ServerLevel` 排队，`END_LEVEL_TICK` 才创建 Giant、校验完整 3.6×12 碰撞箱、加入世界并丢弃
+  原僵尸。这样不会在 Fabric 实体载入回调内部递归修改实体管理器；空间不足时原僵尸保持不变；
+- 普通难度默认替换率 `0.01`，和平/简单/普通/困难倍率为 `0/0.4/1/2`。`COMMAND`、`LOAD`、
+  `CONVERSION`、`JOCKEY`、`DIMENSION_TRAVEL` 明确排除，测试预设、读档和维度迁移不会二次转换；
+- 原版 Giant 不注册任何 Goal。`GiantMixin` 在服务端构造末尾加入 Float、双手投送、小队准备、近战、
+  游荡与观察，以及玩家、村民、铁傀儡目标选择；属性统一为可配置的生命/伤害/移速，并补 40 格
+  追踪、8 护甲、70% 击退抗性和 2 点攻击击退。智力沿用 `ValueInput/ValueOutput` 持久链；
+- 协调器每次重建运输关系时按三个阶段处理，并用 `reserved` 集合保证成员唯一：① 每个 Giant 至多
+  分配一名高智力普通骷髅；② 苦力怕优先、僵尸其次，按手位轮转给每个 Giant 至多两名载荷；③
+  剩余成员才交给蜘蛛。全程只遍历单队上限 K，不做每只 Giant 的附近实体查询；
+- `GiantRiderBoardingGoal` 只读取反向预约，在正式交战后让骷髅寻路、跳起、有限转向并调用强制
+  `startRiding`。头顶挂点补偿 Skeleton 原版 0.7 格 VEHICLE attachment，使脚底恰落在 Giant 的
+  12 格实体顶面；登顶后 Goal 结束，弓/弩状态机继续运行；
+- `GiantPayloadThrowGoal` 只读取协调器给出的至多两名候选。进入五格接取范围后依序建立真实乘客，
+  持有苦力怕时持续 `setSwellDir(-1)`；装满、候选耗尽或 90 tick 超时后进入瞄准。至少瞄准 12 tick，
+  再从列表末端开始以 10～16 tick 间隔抛出，保证第一只手的实体不会因列表压缩突然换边；
+- `GiantThrowMath` 对目标水平速度做有限提前，按 8～22 tick 预计飞行时间补偿重力，水平速度封顶
+  `1.30`、竖直速度限制 `0.28～0.96`。苦力怕离手才调用 `ignite()`；僵尸只继承目标和动量。
+  目标失效或热关闭时仍在手中的载荷安全下车；已抛实体 UUID 在该 Goal 实例内去重，避免被同一
+  巨人立即重新捡回；
+- Giant 的 `getControllingPassenger` 对三个受管乘员固定返回空，载荷/射手不会夺走 MOVE/LOOK。
+  客户端 `GiantMobRendererMixin` 把真实乘员数投影到 `ZombieRenderState` 两位布尔值，
+  `AbstractZombieModelMixin` 只修改装载侧手臂；实体本身继续使用各自原版渲染器。
+
+## 2.6 工程兵技能生命周期
 
 “会搭方块”是高智力僵尸的通用地形能力；“工程兵”则是少量个体的持久职业。普通自然候选
 必须成年、双手为空、智力达到 `terrainMinimumIntelligence` 且不是持矛空袭；
@@ -350,7 +399,7 @@ stateDiagram-v2
 
 ### 持久数据
 
-每只僵尸第一次需要智力时均匀生成 `1～10`，通过 26.1.2 的
+每只受支持怪物第一次需要智力时按各自难度区间生成 `1～10`，通过 26.1.2 的
 `ValueInput/ValueOutput` 实体存档链写入 `MobsThinkNowIntelligence`。重新进入世界后
 数值不变。`ZombieIntelligenceName` 同步把数字追加在实体名末尾；默认类型名在死亡或
 转化前恢复为 `null`，玩家通过命名牌设置的基础名字则原样保留。
@@ -375,7 +424,7 @@ Identifier 的原版永久 AttributeModifier，由实体属性存档负责保存
 
 首领不绑定僵尸种族。协调器先筛出全队最高智力成员，再比较由实体 UUID 混合得到的无符号随机票；
 票更小者胜出，极小概率票相同才用实体 ID 保证稳定结果。UUID 在实体出生时已经随机，因此并列最高智力的
-僵尸、骷髅、苦力怕和蜘蛛都有机会当选，同时同一次选举不会因集合遍历顺序抖动。
+僵尸、骷髅、苦力怕、蜘蛛和巨人都有机会当选，同时同一次选举不会因集合遍历顺序抖动。
 
 职位复杂度由首领智力决定：
 
@@ -388,7 +437,7 @@ Identifier 的原版永久 AttributeModifier，由实体属性存档负责保存
 
 职位包括 `LEADER`、`PRESSURER`、`FLANK_LEFT`、`FLANK_RIGHT`、`CUTOFF`、`SUPPORT`、
 `RANGED`、`BREACHER` 与 `CARRIER`。携带水桶/岩浆桶的非首领僵尸先锁定 `SUPPORT`，骷髅锁定
-`RANGED`，苦力怕锁定 `BREACHER`，获得乘员的蜘蛛锁定 `CARRIER`；剩余普通成员再竞争智力
+`RANGED`，苦力怕锁定 `BREACHER`，获得乘员的蜘蛛或巨人锁定 `CARRIER`；剩余普通成员再竞争智力
 解锁的阵型槽；工具兵成为首领时仍保留 `LEADER`。源方块被玩家拿走后，协调器在同一
 tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 交战中两翼与截断位实时判断目标水平视线（约 60° 锥角）：被盯住时沿协调器给的
@@ -452,7 +501,10 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
     的全量两两比较；运输和个人战斗寻路均按 IQ 每 3～8 tick 重建一次。
 14. 末影人投送同样使用错峰局部查询，配置半径默认 16、硬上限 32，单轮最多检查 24 个苦力怕；
     与蜘蛛共用单目标 UUID 租约。抱取后的每 tick 只读取当前玩家和载荷，安全投放最多检查 13 个
-    固定落点，既不扫描末影人同伴，也不形成新的 N² 配对。
+     固定落点，既不扫描末影人同伴，也不形成新的 N² 配对。
+15. 巨人不执行范围实体搜索。协调器重建职位时只对单队至多 K 名成员排序一次，并通过三阶段
+    `reserved` 集合分配头顶射手、两名手部载荷和蜘蛛剩余乘员；运行期每只巨人只读取自己至多三条
+    精确实体 ID 预约。抛投弹道是常数时间向量数学，装载/抛投每 tick 不查询世界实体索引。
 
 `/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
 50、100、200 只激活僵尸的 MSPT 实机基准；同时输出累计采集、放置、俯击、工程兵 TNT、
@@ -491,6 +543,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `endermanCreeperDeliveryCooldownTicks` | `300` | 成功投送基础冷却，范围 `100～1200` tick，再按 IQ 和随机量错峰 |
 | `endermanCreeperDropDistance` | `3.0` | 玩家正面或后方的期望投放距离，范围 `2～6` 格 |
 | `endermanCreeperFrontDeliveryChance` | `0.80` | 玩家当前视线正面可视投送概率，范围 `0～1`；其余概率选择后方 |
+| `giantZombieAiEnabled` | `true` | 普通僵尸难度化巨人替换、Giant 战斗与混编心跳总开关 |
+| `giantZombieSpawnChance` | `0.01` | 普通难度替换率；简单乘 `0.4`、困难乘 `2`，和平为零 |
+| `giantZombieMaximumHealth` | `160.0` | 巨人最大生命，范围 `40～400` |
+| `giantZombieAttackDamage` | `14.0` | 巨人基础近战伤害，范围 `4～40` |
+| `giantZombieMovementSpeed` | `0.16` | 巨人基础移速，范围 `0.08～0.22` |
+| `giantZombiePayloadThrowing` | `true` | 头顶射手、双手载荷收取和错峰抛投开关 |
 | `packSurrounding` | `true` | 小队系统开关 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
@@ -819,9 +877,9 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   概率和换手选择、工程兵 6～10 秒调度边界、水/岩浆保留时间与五秒点燃常量、智力名字结构、
   盾卫随机观察与反击窗口边界、首领选举优先级、
   低/高智力职位规划、武器攻速冷却换算与圆弧目的地、空手软方块破坏时长以及
-  草方块到泥土的采集语义；
+  草方块到泥土的采集语义，以及巨人难度化出生率、排除的出生原因、智力区间、目标提前量与抛投速度上限；
 - Minecraft 服务端 GameTest：生产 Mixin 安装、智力经过真实实体存读链保持不变、
-  四物种小队与非僵尸最高智力首领当选、UUID 票并列抽签、首领移除后自动换届、受击撤退触发与 5 格安全半径终止、
+  五物种小队与非僵尸最高智力首领当选、UUID 票并列抽签、首领移除后自动换届、受击撤退触发与 5 格安全半径终止、
   盾卫无攻击时随机试探/成功格挡后延迟 2～4 tick 放盾反击/挥击后延迟重举、
   斧手真实下落跳劈 1.5 倍伤害、
   剑手按 13 tick 组件冷却周旋且不跳跃、IQ 门槛/无食物不接管、面包单份消费、
@@ -847,12 +905,13 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   附近苦力怕的一对一预约、三 tick 真实跳跃登乘、骑乘后持续注视目标、随机降速上限与真实骑乘、
   载荷不会夺取坐骑控制权、投送距离内起爆、永久速度 II 特质，以及真实 Brigadier
   的四种预设、批量蜘蛛苦力怕投送组和两个全预设快捷入口，并以跨真实 tick 的端到端用例验证
-  五格会合、骑乘运输和进入攻击距离后才起爆，并验证蜘蛛让骷髅真实跳跃登乘、四物种共享队伍及
-  苦力怕成为最高智力首领；全局 `spawnall` 另验证一次事务式生成九种僵尸、
-   三种骷髅、四种苦力怕、四种蜘蛛、两种末影人及两只真实骑乘载荷；末影人另覆盖生产 Mixin Goal
+  五格会合、骑乘运输和进入攻击距离后才起爆，并验证蜘蛛让骷髅真实跳跃登乘、五物种共享队伍及
+  苦力怕成为最高智力首领；巨人另覆盖生产 Mixin Goal、重型属性、头顶/双手三挂点、乘员不夺控制、
+  双载荷 12 tick 瞄准与 10 tick 以上错峰、苦力怕点燃、僵尸动量，以及排队替换保留源 IQ；
+  全局 `spawnall` 另验证一次事务式生成 23 个战术根、28 个总实体与四个额外乘员；末影人另覆盖生产 Mixin Goal
    安装、持久智力名称、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
-   随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、五个基础生物名、
-   五个复数分类与二十二个战术 literal 全量注册，并真实批量生成五类基础实体；当前共 96 项
+   随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、六个基础生物名、
+  六个复数分类与二十三个战术 literal 全量注册，并真实批量生成六类基础实体；当前共 104 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
