@@ -1,13 +1,13 @@
 # 《怪物不再愚蠢 / Mobs Think Now》技术架构
 
-> 当前状态：普通僵尸、普通骷髅、普通苦力怕、普通蜘蛛战术与四物种混编小队已经实现。目标版本为 Minecraft Java
+> 当前状态：普通僵尸、普通骷髅、普通苦力怕、普通蜘蛛、普通末影人战术与四物种混编小队已经实现。目标版本为 Minecraft Java
 > 26.1.2、Fabric Loader 0.19.3、Fabric API 0.155.2+26.1.2、Java 25。
 
 ## 1. 首版边界
 
-- 只改造原版普通僵尸 `minecraft:zombie`、普通骷髅 `minecraft:skeleton`、普通苦力怕 `minecraft:creeper`
-  与普通蜘蛛 `minecraft:spider`；
-- 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩等姿态；
+- 只改造原版普通僵尸 `minecraft:zombie`、普通骷髅 `minecraft:skeleton`、普通苦力怕 `minecraft:creeper`、
+  普通蜘蛛 `minecraft:spider` 与普通末影人 `minecraft:enderman`；
+- 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩、末影人抱实体等姿态；
 - 不提高生成量；个体速度、最大生命、伤害与追踪距离围绕随难度变化的均值随机浮动；
 - 复用原版视线、GoalSelector、导航、近战距离和命中判定；
 - 世界对象只在服务器主线程访问，不把实体和导航器交给工作线程；
@@ -85,6 +85,16 @@ flowchart TD
     FoodGoal -->|"仅可达食物存在时"| Navigation
     FoodGoal --> FoodUse["单份拾取 + 原版 useItem"]
     FoodUse --> FoodPose["client Mixin: 抬手咀嚼"]
+
+    EndermanSpawn["普通末影人创建"] --> EndermanMixin["EnderManMixin"]
+    EndermanMixin --> EndermanIQ["持久智力 1～10"]
+    EndermanMixin --> DeliveryGoal["EndermanCreeperDeliveryGoal / priority 1"]
+    VanillaAggro["原版凝视/受击/愤怒目标"] --> DeliveryGoal
+    DeliveryGoal --> CarrierLease["与蜘蛛共享苦力怕 UUID 租约"]
+    DeliveryGoal --> RealPassenger["真实 passenger + 胸前挂点"]
+    RealPassenger --> PassengerSync["原版同步 / 存档 / 随传送移动"]
+    RealPassenger --> EntityCarryPose["client RenderState + 双臂环抱姿态"]
+    DeliveryGoal --> DropAndIgnite["安全落点 → stopRiding → 原版 ignite"]
 ```
 
 主要职责：
@@ -116,6 +126,10 @@ com.wjz.mobsthinknow
 │  ├─ CreeperTransportAccess           单目标、带租约的瞬时苦力怕预约
 │  ├─ SpiderCreeperCarrierGoal         苦力怕会合、骑乘、退火和最终冲锋状态机
 │  └─ SpiderSquadCarrierGoal           小队骷髅/僵尸的跳跃登乘与加速换位
+├─ ai/enderman
+│  ├─ EndermanIntelligence             难度化出生区间、持久智力与名称标记
+│  ├─ EndermanCreeperDeliveryGoal      预约、抱取、传送投放、点燃和撤离状态机
+│  └─ SmartEndermanMetrics             搜索、抱取、投送与点燃诊断指标
 ├─ ai/zombie
 │  ├─ SmartZombieAttackGoal             原版 Goal 生命周期与武器命中边界
 │  ├─ ReactiveRetreatGoal               低血/单次重伤撤退与限时重返战斗
@@ -165,13 +179,15 @@ com.wjz.mobsthinknow
 ├─ command/SkeletonShowcaseSpawner      弓/弩/爆炸弩测试兵种与批量生成事务
 ├─ command/CreeperShowcaseSpawner       猎手/绕后/破墙/带电预设与批量生成事务
 ├─ command/SpiderShowcaseSpawner        猎手/伏击/首领/苦力怕投送组生成事务
+├─ command/EndermanShowcaseSpawner      猎手/预装真实苦力怕投送组生成事务
 ├─ command/ShowcaseSpawnPlacement       跨物种共用的碰撞、地基与阵型预检
 ├─ config                               JSON 配置、校验和热重载
 ├─ mixin/ZombieMixin                    僵尸 Goal 替换与智力存档注入
 ├─ mixin/AbstractSkeletonMixin          骷髅 Goal、智力、负载与混编心跳注入
 ├─ mixin/CreeperMixin                   苦力怕 Goal 替换、智力存档与带电测试访问
 ├─ mixin/SpiderMixin                    蜘蛛 Goal、智力存档与载荷非驾驶者语义
-└─ mixin/client                         盾牌/进食/举矛与骷髅双手弩姿态仲裁
+├─ mixin/EnderManMixin                  末影人 Goal、智力存档、胸前乘客挂点与载荷非驾驶者语义
+└─ mixin/client                         盾牌/进食/举矛、骷髅双手弩与末影人实体环抱姿态仲裁
 ```
 
 ## 2.1 骷髅远程战术与混编边界
@@ -234,7 +250,31 @@ com.wjz.mobsthinknow
   `getControllingPassenger` 对三类载荷返回空控制者，乘员不会夺走蜘蛛的 MOVE/LOOK。已有独立速度曲线的
   载具蜘蛛不再叠加小队通用移速，未获乘员的蜘蛛仍使用个人侧袭和跳扑。
 
-## 2.4 工程兵技能生命周期
+## 2.4 末影人实体投送与模型边界
+
+- `EndermanCreeperDeliveryGoal` 不注册目标选择器，也不主动制造仇恨；它只读取普通末影人已经存在的
+  `Player` 目标，并再次排除创造、旁观、死亡与重新直视末影人的玩家。手持原版方块、已有其他乘客或
+  距玩家不足 5 格时不启动，因此原版中立、凝视冻结和近战反应保持在决策链前面；
+- 搜索按个体错峰，配置半径默认 16、范围 `6～32`，再按 IQ 缩放到 68.5%～100%。一次 AABB 查询后
+  最多检查 24 个普通苦力怕，过滤乘客/载具、强制点燃和已推进 20% 的引信。`CreeperTransportAccess`
+  从“蜘蛛预约”泛化为载具 UUID 租约，同时保留旧方法默认适配器；蜘蛛与末影人不可能同时取得同一载荷；
+- 状态机为 `APPROACHING → HOLDING → ARRIVED → RETREATING`。100 tick 内靠近失败会释放 80 tick
+  可续租约；进入 2.35 格后调用 `startRiding(enderman, true, true)`，由真实实体树承担同步、保存和
+  随 `randomTeleport` 移动。苦力怕持续退火并看向共享玩家，但 `getControllingPassenger` 返回空，
+  不会夺走末影人的 MOVE/LOOK；
+- `getPassengerRidingPosition` 按 `yBodyRot` 把苦力怕脚部固定在前方 0.78 格、上方 0.68 格。
+  客户端 `EndermanRendererMixin` 从真实乘客关系提取一位瞬时 RenderState，`EndermanModelMixin` 在
+  原版动画完成后把双臂设为前伸、轻微内收的实体环抱姿态；苦力怕仍由原版实体渲染器绘制，避免
+  复制材质、闪白、名称与资源包兼容逻辑；
+- IQ 决定 8～17 tick 抱稳时间。投送按玩家水平视线优先选择侧后方配置距离，使用原版末影人
+  `randomTeleport` 做落点/碰撞校验；抵达后保留 8 tick 展示窗，再在 12 个环形候选中检查坚固地基、
+  两格流体与碰撞，执行 `stopRiding`、设置原玩家目标并调用原版 `ignite()`。2 tick 后末影人尝试
+  传送远离目标，成功投送进入默认 300 tick、带 IQ 缩放与随机量的冷却；
+- 目标、载荷、传送或凝视条件中途失效时，未投放载荷会下车、退火并清租约；已经释放点燃的载荷
+  不会在 Goal 结束时被反向解除。爆炸半径、30 tick 引信、声音、伤害、`mobGriefing` 和猫克制均
+  沿用苦力怕原版规则。
+
+## 2.5 工程兵技能生命周期
 
 “会搭方块”是高智力僵尸的通用地形能力；“工程兵”则是少量个体的持久职业。普通自然候选
 必须成年、双手为空、智力达到 `terrainMinimumIntelligence` 且不是持矛空袭；
@@ -406,7 +446,10 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
    决定，不扫描同伴；软墙射线只在高智力近距引信候选或已经提交的破墙阶段执行一次局部方块射线。
 13. 蜘蛛配对按实体随机错峰每 10～20 tick 查询一次局部索引，搜索半径默认 8、硬上限 16；即使
    局部返回更多实体，决策层单轮最多检查 32 只苦力怕。每个候选只有一个 UUID 租约，不发生蜘蛛间
-   的全量两两比较；运输和个人战斗寻路均按 IQ 每 3～8 tick 重建一次。
+    的全量两两比较；运输和个人战斗寻路均按 IQ 每 3～8 tick 重建一次。
+14. 末影人投送同样使用错峰局部查询，配置半径默认 16、硬上限 32，单轮最多检查 24 个苦力怕；
+    与蜘蛛共用单目标 UUID 租约。抱取后的每 tick 只读取当前玩家和载荷，安全投放最多检查 13 个
+    固定落点，既不扫描末影人同伴，也不形成新的 N² 配对。
 
 `/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
 50、100、200 只激活僵尸的 MSPT 实机基准；同时输出累计采集、放置、俯击、工程兵 TNT、
@@ -439,6 +482,11 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `spiderCreeperCoordination` | `true` | 蜘蛛与同目标普通苦力怕是否会合并执行骑乘投送 |
 | `spiderCreeperSearchRadius` | `8.0` | 局部配对搜索半径，范围 `4～16` 格 |
 | `spiderCreeperCarrierSpeed` | `1.40` | 蜘蛛载具冲锋配置上限，范围 `1.10～1.70`；三类乘员每组再随机取其 88%～100% |
+| `endermanAiEnabled` | `true` | 普通末影人智力与额外投送战术总开关；不改变原版仇恨获取 |
+| `endermanCreeperDelivery` | `true` | 已敌对玩家的末影人是否抱取、传送并点燃附近苦力怕 |
+| `endermanCreeperSearchRadius` | `16.0` | 局部搜索配置半径，范围 `6～32` 格，再按末影人 IQ 缩放 |
+| `endermanCreeperDeliveryCooldownTicks` | `300` | 成功投送基础冷却，范围 `100～1200` tick，再按 IQ 和随机量错峰 |
+| `endermanCreeperDropDistance` | `3.0` | 玩家侧后方期望投放距离，范围 `2～6` 格 |
 | `packSurrounding` | `true` | 小队系统开关 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
@@ -797,8 +845,10 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   的四种预设、批量蜘蛛苦力怕投送组和两个全预设快捷入口，并以跨真实 tick 的端到端用例验证
   五格会合、骑乘运输和进入攻击距离后才起爆，并验证蜘蛛让骷髅真实跳跃登乘、四物种共享队伍及
   苦力怕成为最高智力首领；全局 `spawnall` 另验证一次事务式生成九种僵尸、
-  三种骷髅、四种苦力怕、四种蜘蛛及一只真实骑乘载荷；`spawn` 子树另验证 `all`、四个基础
-  生物名、四个复数分类与二十个战术 literal 全量注册，并真实批量生成四类基础实体；当前共 89 项
+   三种骷髅、四种苦力怕、四种蜘蛛、两种末影人及两只真实骑乘载荷；末影人另覆盖生产 Mixin Goal
+   安装、持久智力名称、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
+   随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、五个基础生物名、
+   五个复数分类与二十二个战术 literal 全量注册，并真实批量生成五类基础实体；当前共 96 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
