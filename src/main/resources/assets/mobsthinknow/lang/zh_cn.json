@@ -153,7 +153,7 @@
 	"mobsthinknow.config.spider_creeper_search_radius": "合体搜索半径（格）",
 	"mobsthinknow.config.spider_creeper_search_radius.tooltip": "范围 4～16，默认 8。每只蜘蛛每 10～20 tick 只查询一次局部空间，并用带租约的单目标预约避免重复争抢。",
 	"mobsthinknow.config.spider_creeper_carrier_speed": "合体冲锋速度上限（%）",
-	"mobsthinknow.config.spider_creeper_carrier_speed.tooltip": "范围 110%～200%，默认 155%。双方综合智力与难度决定实际速度，低智力个体从 115% 起步。",
+	"mobsthinknow.config.spider_creeper_carrier_speed.tooltip": "范围 110%～170%，默认 140%。每次合体先随机抽取该值的 88%～100% 作为本组上限，再由综合智力与难度从 110% 向上插值。",
 	"mobsthinknow.command.spawn_all_spiders.success": "已生成 %s 种战术蜘蛛：猎手、伏击者、首领与苦力怕投送兵。",
 	"mobsthinknow.command.spawn_all_spiders.no_space": "附近没有足够安全的地面容纳完整的蜘蛛测试阵型。",
 	"mobsthinknow.command.spawn_all_spiders.create_failed": "创建蜘蛛或苦力怕载荷失败，未生成测试阵型。",

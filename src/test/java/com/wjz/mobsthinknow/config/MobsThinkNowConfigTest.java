@@ -33,7 +33,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.spiderHitAndRun);
 		assertEquals(true, config.spiderCreeperCoordination);
 		assertEquals(8.0, config.spiderCreeperSearchRadius);
-		assertEquals(1.55, config.spiderCreeperCarrierSpeed);
+		assertEquals(1.40, config.spiderCreeperCarrierSpeed);
 	}
 
 	@Test
@@ -232,7 +232,7 @@ class MobsThinkNowConfigTest {
 		config.validate();
 
 		assertEquals(16.0, config.spiderCreeperSearchRadius);
-		assertEquals(2.0, config.spiderCreeperCarrierSpeed);
+		assertEquals(1.70, config.spiderCreeperCarrierSpeed);
 
 		config.spiderCreeperSearchRadius = Double.NaN;
 		config.spiderCreeperCarrierSpeed = -1.0;

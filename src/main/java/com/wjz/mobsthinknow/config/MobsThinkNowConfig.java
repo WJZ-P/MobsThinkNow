@@ -42,9 +42,9 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_SPIDER_CREEPER_SEARCH_RADIUS = 8.0;
 	public static final double MINIMUM_SPIDER_CREEPER_SEARCH_RADIUS = 4.0;
 	public static final double MAXIMUM_SPIDER_CREEPER_SEARCH_RADIUS = 16.0;
-	public static final double DEFAULT_SPIDER_CREEPER_CARRIER_SPEED = 1.55;
+	public static final double DEFAULT_SPIDER_CREEPER_CARRIER_SPEED = 1.40;
 	public static final double MINIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.10;
-	public static final double MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED = 2.0;
+	public static final double MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.70;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;

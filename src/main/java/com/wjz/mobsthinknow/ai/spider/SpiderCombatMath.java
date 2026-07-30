@@ -6,6 +6,9 @@ import net.minecraft.world.phys.Vec3;
 /** 与实体生命周期解耦的蜘蛛绕侧、预判跳扑和运输冲锋数学。 */
 public final class SpiderCombatMath {
 	private static final double EPSILON = 1.0E-7;
+	private static final double BASE_CARRIER_SPEED = 1.10;
+	private static final double MINIMUM_RANDOM_CARRIER_FACTOR = 0.88;
+	private static final double MAXIMUM_RANDOM_CARRIER_FACTOR = 1.0;
 
 	private SpiderCombatMath() {
 	}
@@ -114,7 +117,31 @@ public final class SpiderCombatMath {
 		final int difficultyId
 	) {
 		double progress = Mth.clamp((combinedIntelligence - 1) / 9.0 * 0.75 + difficultyId / 3.0 * 0.25, 0.0, 1.0);
-		return Mth.lerp(progress, 1.15, configuredMaximum);
+		double base = Math.min(BASE_CARRIER_SPEED, configuredMaximum);
+		return Mth.lerp(progress, base, configuredMaximum);
+	}
+
+	/** 每次新组合把配置上限随机压到 88%～100%，既保留个体差异，也避免所有精英组合顶格冲刺。 */
+	public static double randomizedCarrierMaximum(final double configuredMaximum, final double randomSample) {
+		double factor = Mth.lerp(
+			Mth.clamp(randomSample, 0.0, 1.0),
+			MINIMUM_RANDOM_CARRIER_FACTOR,
+			MAXIMUM_RANDOM_CARRIER_FACTOR
+		);
+		return Math.min(configuredMaximum, Math.max(BASE_CARRIER_SPEED, configuredMaximum * factor));
+	}
+
+	/** 苦力怕会合最后一步的真实抛物线起跳；水平速度按间距缩放，竖直速度固定以稳定演出。 */
+	public static Vec3 boardingLeapVelocity(final Vec3 creeperPosition, final Vec3 spiderPosition) {
+		Vec3 horizontalOffset = new Vec3(
+			spiderPosition.x - creeperPosition.x,
+			0.0,
+			spiderPosition.z - creeperPosition.z
+		);
+		double distance = horizontalOffset.length();
+		Vec3 direction = distance > EPSILON ? horizontalOffset.scale(1.0 / distance) : Vec3.ZERO;
+		double horizontalSpeed = Mth.clamp(distance * 0.13, 0.20, 0.34);
+		return new Vec3(direction.x * horizontalSpeed, 0.38, direction.z * horizontalSpeed);
 	}
 
 	private static Vec3 clampHorizontal(final Vec3 vector, final double maximumLength) {

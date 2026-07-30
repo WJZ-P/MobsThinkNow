@@ -48,12 +48,32 @@ class SpiderCombatMathTest {
 
 	@Test
 	void harderSmarterCarrierApproachesConfiguredSpeedCap() {
-		double easy = SpiderCombatMath.carrierSpeed(1.55, 4, 1);
-		double normal = SpiderCombatMath.carrierSpeed(1.55, 7, 2);
-		double hard = SpiderCombatMath.carrierSpeed(1.55, 10, 3);
+		double easy = SpiderCombatMath.carrierSpeed(1.40, 4, 1);
+		double normal = SpiderCombatMath.carrierSpeed(1.40, 7, 2);
+		double hard = SpiderCombatMath.carrierSpeed(1.40, 10, 3);
 		assertTrue(easy < normal);
 		assertTrue(normal < hard);
-		assertEquals(1.55, hard, 1.0E-9);
+		assertEquals(1.40, hard, 1.0E-9);
+	}
+
+	@Test
+	void everyCarrierPairGetsALowerBoundedRandomMaximum() {
+		assertEquals(1.232, SpiderCombatMath.randomizedCarrierMaximum(1.40, 0.0), 1.0E-9);
+		assertEquals(1.40, SpiderCombatMath.randomizedCarrierMaximum(1.40, 1.0), 1.0E-9);
+		double sampled = SpiderCombatMath.randomizedCarrierMaximum(1.40, 0.5);
+		assertTrue(sampled > 1.232 && sampled < 1.40);
+		assertTrue(SpiderCombatMath.carrierSpeed(sampled, 10, 3) <= sampled);
+	}
+
+	@Test
+	void boardingLeapTravelsTowardSpiderWithVisibleVerticalArc() {
+		Vec3 velocity = SpiderCombatMath.boardingLeapVelocity(
+			new Vec3(4.0, 0.0, 2.0),
+			new Vec3(2.0, 0.0, 2.0)
+		);
+		assertTrue(velocity.x < -0.20, "Boarding leap did not travel toward the receiving spider.");
+		assertEquals(0.0, velocity.z, 1.0E-9);
+		assertEquals(0.38, velocity.y, 1.0E-9);
 	}
 
 	@Test

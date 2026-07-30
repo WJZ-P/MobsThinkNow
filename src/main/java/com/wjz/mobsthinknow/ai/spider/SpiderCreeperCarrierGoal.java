@@ -7,8 +7,10 @@ import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.EntityType;
@@ -25,7 +27,11 @@ import org.jspecify.annotations.Nullable;
  * 每只蜘蛛最多保留一个苦力怕预约，预约带 60 tick 租约；这避免同一苦力怕被多只蜘蛛争抢，也避免全局 N² 配对。
  */
 public final class SpiderCreeperCarrierGoal extends Goal {
-	private static final double BOARDING_DISTANCE_SQUARED = 2.6 * 2.6;
+	private static final double BOARDING_LEAP_TRIGGER_DISTANCE_SQUARED = 2.8 * 2.8;
+	private static final double BOARDING_CATCH_DISTANCE_SQUARED = 3.2 * 3.2;
+	private static final int MINIMUM_BOARDING_LEAP_TICKS = 3;
+	private static final int MAXIMUM_BOARDING_LEAP_TICKS = 9;
+	private static final int BOARDING_RETRY_TICKS = 6;
 	private static final int RESERVATION_TICKS = 60;
 	private static final int ASSEMBLY_TIMEOUT_TICKS = 100;
 	private static final int MAXIMUM_CANDIDATE_CHECKS_PER_SEARCH = 32;
@@ -38,9 +44,13 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 	private long nextSearchTick;
 	private long assemblyDeadlineTick = Long.MIN_VALUE;
 	private int repathCooldown;
+	private int boardingLeapTicks;
+	private long nextBoardingLeapTick;
+	private boolean boardingLeapActive;
 	private boolean fuseCommitted;
 	private boolean deliveryPounceUsed;
 	private boolean boardingFailed;
+	private double carrierSpeedRandomSample = Double.NaN;
 
 	public SpiderCreeperCarrierGoal(final Spider spider) {
 		this.spider = spider;
@@ -69,6 +79,8 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			reservation(this.creeper).mobsthinknow$releaseSpiderReservation(this.spiderId);
 			this.creeper = null;
 			this.target = null;
+			this.resetBoardingLeap();
+			this.carrierSpeedRandomSample = Double.NaN;
 		}
 		if (this.creeper != null
 			&& this.creeper.isAlive()
@@ -78,6 +90,8 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		}
 		this.creeper = null;
 		this.target = null;
+		this.resetBoardingLeap();
+		this.carrierSpeedRandomSample = Double.NaN;
 		if (now < this.nextSearchTick) {
 			return false;
 		}
@@ -111,11 +125,14 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.boardingFailed = false;
 		this.phase = mountedCreeper() != null ? Phase.DELIVERING : Phase.ASSEMBLING;
 		this.spider.setAggressive(true);
+		this.ensureCarrierSpeedSample();
 		if (this.phase == Phase.ASSEMBLING) {
 			if (this.creeper != null) {
 				this.creeper.setSwellDir(-1);
+				this.advanceBoarding(this.creeper);
 			}
-			this.tryBoard();
+		} else if (this.creeper != null && isValidTarget(this.target)) {
+			this.aimPayloadAtTarget(this.creeper, this.target, true);
 		}
 	}
 
@@ -152,6 +169,7 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			return;
 		}
 
+		this.aimPayloadAtTarget(current, currentTarget, false);
 		this.phase = this.fuseCommitted ? Phase.FINAL_CHARGE : Phase.DELIVERING;
 		this.tickDelivery(current, currentTarget);
 	}
@@ -171,6 +189,18 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 
 	public boolean isFuseCommitted() {
 		return this.fuseCommitted;
+	}
+
+	public boolean isBoardingLeapActive() {
+		return this.boardingLeapActive;
+	}
+
+	public double carrierSpeedMaximum() {
+		this.ensureCarrierSpeedSample();
+		return SpiderCombatMath.randomizedCarrierMaximum(
+			ConfigManager.get().spiderCreeperCarrierSpeed,
+			this.carrierSpeedRandomSample
+		);
 	}
 
 	private boolean findAndReserveCreeper(final long now) {
@@ -217,6 +247,9 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.creeper = selected;
 		this.target = selectedTarget;
 		this.assemblyDeadlineTick = now + ASSEMBLY_TIMEOUT_TICKS;
+		this.resetBoardingLeap();
+		this.nextBoardingLeapTick = now;
+		this.carrierSpeedRandomSample = this.spider.getRandom().nextDouble();
 		selected.setSwellDir(-1);
 		this.spider.setTarget(selectedTarget);
 		selected.setTarget(selectedTarget);
@@ -251,7 +284,7 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			return;
 		}
 		current.setSwellDir(-1);
-		if (this.tryBoard()) {
+		if (this.advanceBoarding(current)) {
 			return;
 		}
 		if (--this.repathCooldown > 0) {
@@ -263,18 +296,83 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		current.getNavigation().moveTo(this.spider, 1.15);
 	}
 
-	private boolean tryBoard() {
-		Creeper current = this.creeper;
-		if (current == null || current.getVehicle() == this.spider) {
-			return current != null;
+	private boolean advanceBoarding(final Creeper current) {
+		if (current.getVehicle() == this.spider) {
+			return true;
 		}
-		if (this.spider.distanceToSqr(current) > BOARDING_DISTANCE_SQUARED) {
+		long now = this.spider.level().getGameTime();
+		if (!this.boardingLeapActive) {
+			if (now < this.nextBoardingLeapTick
+				|| this.spider.distanceToSqr(current) > BOARDING_LEAP_TRIGGER_DISTANCE_SQUARED) {
+				return false;
+			}
+			this.beginBoardingLeap(current);
+			return true;
+		}
+
+		this.boardingLeapTicks++;
+		this.spider.getNavigation().stop();
+		current.getNavigation().stop();
+		this.spider.getLookControl().setLookAt(current, 60.0F, 45.0F);
+		current.getLookControl().setLookAt(this.spider, 70.0F, 55.0F);
+		this.steerBoardingLeap(current);
+		if (this.boardingLeapTicks >= MINIMUM_BOARDING_LEAP_TICKS
+			&& this.spider.distanceToSqr(current) <= BOARDING_CATCH_DISTANCE_SQUARED) {
+			return this.completeBoarding(current);
+		}
+		if (this.boardingLeapTicks >= MAXIMUM_BOARDING_LEAP_TICKS) {
+			this.resetBoardingLeap();
+			this.nextBoardingLeapTick = now + BOARDING_RETRY_TICKS;
 			return false;
 		}
+		return true;
+	}
+
+	private void beginBoardingLeap(final Creeper current) {
+		this.boardingLeapActive = true;
+		this.boardingLeapTicks = 0;
+		this.spider.getNavigation().stop();
+		current.getNavigation().stop();
+		this.spider.getLookControl().setLookAt(current, 60.0F, 45.0F);
+		current.lookAt(EntityAnchorArgument.Anchor.EYES, this.spider.getEyePosition());
+		current.setDeltaMovement(SpiderCombatMath.boardingLeapVelocity(current.position(), this.spider.position()));
+		current.setOnGround(false);
+		current.playSound(SoundEvents.SLIME_JUMP_SMALL, 0.35F, 0.92F);
+		if (this.spider.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+			serverLevel.sendParticles(
+				ParticleTypes.CLOUD,
+				current.getX(),
+				current.getY() + 0.1,
+				current.getZ(),
+				4,
+				0.18,
+				0.04,
+				0.18,
+				0.01
+			);
+		}
+	}
+
+	private void steerBoardingLeap(final Creeper current) {
+		Vec3 offset = this.spider.position().subtract(current.position()).multiply(1.0, 0.0, 1.0);
+		if (offset.lengthSqr() < 1.0E-7) {
+			return;
+		}
+		Vec3 desired = offset.normalize().scale(Mth.clamp(offset.length() * 0.13, 0.20, 0.34));
+		Vec3 movement = current.getDeltaMovement();
+		current.setDeltaMovement(
+			Mth.lerp(0.30, movement.x, desired.x),
+			movement.y,
+			Mth.lerp(0.30, movement.z, desired.z)
+		);
+	}
+
+	private boolean completeBoarding(final Creeper current) {
 		if (!current.startRiding(this.spider, true, true)) {
 			this.boardingFailed = true;
 			return false;
 		}
+		this.resetBoardingLeap();
 		reservation(current).mobsthinknow$releaseSpiderReservation(this.spiderId);
 		this.spider.getNavigation().stop();
 		current.getNavigation().stop();
@@ -282,6 +380,9 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.assemblyDeadlineTick = Long.MIN_VALUE;
 		this.fuseCommitted = current.getSwellDir() > 0;
 		this.deliveryPounceUsed = false;
+		if (isValidTarget(this.target)) {
+			this.aimPayloadAtTarget(current, this.target, true);
+		}
 		this.spider.playSound(SoundEvents.SPIDER_STEP, 0.9F, 0.72F);
 		if (this.spider.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
 			serverLevel.sendParticles(
@@ -339,7 +440,7 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 				combinedIntelligence
 			);
 			double speed = SpiderCombatMath.carrierSpeed(
-				config.spiderCreeperCarrierSpeed,
+				this.carrierSpeedMaximum(),
 				combinedIntelligence,
 				this.spider.level().getDifficulty().getId()
 			);
@@ -386,7 +487,32 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.fuseCommitted = false;
 		this.deliveryPounceUsed = false;
 		this.boardingFailed = false;
+		this.resetBoardingLeap();
+		this.nextBoardingLeapTick = 0L;
+		this.carrierSpeedRandomSample = Double.NaN;
 		this.assemblyDeadlineTick = Long.MIN_VALUE;
+	}
+
+	private void aimPayloadAtTarget(
+		final Creeper current,
+		final LivingEntity currentTarget,
+		final boolean snapImmediately
+	) {
+		current.getLookControl().setLookAt(currentTarget, 70.0F, 60.0F);
+		if (snapImmediately) {
+			current.lookAt(EntityAnchorArgument.Anchor.EYES, currentTarget.getEyePosition());
+		}
+	}
+
+	private void ensureCarrierSpeedSample() {
+		if (!Double.isFinite(this.carrierSpeedRandomSample)) {
+			this.carrierSpeedRandomSample = this.spider.getRandom().nextDouble();
+		}
+	}
+
+	private void resetBoardingLeap() {
+		this.boardingLeapActive = false;
+		this.boardingLeapTicks = 0;
 	}
 
 	private boolean assemblyLinkIsInvalid(final @Nullable Creeper current) {

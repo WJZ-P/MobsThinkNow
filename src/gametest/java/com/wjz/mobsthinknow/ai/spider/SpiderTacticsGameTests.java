@@ -1,12 +1,14 @@
 package com.wjz.mobsthinknow.ai.spider;
 
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
+import com.wjz.mobsthinknow.config.ConfigManager;
 import java.lang.reflect.Method;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.npc.villager.Villager;
@@ -70,15 +72,36 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		SpiderCreeperCarrierGoal goal = new SpiderCreeperCarrierGoal(spider);
 		helper.assertTrue(goal.canUse(), "Nearby spider and creeper did not reserve a transport pair.");
 		goal.start();
-		helper.assertTrue(creeper.getVehicle() == spider, "Reserved creeper did not mount the nearby spider.");
-		helper.assertTrue(goal.isCarryingCreeper(), "Carrier state did not enter the mounted phase.");
-		helper.assertTrue(creeper.getSwellDir() == -1, "Early fuse was not reset so rendezvous could happen first.");
+		double configuredCarrierMaximum = ConfigManager.get().spiderCreeperCarrierSpeed;
+		double actualCarrierMaximum = goal.carrierSpeedMaximum();
 		helper.assertTrue(
-			spider.getControllingPassenger() == null,
-			"Creeper payload was treated as a driver and would pause spider movement goals."
+			actualCarrierMaximum <= configuredCarrierMaximum
+				&& actualCarrierMaximum >= Math.max(1.10, configuredCarrierMaximum * 0.88),
+			"Transport pair did not retain its randomized 88%-100% speed ceiling."
 		);
-		goal.stop();
-		helper.succeed();
+		helper.assertTrue(goal.isBoardingLeapActive(), "Reserved creeper skipped the boarding leap phase.");
+		helper.assertTrue(creeper.getVehicle() == null, "Creeper snapped onto the spider before showing its leap.");
+		helper.assertTrue(creeper.getDeltaMovement().y >= 0.38, "Boarding leap lacked a visible vertical arc.");
+		helper.assertTrue(creeper.getSwellDir() == -1, "Early fuse was not reset so rendezvous could happen first.");
+
+		int[] elapsed = {0};
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			goal.tick();
+			if (creeper.getVehicle() == spider) {
+				helper.assertTrue(elapsed[0] >= 3, "Creeper mounted before the minimum three-tick leap presentation.");
+				helper.assertTrue(goal.isCarryingCreeper(), "Carrier state did not enter the mounted phase.");
+				helper.assertTrue(
+					spider.getControllingPassenger() == null,
+					"Creeper payload was treated as a driver and would pause spider movement goals."
+				);
+				goal.stop();
+				helper.succeed();
+			}
+			if (elapsed[0] >= 12) {
+				helper.assertTrue(false, "Creeper performed the leap but did not complete boarding.");
+			}
+		});
 	}
 
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
@@ -93,6 +116,8 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		CreeperIntelligence.set(creeper, 10);
 		spider.setTarget(target);
 		creeper.setTarget(target);
+		creeper.setYRot(180.0F);
+		creeper.setYHeadRot(180.0F);
 		helper.assertTrue(creeper.startRiding(spider, true, true), "GameTest setup could not mount creeper payload.");
 
 		SpiderCreeperCarrierGoal goal = new SpiderCreeperCarrierGoal(spider);
@@ -102,7 +127,26 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(goal.isFuseCommitted(), "Carrier reached delivery range without committing the fuse.");
 		helper.assertTrue(creeper.getSwellDir() == 1, "Mounted creeper did not enter positive swell direction.");
 		helper.assertTrue(goal.phase() == SpiderCreeperCarrierGoal.Phase.FINAL_CHARGE, "Carrier skipped final charge phase.");
+		helper.assertTrue(
+			SpiderCombatMath.isTargetWatching(
+				creeper.getLookAngle(),
+				target.position().subtract(creeper.position())
+			),
+			"Mounted creeper did not turn its head toward the shared target."
+		);
 		goal.stop();
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void rareSpiderSpawnSpeedUsesAVisibleInfiniteLevelTwoEffect(final GameTestHelper helper) {
+		Spider spider = helper.spawn(EntityType.SPIDER, 2, 2, 2);
+		SpiderSpawnEffects.maybeApplySpeed(spider, 0.0);
+		var speed = spider.getEffect(MobEffects.SPEED);
+		helper.assertTrue(speed != null, "Deterministic rare roll did not apply a speed effect.");
+		helper.assertTrue(speed.getAmplifier() == 1, "Rare top-tier roll did not produce Speed II.");
+		helper.assertTrue(speed.isInfiniteDuration(), "Spawn speed trait did not persist for the spider's lifetime.");
+		helper.assertTrue(speed.isVisible(), "Spawn speed trait hid its potion particles.");
 		helper.succeed();
 	}
 

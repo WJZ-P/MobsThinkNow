@@ -7,16 +7,21 @@ import com.wjz.mobsthinknow.ai.spider.SpiderCreeperCarrierGoal;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligenceAccess;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligenceName;
+import com.wjz.mobsthinknow.ai.spider.SpiderSpawnEffects;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.ai.goal.LeapAtTargetGoal;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.DifficultyInstance;
+import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import org.jspecify.annotations.Nullable;
@@ -25,6 +30,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /** 只改造普通蜘蛛；洞穴蜘蛛保留毒素型原版节奏。 */
 @Mixin(Spider.class)
@@ -75,6 +81,20 @@ public abstract class SpiderMixin extends Monster implements SpiderIntelligenceA
 		if (firstPassenger instanceof Creeper creeper
 			&& (!config.enabled || !config.spiderAiEnabled || !config.spiderCreeperCoordination)) {
 			creeper.stopRiding();
+		}
+	}
+
+	@Inject(method = "finalizeSpawn", at = @At("TAIL"))
+	private void mobsthinknow$applyRareSpawnSpeed(
+		final ServerLevelAccessor level,
+		final DifficultyInstance difficulty,
+		final EntitySpawnReason spawnReason,
+		final SpawnGroupData groupData,
+		final CallbackInfoReturnable<SpawnGroupData> callbackInfo
+	) {
+		MobsThinkNowConfig config = ConfigManager.get();
+		if (this.getType() == EntityType.SPIDER && config.enabled && config.spiderAiEnabled) {
+			SpiderSpawnEffects.maybeApplySpeed((Spider)(Object)this, this.random.nextDouble());
 		}
 	}
 

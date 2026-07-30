@@ -153,7 +153,7 @@
 	"mobsthinknow.config.spider_creeper_search_radius": "Carrier Search Radius (blocks)",
 	"mobsthinknow.config.spider_creeper_search_radius.tooltip": "Range: 4-16, default 8. Each spider queries only local space every 10-20 ticks; single-target leases prevent multiple carriers claiming one creeper.",
 	"mobsthinknow.config.spider_creeper_carrier_speed": "Carrier Charge Speed Cap (%)",
-	"mobsthinknow.config.spider_creeper_carrier_speed.tooltip": "Range: 110%-200%, default 155%. Combined intelligence and difficulty determine actual speed, starting from 115% for low-skill pairs.",
+	"mobsthinknow.config.spider_creeper_carrier_speed.tooltip": "Range: 110%-170%, default 140%. Each pair rolls 88%-100% of this value as its own cap, then intelligence and difficulty interpolate upward from 110%.",
 	"mobsthinknow.command.spawn_all_spiders.success": "Spawned %s tactical spider archetypes: hunter, ambusher, alpha, and creeper carrier.",
 	"mobsthinknow.command.spawn_all_spiders.no_space": "No nearby ground has enough safe space for the complete spider test formation.",
 	"mobsthinknow.command.spawn_all_spiders.create_failed": "Spider or creeper-payload creation failed; no test formation was added.",
