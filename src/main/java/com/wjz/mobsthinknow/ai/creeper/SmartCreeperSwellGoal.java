@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.creeper;
 
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.ai.spider.SpiderCreeperCarrierGoal;
 import java.util.EnumSet;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntitySelector;
@@ -37,6 +38,9 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 
 	@Override
 	public boolean canUse() {
+		if (SpiderCreeperCarrierGoal.isTransportControlled(this.creeper)) {
+			return false;
+		}
 		this.smartMode = smartAiEnabled();
 		if (!this.smartMode) {
 			return super.canUse();
@@ -53,6 +57,9 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 
 	@Override
 	public boolean canContinueToUse() {
+		if (SpiderCreeperCarrierGoal.isTransportControlled(this.creeper)) {
+			return false;
+		}
 		if (!this.smartMode) {
 			return !smartAiEnabled() && super.canUse();
 		}
@@ -90,7 +97,7 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 			super.stop();
 			return;
 		}
-		if (!this.creeper.isIgnited()) {
+		if (!this.creeper.isIgnited() && !(this.creeper.getVehicle() instanceof net.minecraft.world.entity.monster.spider.Spider)) {
 			this.creeper.setSwellDir(-1);
 		}
 		this.creeper.getNavigation().stop();

@@ -177,6 +177,62 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperFuseMovementSpeed = value / 100.0))
 			.build());
 
+		ConfigCategory spiderCategory = builder.getOrCreateCategory(
+			Component.translatable("mobsthinknow.config.category.spider")
+		);
+		spiderCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.spider_ai_enabled"),
+			config.spiderAiEnabled
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_ai_enabled.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderAiEnabled = value))
+			.build());
+		spiderCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.spider_predictive_pounce"),
+			config.spiderPredictivePounce
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_predictive_pounce.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderPredictivePounce = value))
+			.build());
+		spiderCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.spider_hit_and_run"),
+			config.spiderHitAndRun
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_hit_and_run.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderHitAndRun = value))
+			.build());
+		spiderCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.spider_creeper_coordination"),
+			config.spiderCreeperCoordination
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_creeper_coordination.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderCreeperCoordination = value))
+			.build());
+		spiderCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.spider_creeper_search_radius"),
+			(int)Math.round(config.spiderCreeperSearchRadius),
+			(int)MobsThinkNowConfig.MINIMUM_SPIDER_CREEPER_SEARCH_RADIUS,
+			(int)MobsThinkNowConfig.MAXIMUM_SPIDER_CREEPER_SEARCH_RADIUS
+		)
+			.setDefaultValue((int)MobsThinkNowConfig.DEFAULT_SPIDER_CREEPER_SEARCH_RADIUS)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_creeper_search_radius.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderCreeperSearchRadius = value))
+			.build());
+		spiderCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.spider_creeper_carrier_speed"),
+			(int)Math.round(config.spiderCreeperCarrierSpeed * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MINIMUM_SPIDER_CREEPER_CARRIER_SPEED * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED * 100.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SPIDER_CREEPER_CARRIER_SPEED * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_creeper_carrier_speed.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderCreeperCarrierSpeed = value / 100.0))
+			.build());
+
 		// Mod Menu 位于客户端；这段提示避免玩家误以为它可以直接修改远程服务器规则。
 		squadCategory.addEntry(entries.startTextDescription(
 			Component.translatable("mobsthinknow.config.server_authority_note")

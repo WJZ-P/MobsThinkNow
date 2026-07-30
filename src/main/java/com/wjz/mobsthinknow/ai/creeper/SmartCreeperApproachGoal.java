@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.creeper;
 import com.wjz.mobsthinknow.ai.creeper.CreeperCombatMath.ApproachMode;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.ai.spider.SpiderCreeperCarrierGoal;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
@@ -31,6 +32,9 @@ public final class SmartCreeperApproachGoal extends MeleeAttackGoal {
 
 	@Override
 	public boolean canUse() {
+		if (SpiderCreeperCarrierGoal.isTransportControlled(this.creeper)) {
+			return false;
+		}
 		this.smartMode = smartAiEnabled();
 		if (!this.smartMode) {
 			return super.canUse();
@@ -40,6 +44,9 @@ public final class SmartCreeperApproachGoal extends MeleeAttackGoal {
 
 	@Override
 	public boolean canContinueToUse() {
+		if (SpiderCreeperCarrierGoal.isTransportControlled(this.creeper)) {
+			return false;
+		}
 		if (!this.smartMode) {
 			return !smartAiEnabled() && super.canContinueToUse();
 		}

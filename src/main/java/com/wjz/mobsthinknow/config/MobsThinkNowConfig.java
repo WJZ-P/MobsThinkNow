@@ -39,6 +39,12 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_CREEPER_FUSE_MOVEMENT_SPEED = 1.25;
 	public static final double MINIMUM_CREEPER_FUSE_MOVEMENT_SPEED = 1.0;
 	public static final double MAXIMUM_CREEPER_FUSE_MOVEMENT_SPEED = 1.5;
+	public static final double DEFAULT_SPIDER_CREEPER_SEARCH_RADIUS = 8.0;
+	public static final double MINIMUM_SPIDER_CREEPER_SEARCH_RADIUS = 4.0;
+	public static final double MAXIMUM_SPIDER_CREEPER_SEARCH_RADIUS = 16.0;
+	public static final double DEFAULT_SPIDER_CREEPER_CARRIER_SPEED = 1.55;
+	public static final double MINIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.10;
+	public static final double MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED = 2.0;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
@@ -71,6 +77,18 @@ public final class MobsThinkNowConfig {
 	public double creeperMaximumFuseStartDistance = DEFAULT_CREEPER_MAXIMUM_FUSE_START_DISTANCE;
 	/** 移动引信的绝对寻路速度上限；智力与难度只决定个体接近该上限的程度。 */
 	public double creeperFuseMovementSpeed = DEFAULT_CREEPER_FUSE_MOVEMENT_SPEED;
+	/** 普通蜘蛛获得 1～10 智力，并接管跳扑与贴身接敌 Goal；洞穴蜘蛛保持原版。 */
+	public boolean spiderAiEnabled = true;
+	/** 智力 4 以上的蜘蛛会预测目标速度，将 2.5～7 格跳扑落点放到移动前方。 */
+	public boolean spiderPredictivePounce = true;
+	/** 智力 5 以上的蜘蛛命中后先绕到下一次跳扑距离，而不是原地持续贴脸。 */
+	public boolean spiderHitAndRun = true;
+	/** 蜘蛛与普通苦力怕会限频局部配对，真实骑乘后由蜘蛛高速投送至目标身边。 */
+	public boolean spiderCreeperCoordination = true;
+	/** 每次配对只查询这个局部半径，默认 8 格；搜索间隔随机 10～20 tick。 */
+	public double spiderCreeperSearchRadius = DEFAULT_SPIDER_CREEPER_SEARCH_RADIUS;
+	/** 合体运输的寻路速度上限；智力与难度决定个体从 1.15 向该上限插值。 */
+	public double spiderCreeperCarrierSpeed = DEFAULT_SPIDER_CREEPER_CARRIER_SPEED;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public boolean squadVisualEffects = true;
@@ -252,6 +270,16 @@ public final class MobsThinkNowConfig {
 			this.creeperFuseMovementSpeed,
 			MINIMUM_CREEPER_FUSE_MOVEMENT_SPEED,
 			MAXIMUM_CREEPER_FUSE_MOVEMENT_SPEED
+		);
+		this.spiderCreeperSearchRadius = clamp(
+			this.spiderCreeperSearchRadius,
+			MINIMUM_SPIDER_CREEPER_SEARCH_RADIUS,
+			MAXIMUM_SPIDER_CREEPER_SEARCH_RADIUS
+		);
+		this.spiderCreeperCarrierSpeed = clamp(
+			this.spiderCreeperCarrierSpeed,
+			MINIMUM_SPIDER_CREEPER_CARRIER_SPEED,
+			MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED
 		);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);

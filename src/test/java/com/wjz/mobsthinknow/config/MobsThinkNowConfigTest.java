@@ -28,6 +28,12 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.creeperWallBreaching);
 		assertEquals(4.0, config.creeperMaximumFuseStartDistance);
 		assertEquals(1.25, config.creeperFuseMovementSpeed);
+		assertEquals(true, config.spiderAiEnabled);
+		assertEquals(true, config.spiderPredictivePounce);
+		assertEquals(true, config.spiderHitAndRun);
+		assertEquals(true, config.spiderCreeperCoordination);
+		assertEquals(8.0, config.spiderCreeperSearchRadius);
+		assertEquals(1.55, config.spiderCreeperCarrierSpeed);
 	}
 
 	@Test
@@ -216,5 +222,22 @@ class MobsThinkNowConfigTest {
 		config.validate();
 		assertEquals(3.0, config.creeperMaximumFuseStartDistance);
 		assertEquals(1.0, config.creeperFuseMovementSpeed);
+	}
+
+	@Test
+	void clampsSpiderCarrierEnvelope() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.spiderCreeperSearchRadius = 99.0;
+		config.spiderCreeperCarrierSpeed = 9.0;
+		config.validate();
+
+		assertEquals(16.0, config.spiderCreeperSearchRadius);
+		assertEquals(2.0, config.spiderCreeperCarrierSpeed);
+
+		config.spiderCreeperSearchRadius = Double.NaN;
+		config.spiderCreeperCarrierSpeed = -1.0;
+		config.validate();
+		assertEquals(4.0, config.spiderCreeperSearchRadius);
+		assertEquals(1.10, config.spiderCreeperCarrierSpeed);
 	}
 }

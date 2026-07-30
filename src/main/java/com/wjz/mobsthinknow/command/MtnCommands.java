@@ -6,6 +6,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
+import com.wjz.mobsthinknow.ai.spider.SmartSpiderMetrics;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -32,6 +33,7 @@ public final class MtnCommands {
 						.executes(MtnCommands::spawnAll)
 						.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons))
 						.then(Commands.literal("creepers").executes(MtnCommands::spawnAllCreepers))
+						.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders))
 				)
 				.then(
 					Commands.literal("spawnskeletons")
@@ -42,6 +44,11 @@ public final class MtnCommands {
 					Commands.literal("spawncreepers")
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAllCreepers)
+				)
+				.then(
+					Commands.literal("spawnspiders")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(MtnCommands::spawnAllSpiders)
 				)
 				.then(spawnSpecificCommand())
 				.then(
@@ -108,6 +115,23 @@ public final class MtnCommands {
 					)
 			);
 		}
+		for (SpiderShowcaseSpawner.ShowcaseArchetype archetype
+			: SpiderShowcaseSpawner.ShowcaseArchetype.values()) {
+			command.then(
+				Commands.literal(archetype.commandId())
+					.executes(context -> spawnSpecificSpider(context, archetype, 1))
+					.then(
+						Commands.argument(
+							"count",
+							IntegerArgumentType.integer(1, SpiderShowcaseSpawner.MAX_BATCH_SIZE)
+						).executes(context -> spawnSpecificSpider(
+							context,
+							archetype,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+					)
+			);
+		}
 		return command;
 	}
 
@@ -116,6 +140,7 @@ public final class MtnCommands {
 		SmartZombieMetrics.Snapshot metrics = SmartZombieMetrics.snapshot();
 		SmartSkeletonMetrics.Snapshot skeletonMetrics = SmartSkeletonMetrics.snapshot();
 		SmartCreeperMetrics.Snapshot creeperMetrics = SmartCreeperMetrics.snapshot();
+		SmartSpiderMetrics.Snapshot spiderMetrics = SmartSpiderMetrics.snapshot();
 		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d"
 			.formatted(
 				config.enabled,
@@ -161,7 +186,20 @@ public final class MtnCommands {
 				creeperMetrics.breachFuses(),
 				creeperMetrics.abortedFuses()
 			);
-		context.getSource().sendSuccess(() -> Component.literal(message), false);
+		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d"
+			.formatted(
+				config.spiderAiEnabled,
+				spiderMetrics.installedGoals(),
+				spiderMetrics.flanks(),
+				spiderMetrics.pounces(),
+				spiderMetrics.repositions(),
+				spiderMetrics.carrierSearches(),
+				spiderMetrics.carrierCandidateChecks(),
+				spiderMetrics.creepersMounted(),
+				spiderMetrics.deliveryFuses()
+			);
+		String statusMessage = message;
+		context.getSource().sendSuccess(() -> Component.literal(statusMessage), false);
 		return Command.SINGLE_SUCCESS;
 	}
 
@@ -233,7 +271,13 @@ public final class MtnCommands {
 				.map(CreeperShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
-		String types = zombieTypes + ", " + skeletonTypes + ", " + creeperTypes;
+		String spiderTypes = String.join(
+			", ",
+			Arrays.stream(SpiderShowcaseSpawner.ShowcaseArchetype.values())
+				.map(SpiderShowcaseSpawner.ShowcaseArchetype::commandId)
+				.toList()
+		);
+		String types = zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes;
 		context.getSource().sendSuccess(
 			() -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.types",
@@ -470,6 +514,95 @@ public final class MtnCommands {
 				requestedCount
 			);
 			case NONE -> throw new IllegalStateException("Successful creeper spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(error);
+		return 0;
+	}
+
+	private static int spawnAllSpiders(final CommandContext<CommandSourceStack> context) {
+		SpiderShowcaseSpawner.SpawnResult result = SpiderShowcaseSpawner.spawnAll(context.getSource());
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_all_spiders.success",
+					"Spawned %s tactical spider archetypes.",
+					count
+				),
+				true
+			);
+			return count;
+		}
+
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_spiders.no_space",
+				"No nearby ground has enough safe space for all tactical spider archetypes."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_spiders.create_failed",
+				"Spider entity creation failed; no showcase formation was added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_spiders.add_failed",
+				"Adding the spider formation failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful spider spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private static int spawnSpecificSpider(
+		final CommandContext<CommandSourceStack> context,
+		final SpiderShowcaseSpawner.ShowcaseArchetype archetype,
+		final int requestedCount
+	) {
+		SpiderShowcaseSpawner.SpawnResult result = SpiderShowcaseSpawner.spawnBatch(
+			context.getSource(),
+			archetype,
+			requestedCount
+		);
+		if (result.success()) {
+			int spawnedCount = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn.success",
+					"Spawned %s × %s (%s).",
+					spawnedCount,
+					archetype.displayName(),
+					archetype.commandId()
+				),
+				true
+			);
+			return spawnedCount;
+		}
+
+		Component error = switch (result.failure()) {
+			case PEACEFUL -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.no_space",
+				"No safe nearby ground was found for all %s requested mobs; nothing was spawned.",
+				requestedCount
+			);
+			case CREATE_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.create_failed",
+				"Preparing the requested batch of %s mobs failed; nothing was spawned.",
+				requestedCount
+			);
+			case ADD_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.add_failed",
+				"Adding the requested batch of %s mobs failed; the entire batch was rolled back.",
+				requestedCount
+			);
+			case NONE -> throw new IllegalStateException("Successful spider spawn reached the failure branch.");
 		};
 		context.getSource().sendFailure(error);
 		return 0;

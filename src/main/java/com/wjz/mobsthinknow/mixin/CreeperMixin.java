@@ -8,6 +8,8 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperTacticalController;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperApproachGoal;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperSwellGoal;
+import com.wjz.mobsthinknow.ai.spider.CreeperTransportAccess;
+import java.util.UUID;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
@@ -27,7 +29,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /** 普通苦力怕的智力、持久化和两个可热切换战术 Goal 接入点。 */
 @Mixin(Creeper.class)
-public abstract class CreeperMixin extends Monster implements CreeperIntelligenceAccess, CreeperPowerAccess {
+public abstract class CreeperMixin extends Monster implements CreeperIntelligenceAccess, CreeperPowerAccess, CreeperTransportAccess {
 	@Unique
 	private static final String mobsthinknow$INTELLIGENCE_TAG = "MobsThinkNowIntelligence";
 
@@ -39,6 +41,10 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 	private int mobsthinknow$creeperIntelligence;
 	@Unique
 	private CreeperTacticalController mobsthinknow$tacticalController;
+	@Unique
+	private UUID mobsthinknow$reservedSpiderId;
+	@Unique
+	private long mobsthinknow$spiderReservationExpiry = Long.MIN_VALUE;
 
 	protected CreeperMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
@@ -96,5 +102,48 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 	@Override
 	public void mobsthinknow$setCreeperPowered(final boolean powered) {
 		this.entityData.set(DATA_IS_POWERED, powered);
+	}
+
+	@Override
+	public boolean mobsthinknow$tryReserveForSpider(
+		final UUID spiderId,
+		final long currentTick,
+		final long expiresAtTick
+	) {
+		this.mobsthinknow$clearExpiredSpiderReservation(currentTick);
+		if (this.mobsthinknow$reservedSpiderId != null && !this.mobsthinknow$reservedSpiderId.equals(spiderId)) {
+			return false;
+		}
+		this.mobsthinknow$reservedSpiderId = spiderId;
+		this.mobsthinknow$spiderReservationExpiry = Math.max(currentTick + 1L, expiresAtTick);
+		return true;
+	}
+
+	@Override
+	public boolean mobsthinknow$isReservedForSpider(final UUID spiderId, final long currentTick) {
+		this.mobsthinknow$clearExpiredSpiderReservation(currentTick);
+		return spiderId.equals(this.mobsthinknow$reservedSpiderId);
+	}
+
+	@Override
+	public boolean mobsthinknow$isReservedForAnySpider(final long currentTick) {
+		this.mobsthinknow$clearExpiredSpiderReservation(currentTick);
+		return this.mobsthinknow$reservedSpiderId != null;
+	}
+
+	@Override
+	public void mobsthinknow$releaseSpiderReservation(final UUID spiderId) {
+		if (spiderId.equals(this.mobsthinknow$reservedSpiderId)) {
+			this.mobsthinknow$reservedSpiderId = null;
+			this.mobsthinknow$spiderReservationExpiry = Long.MIN_VALUE;
+		}
+	}
+
+	@Unique
+	private void mobsthinknow$clearExpiredSpiderReservation(final long currentTick) {
+		if (this.mobsthinknow$reservedSpiderId != null && currentTick >= this.mobsthinknow$spiderReservationExpiry) {
+			this.mobsthinknow$reservedSpiderId = null;
+			this.mobsthinknow$spiderReservationExpiry = Long.MIN_VALUE;
+		}
 	}
 }
