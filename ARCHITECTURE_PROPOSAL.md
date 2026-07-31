@@ -107,6 +107,10 @@ flowchart TD
     TacticsState --> ThrowGoal["两条独立手部流水线 / 错峰离手"]
     ThrowGoal --> GiantPassenger["真实 passenger / 动态掌心挂点"]
     GiantPassenger --> GiantPose["同步阶段 + 分段关键帧动画"]
+    GiantMixin --> MeleeGoal["GiantMeleeCombatGoal / 可读近战"]
+    MeleeGoal --> AimLock["有限追踪 → 命中前锁向"]
+    AimLock --> RootMotion["碰撞 + 落脚面约束根运动"]
+    MeleeGoal --> GrappleSlot["独立抓取槽 / 真实乘客 / 重击打断"]
 ```
 
 主要职责：
@@ -153,7 +157,8 @@ com.wjz.mobsthinknow
 │  ├─ GiantArmAnimation                接取、托举、蓄力、投掷与恢复关键帧
 │  ├─ GiantMeleeCombatGoal             接敌、前摇、唯一命中帧、后摇与范围结算
 │  ├─ GiantMeleePlanner                智力/距离/人群/空闲手约束下的动作选择
-│  ├─ GiantMeleeGeometry               横扫、掌击、踩踏与砸地区域纯几何
+│  ├─ GiantMeleeGeometry               横扫、掌击、踩踏、正蹬、抓取与砸地区域纯几何
+│  ├─ GiantMeleeMotion                 有限角速度锁向与分段根运动曲线
 │  ├─ GiantMeleeAnimation              双臂、躯干和双腿的确定性关键帧
 │  ├─ GiantThrowMath                   有限提前量、重力补偿与速度硬上限
 │  └─ SmartGiantMetrics                替换、登乘、抛投与近战诊断指标
@@ -316,14 +321,17 @@ com.wjz.mobsthinknow
 - 原版 Giant 不注册任何 Goal。`GiantMixin` 在服务端构造末尾加入 Float、双手投送、小队准备、近战、
   游荡与观察，以及玩家、村民、铁傀儡目标选择；属性统一为可配置的生命/伤害/移速，并补 40 格
   追踪、8 护甲、70% 击退抗性和 2 点攻击击退。智力沿用 `ValueInput/ValueOutput` 持久链；
-- `GiantMeleeCombatGoal` 在七格范围外只做原版导航；进入战圈后把水平距离、附近敌人数、智力以及
-  左右手是否空闲交给纯选择器。IQ 10 固定采用当前最高分动作，较低智力按权重保留变化；连续动作
-  同类型降权。双拳砸地要求两手空闲，横扫/掌击只占一只指定手，踩踏不占手，因此载荷与登乘状态
-  不会被近战动画穿透；
+- `GiantMeleeCombatGoal` 在七格范围外只做原版导航；进入战圈后把水平距离、附近敌人数、目标是否
+  防御、是否可抓取、智力及左右手空闲状态交给纯选择器。IQ 10 固定采用最高分动作，较低智力按权重
+  保留变化；连续动作同类型降权。举盾近身优先正蹬，IQ 7 以上的单目标局面可使用指定空手抓取；
+- `GiantMeleeMotion` 把前摇追踪限制为每 tick `14°`，并在命中前按动作预留 `3～6 tick` 锁向窗口。
+  横扫、掌击、正蹬、抓取和砸地的 smoothstep 根运动全部在锁向前结束；生产 Goal 对每个小位移先
+  查询完整目的碰撞箱及下沉 `0.62` 格的落脚探针，再调用原版 `MoverType.SELF` 移动；
 - 近战枚举同时定义持续时间、唯一命中 tick、伤害倍率、击退和竖直抛力。服务端在命中 tick 执行一次
   `7.6` 格有界实体查询，再用局部 forward/side 几何过滤实际形状、墙后实体、真实乘员与同队成员；
-  掌击最终只保留最近目标。客户端从同步的动作 ID/起始 tick 采样同一关键帧曲线，载荷手姿势最后
-  覆盖格斗层，确保踩踏期间抱着的实体仍贴合掌心；
+  掌击和正蹬最终只保留最近目标，抓取只接受前摇时锁定的主目标。抓取命中后写入独立 UUID、运行时
+  实体 ID 与手位槽，再用真实 passenger 驱动接住—抬起—后拉—抛出挂点；单 tick 掉血达到
+  `max(6, 最大生命×5%)` 会安全下车并让巨人硬直。客户端从同步动作 ID/起始 tick 采样同一关键帧曲线；
 - 协调器每次重建运输关系时按三个阶段处理，并用 `reserved` 集合保证成员唯一：① 每个 Giant 至多
   分配一名高智力普通骷髅；② 苦力怕优先、僵尸其次，按手位轮转给每个 Giant 至多两名载荷；③
   剩余成员才交给蜘蛛。全程只遍历单队上限 K，不做每只 Giant 的附近实体查询；
@@ -571,7 +579,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `giantZombieAttackDamage` | `14.0` | 巨人基础近战伤害，范围 `4～40` |
 | `giantZombieMovementSpeed` | `0.16` | 巨人基础移速，范围 `0.08～0.22` |
 | `giantZombiePayloadThrowing` | `true` | 头顶射手、双手载荷收取和错峰抛投开关 |
-| `giantZombieMeleeActions` | `true` | 带前摇、唯一命中帧和后摇的横扫、掌击、踩踏及双拳砸地；关闭后回落普通挥拳 |
+| `giantZombieMeleeActions` | `true` | 锁向/踏步、横扫、掌击、踩踏、正蹬、可打断抓取与双拳砸地；关闭后回落普通挥拳 |
 | `packSurrounding` | `true` | 小队系统开关 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
@@ -933,11 +941,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   固定左右 UUID 槽在一侧移除后不换手、远端候选不阻塞已装载手、低位接取后真实举到掌心、
   双载荷 12 tick 瞄准与 10 tick 以上错峰、离手挂点连续、苦力怕点燃、僵尸动量，以及
   掌心接取—肩部停顿—头顶登乘、排队替换保留源 IQ，以及格斗前摇不提前伤害、唯一命中帧、
-  双载荷手只能踩踏且不误伤乘员、IQ 10 面对正面人群选择双拳砸地；
+  双载荷手只能踩踏且不误伤乘员、IQ 10 面对正面人群选择双拳砸地，以及有限转向后锁死攻击方向、
+  高智力单体抓取—真实乘客—抛出、重击打断后安全下车并清理同步槽；
   全局 `spawnall` 另验证一次事务式生成 23 个战术根、28 个总实体与四个额外乘员；末影人另覆盖生产 Mixin Goal
    安装、持久智力名称、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
    随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、六个基础生物名、
-  六个复数分类与二十三个战术 literal 全量注册，并真实批量生成六类基础实体；当前共 111 项
+  六个复数分类与二十三个战术 literal 全量注册，并真实批量生成六类基础实体；当前共 116 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
