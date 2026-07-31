@@ -44,6 +44,16 @@ public final class GiantMeleeGeometry {
 					&& vertical >= -2.50
 					&& vertical <= 3.50;
 			}
+			case KICK -> forward >= 0.25
+				&& forward <= 4.80
+				&& Math.abs(side) <= 1.80
+				&& vertical >= -2.50
+				&& vertical <= 3.20;
+			case GRAB -> forward >= 0.40
+				&& forward <= 5.00
+				&& Math.abs(side) <= 1.65
+				&& vertical >= -2.00
+				&& vertical <= 4.50;
 		};
 	}
 }

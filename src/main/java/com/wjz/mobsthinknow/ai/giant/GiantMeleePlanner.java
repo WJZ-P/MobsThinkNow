@@ -57,7 +57,7 @@ public final class GiantMeleePlanner {
 	}
 
 	private static List<Candidate> candidates(final Context context, final double handRoll) {
-		List<Candidate> result = new ArrayList<>(4);
+		List<Candidate> result = new ArrayList<>(7);
 		double distance = context.horizontalDistance();
 		int enemies = context.nearbyEnemies();
 		int intelligence = GiantIntelligence.clamp(context.intelligence());
@@ -78,7 +78,26 @@ public final class GiantMeleePlanner {
 			add(result, stomp, score, previous);
 		}
 
+		if (distance <= 4.80 && (context.targetDefending() || distance <= 2.60)) {
+			GiantMeleeAction kick = chooseKick(previous, handRoll);
+			double defenseBonus = context.targetDefending() ? 92.0 : 0.0;
+			double score = 54.0 + defenseBonus + intelligence * 1.5 + Math.max(0.0, 2.60 - distance) * 14.0;
+			add(result, kick, score, previous);
+		}
+
 		GiantHand hand = chooseAvailableHand(context, handRoll);
+		if (hand != null
+			&& context.targetGrabbable()
+			&& enemies == 1
+			&& intelligence >= 7
+			&& distance <= 4.65) {
+			GiantMeleeAction grab = hand == GiantHand.RIGHT
+				? GiantMeleeAction.GRAB_RIGHT
+				: GiantMeleeAction.GRAB_LEFT;
+			double comboBonus = previous.family() == GiantMeleeAction.Family.SLAP ? 24.0 : 0.0;
+			double score = 68.0 + intelligence * 2.0 + (4.65 - distance) * 4.0 + comboBonus;
+			add(result, grab, score, previous);
+		}
 		if (hand != null && distance <= MAXIMUM_ACTION_DISTANCE) {
 			GiantMeleeAction sweep = hand == GiantHand.RIGHT
 				? GiantMeleeAction.SWEEP_RIGHT
@@ -116,6 +135,16 @@ public final class GiantMeleePlanner {
 		return clampUnit(roll) < 0.5 ? GiantMeleeAction.STOMP_RIGHT : GiantMeleeAction.STOMP_LEFT;
 	}
 
+	private static GiantMeleeAction chooseKick(final GiantMeleeAction previous, final double roll) {
+		if (previous == GiantMeleeAction.KICK_RIGHT) {
+			return GiantMeleeAction.KICK_LEFT;
+		}
+		if (previous == GiantMeleeAction.KICK_LEFT) {
+			return GiantMeleeAction.KICK_RIGHT;
+		}
+		return clampUnit(roll) < 0.5 ? GiantMeleeAction.KICK_RIGHT : GiantMeleeAction.KICK_LEFT;
+	}
+
 	private static GiantHand chooseAvailableHand(final Context context, final double roll) {
 		if (context.rightHandAvailable() && !context.leftHandAvailable()) {
 			return GiantHand.RIGHT;
@@ -146,8 +175,30 @@ public final class GiantMeleePlanner {
 		boolean rightHandAvailable,
 		boolean leftHandAvailable,
 		int intelligence,
+		boolean targetDefending,
+		boolean targetGrabbable,
 		GiantMeleeAction previousAction
 	) {
+		public Context(
+			final double horizontalDistance,
+			final int nearbyEnemies,
+			final boolean rightHandAvailable,
+			final boolean leftHandAvailable,
+			final int intelligence,
+			final GiantMeleeAction previousAction
+		) {
+			this(
+				horizontalDistance,
+				nearbyEnemies,
+				rightHandAvailable,
+				leftHandAvailable,
+				intelligence,
+				false,
+				false,
+				previousAction
+			);
+		}
+
 		public Context {
 			if (previousAction == null) {
 				previousAction = GiantMeleeAction.NONE;

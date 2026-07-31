@@ -29,4 +29,16 @@ class GiantMeleeGeometryTest {
 		assertTrue(GiantMeleeGeometry.contains(GiantMeleeAction.GROUND_SMASH, 3.25, 4.30, 0.0));
 		assertFalse(GiantMeleeGeometry.contains(GiantMeleeAction.GROUND_SMASH, -0.7, 0.0, 0.0));
 	}
+
+	@Test
+	void kickUsesAForwardLaneInsteadOfAFullFootRadius() {
+		assertTrue(GiantMeleeGeometry.contains(GiantMeleeAction.KICK_RIGHT, 3.5, 1.2, 0.5));
+		assertFalse(GiantMeleeGeometry.contains(GiantMeleeAction.KICK_RIGHT, 3.5, 2.0, 0.5));
+	}
+
+	@Test
+	void grabRequiresTheTelegraphedTargetToRemainNearTheChosenPalm() {
+		assertTrue(GiantMeleeGeometry.contains(GiantMeleeAction.GRAB_LEFT, 3.0, 1.2, 1.0));
+		assertFalse(GiantMeleeGeometry.contains(GiantMeleeAction.GRAB_LEFT, 3.0, 1.8, 1.0));
+	}
 }

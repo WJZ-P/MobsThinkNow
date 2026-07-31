@@ -6,6 +6,7 @@ import java.util.UUID;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import org.jspecify.annotations.Nullable;
@@ -196,6 +197,60 @@ public final class GiantTacticsState {
 		return Mth.clamp(elapsed / action.durationTicks(), 0.0F, 1.0F);
 	}
 
+	/** 在调用 startRiding 前预留抓取槽，使 GiantMixin 能识别这名临时乘客。 */
+	public static void beginGrapple(final Giant giant, final GiantHand hand, final LivingEntity target) {
+		GiantTacticsAccess access = access(giant);
+		access.mobsthinknow$setGrappledTargetUuid(target.getUUID());
+		access.mobsthinknow$setGrappledTargetEntityId(target.getId());
+		access.mobsthinknow$setGrappleHand(hand);
+	}
+
+	public static void clearGrapple(final Giant giant) {
+		GiantTacticsAccess access = access(giant);
+		access.mobsthinknow$setGrappledTargetUuid(null);
+		access.mobsthinknow$setGrappledTargetEntityId(0);
+		access.mobsthinknow$setGrappleHand(null);
+	}
+
+	public static @Nullable LivingEntity grappledTarget(final Giant giant) {
+		GiantTacticsAccess access = access(giant);
+		int entityId = access.mobsthinknow$getGrappledTargetEntityId();
+		Entity byId = entityId == 0 ? null : giant.level().getEntity(entityId);
+		if (matchesGrappledTarget(access, byId)) {
+			return (LivingEntity)byId;
+		}
+		if (giant.level() instanceof ServerLevel level) {
+			UUID uuid = access.mobsthinknow$getGrappledTargetUuid();
+			Entity byUuid = uuid == null ? null : level.getEntity(uuid);
+			if (matchesGrappledTarget(access, byUuid)) {
+				access.mobsthinknow$setGrappledTargetEntityId(byUuid.getId());
+				return (LivingEntity)byUuid;
+			}
+		}
+		return null;
+	}
+
+	public static @Nullable GiantHand grappleHand(final Giant giant) {
+		return access(giant).mobsthinknow$getGrappleHand();
+	}
+
+	public static boolean hasGrappleReservation(final Giant giant) {
+		GiantTacticsAccess access = access(giant);
+		return access.mobsthinknow$getGrappledTargetUuid() != null
+			|| access.mobsthinknow$getGrappledTargetEntityId() != 0;
+	}
+
+	public static boolean isGrappledTarget(final Giant giant, final Entity entity) {
+		if (entity == null) {
+			return false;
+		}
+		GiantTacticsAccess access = access(giant);
+		UUID expected = access.mobsthinknow$getGrappledTargetUuid();
+		return (expected != null && expected.equals(entity.getUUID()))
+			|| (access.mobsthinknow$getGrappledTargetEntityId() != 0
+				&& access.mobsthinknow$getGrappledTargetEntityId() == entity.getId());
+	}
+
 	/**
 	 * 服务端真实性校验。固定槽优先；旧世界中尚无 UUID 的直接乘客按空闲手顺序迁移一次。
 	 */
@@ -229,7 +284,9 @@ public final class GiantTacticsState {
 		}
 
 		for (Entity passenger : giant.getPassengers()) {
-			if (!GiantPassengerLayout.isPayload(passenger) || assigned.contains(passenger)) {
+			if (!GiantPassengerLayout.isPayload(passenger)
+				|| isGrappledTarget(giant, passenger)
+				|| assigned.contains(passenger)) {
 				continue;
 			}
 			GiantHand free = firstUnreservedHand(giant);
@@ -248,6 +305,20 @@ public final class GiantTacticsState {
 				|| (boardingPhase != GiantBoardingPhase.CATCHING && rider.getVehicle() != giant))) {
 			clearBoarding(giant);
 		}
+
+		if (hasGrappleReservation(giant)) {
+			LivingEntity grappled = grappledTarget(giant);
+			boolean activeGrab = meleeAction(giant).family() == GiantMeleeAction.Family.GRAB;
+			if (grappled != null && grappled.isAlive() && activeGrab
+				&& grappled.getVehicle() == null && grappled.startRiding(giant, true, true)) {
+				giant.positionRider(grappled);
+			} else if (grappled == null || !grappled.isAlive() || grappled.getVehicle() != giant || !activeGrab) {
+				if (grappled != null && grappled.getVehicle() == giant) {
+					grappled.stopRiding();
+				}
+				clearGrapple(giant);
+			}
+		}
 	}
 
 	private static boolean isMatchingPayload(final @Nullable UUID expected, final @Nullable Entity entity) {
@@ -259,6 +330,14 @@ public final class GiantTacticsState {
 	private static boolean matchesBoarder(final GiantTacticsAccess access, final AbstractSkeleton skeleton) {
 		UUID expected = access.mobsthinknow$getBoardingRiderUuid();
 		return expected == null || expected.equals(skeleton.getUUID());
+	}
+
+	private static boolean matchesGrappledTarget(final GiantTacticsAccess access, final @Nullable Entity entity) {
+		if (!(entity instanceof LivingEntity)) {
+			return false;
+		}
+		UUID expected = access.mobsthinknow$getGrappledTargetUuid();
+		return expected == null || expected.equals(entity.getUUID());
 	}
 
 	private static int currentTick(final Giant giant) {

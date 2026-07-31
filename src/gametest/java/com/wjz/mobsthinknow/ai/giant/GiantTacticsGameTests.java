@@ -11,7 +11,9 @@ import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Giant;
@@ -19,7 +21,10 @@ import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -392,6 +397,8 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 		Villager target = helper.spawn(EntityType.VILLAGER, 7, 2, 4);
 		giant.setNoAi(true);
 		target.setNoAi(true);
+		giant.setYBodyRot(-90.0F);
+		giant.setYRot(-90.0F);
 		GiantIntelligence.set(giant, 10);
 		giant.setTarget(target);
 		float initialHealth = target.getHealth();
@@ -504,6 +511,282 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(
 			neutral.getHealth() == neutralHealth,
 			"The area attack damaged unrelated neutral livestock."
+		);
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 30, padding = 4)
+	public void meleeWindupTracksSlowlyThenLocksBeforeImpact(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		Villager target = helper.spawn(EntityType.VILLAGER, 7, 2, 4);
+		giant.setNoAi(true);
+		target.setNoAi(true);
+		giant.setYBodyRot(-90.0F);
+		giant.setYRot(-90.0F);
+		GiantIntelligence.set(giant, 10);
+		giant.setTarget(target);
+		GiantMeleeCombatGoal goal = new GiantMeleeCombatGoal(giant, 0.92);
+		helper.assertTrue(goal.canUse(), "Lock-window fixture did not activate Giant melee.");
+		goal.start();
+		goal.tick();
+		GiantMeleeAction action = goal.currentAction();
+		helper.assertTrue(action.isActive(), "Lock-window fixture selected no action.");
+		Vec3 initial = goal.currentAttackForward();
+
+		target.snapTo(giant.getX(), giant.getY(), giant.getZ() + 3.0, target.getYRot(), target.getXRot());
+		goal.tick();
+		Vec3 corrected = goal.currentAttackForward();
+		helper.assertTrue(
+			corrected.distanceTo(initial) > 0.05,
+			"The readable windup did not make its limited early correction."
+		);
+		while (goal.currentActionTicks() < action.aimLockTick()) {
+			goal.tick();
+		}
+		Vec3 locked = goal.currentAttackForward();
+		target.snapTo(giant.getX() - 3.0, giant.getY(), giant.getZ(), target.getYRot(), target.getXRot());
+		while (goal.currentActionTicks() < action.impactTick()) {
+			goal.tick();
+		}
+
+		helper.assertTrue(
+			goal.currentAttackForward().distanceTo(locked) < 1.0E-6,
+			"The Giant magnetically retargeted after its advertised lock frame."
+		);
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 30, padding = 4)
+	public void rootMotionAdvancesOnOpenGroundButStopsAtAFullHeightWall(final GameTestHelper helper) {
+		// air_assault_arena 本身是纯空气结构；显式铺地，避免动作前摇在巨人尚未落地时耗尽。
+		for (int x = 1; x <= 22; x++) {
+			for (int z = 1; z <= 7; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+			}
+		}
+		double wallX = helper.absolutePos(new BlockPos(17, 2, 4)).getX();
+		Giant openGiant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		Villager openTarget = helper.spawn(EntityType.VILLAGER, 10, 2, 4);
+		Giant blockedGiant = helper.spawn(EntityType.GIANT, 15, 2, 4);
+		Villager blockedTarget = helper.spawn(EntityType.VILLAGER, 21, 2, 4);
+		// 将巨人的前沿精确放到墙前 0.12 格；既不让夹具初始重叠，也确保 0.56 格踏步会触墙。
+		double blockedCenterX = wallX - blockedGiant.getBbWidth() * 0.5 - 0.12;
+		blockedGiant.snapTo(blockedCenterX, blockedGiant.getY(), blockedGiant.getZ(), -90.0F, 0.0F);
+		blockedTarget.snapTo(wallX + 4.0, blockedTarget.getY(), blockedGiant.getZ(), 90.0F, 0.0F);
+		for (Giant giant : List.of(openGiant, blockedGiant)) {
+			giant.setNoAi(true);
+			// 本用例直接驱动 Goal，不经过原版 GoalSelector；固定根运动所需的着地前置状态。
+			giant.setOnGround(true);
+			giant.setYBodyRot(-90.0F);
+			giant.setYRot(-90.0F);
+			GiantIntelligence.set(giant, 10);
+		}
+		openTarget.setNoAi(true);
+		blockedTarget.setNoAi(true);
+		openGiant.setTarget(openTarget);
+		blockedGiant.setTarget(blockedTarget);
+		GiantMeleeCombatGoal openGoal = new GiantMeleeCombatGoal(openGiant, 0.92);
+		GiantMeleeCombatGoal blockedGoal = new GiantMeleeCombatGoal(blockedGiant, 0.92);
+		helper.assertTrue(openGoal.canUse() && blockedGoal.canUse(), "Root-motion fixtures did not activate melee.");
+		openGoal.start();
+		blockedGoal.start();
+		openGoal.tick();
+		blockedGoal.tick();
+		GiantMeleeAction openAction = openGoal.currentAction();
+		GiantMeleeAction blockedAction = blockedGoal.currentAction();
+		helper.assertTrue(
+			GiantMeleeMotion.forwardStep(openAction, 2) > 0.0
+				&& GiantMeleeMotion.forwardStep(blockedAction, 2) > 0.0,
+			"The selected fixture actions had no designed root motion."
+		);
+		double openStartX = openGiant.getX();
+		double blockedStartX = blockedGiant.getX();
+		for (int y = 2; y <= 13; y++) {
+			for (int z = 1; z <= 7; z++) {
+				helper.setBlock(new BlockPos(17, y, z), Blocks.STONE);
+			}
+		}
+		helper.assertTrue(
+			blockedGiant.getBoundingBox().maxX < wallX,
+			"Blocked fixture began inside its collision wall."
+		);
+
+		helper.onEachTick(() -> {
+			openGiant.setOnGround(true);
+			blockedGiant.setOnGround(true);
+			openGoal.tick();
+			blockedGoal.tick();
+			if (openGoal.currentActionTicks() < openAction.aimLockTick()
+				|| blockedGoal.currentActionTicks() < blockedAction.aimLockTick()) {
+				return;
+			}
+			double openAdvance = openGiant.getX() - openStartX;
+			helper.assertTrue(
+				openAdvance > 0.35,
+				"Open-ground root motion never advanced the Giant: delta=" + openAdvance
+					+ ", grounded=" + openGiant.onGround()
+					+ ", action=" + openAction
+					+ ", tick=" + openGoal.currentActionTicks()
+			);
+			helper.assertTrue(
+				blockedGiant.getBoundingBox().maxX <= wallX + 1.0E-6,
+				"Collision-safe root motion crossed the full-height wall."
+			);
+			helper.assertTrue(
+				blockedGiant.getX() - blockedStartX < openGiant.getX() - openStartX,
+				"The wall did not shorten the blocked Giant's root motion."
+			);
+		helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 50, padding = 4)
+	public void highIntelligenceGiantGrabsLiftsAndThrowsSingleTarget(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		giant.setNoAi(true);
+		Player target = helper.makeMockPlayer(GameType.SURVIVAL);
+		Vec3 targetFeet = helper.absoluteVec(new Vec3(7.0, 2.0, 4.0));
+		target.snapTo(targetFeet.x, targetFeet.y, targetFeet.z, 90.0F, 0.0F);
+		helper.assertTrue(helper.getLevel().addFreshEntity(target), "Grab player fixture was not added.");
+		GiantIntelligence.set(giant, 10);
+		giant.setTarget(target);
+		long grabsBefore = SmartGiantMetrics.snapshot().targetsGrabbed();
+		long throwsBefore = SmartGiantMetrics.snapshot().grabThrowsCompleted();
+		GiantMeleeCombatGoal goal = new GiantMeleeCombatGoal(giant, 0.92);
+		helper.assertTrue(goal.canUse(), "Grab fixture did not activate Giant melee.");
+		goal.start();
+		goal.tick();
+		GiantMeleeAction action = goal.currentAction();
+		helper.assertTrue(action.family() == GiantMeleeAction.Family.GRAB, "IQ-10 Giant did not choose its single-target grab.");
+		boolean[] sawAttached = {false};
+		boolean[] sawLifted = {false};
+		boolean[] repairedExternalDismount = {false};
+
+		helper.onEachTick(() -> {
+			goal.tick();
+			if (target.getVehicle() == giant) {
+				sawAttached[0] = true;
+				if (!repairedExternalDismount[0]) {
+					target.stopRiding();
+					GiantTacticsState.reconcile(giant);
+					helper.assertTrue(
+						target.getVehicle() == giant,
+						"An active grab leaked when its passenger relation was externally removed."
+					);
+					repairedExternalDismount[0] = true;
+				}
+				giant.positionRider(target);
+				sawLifted[0] |= target.getY() - giant.getY() > 5.0;
+				helper.assertTrue(
+					GiantTacticsState.grappleHand(giant) == action.actionHand(),
+					"The grapple passenger was not assigned to the telegraphed hand."
+				);
+			}
+			if (goal.currentActionTicks() < action.releaseTick() || target.isPassenger()) {
+				return;
+			}
+			helper.assertTrue(sawAttached[0], "Grab impact did not attach the player to the selected palm.");
+			helper.assertTrue(sawLifted[0], "The attached player never rose from the catch point to the held palm.");
+			helper.assertTrue(repairedExternalDismount[0], "Grab reconciliation was never exercised.");
+			helper.assertTrue(
+				target.getDeltaMovement().dot(goal.currentAttackForward()) > 0.80,
+				"Released player did not receive the forward throw impulse."
+			);
+			SmartGiantMetrics.Snapshot metrics = SmartGiantMetrics.snapshot();
+			helper.assertTrue(
+				metrics.targetsGrabbed() >= grabsBefore + 1
+					&& metrics.grabThrowsCompleted() >= throwsBefore + 1,
+				"Grab diagnostics did not record the tested catch and completed throw."
+			);
+			target.discard();
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 30, padding = 4)
+	public void frontKickBreaksActiveGuardAndAppliesShieldCooldown(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		giant.setNoAi(true);
+		giant.setYBodyRot(-90.0F);
+		giant.setYRot(-90.0F);
+		GiantIntelligence.set(giant, 10);
+		Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+		Vec3 playerFeet = helper.absoluteVec(new Vec3(8.0, 2.0, 4.0));
+		player.snapTo(playerFeet.x, playerFeet.y, playerFeet.z, 90.0F, 0.0F);
+		ItemStack shield = new ItemStack(Items.SHIELD);
+		player.setItemInHand(InteractionHand.OFF_HAND, shield);
+		helper.assertTrue(helper.getLevel().addFreshEntity(player), "Shield-kick target fixture was not added.");
+		player.startUsingItem(InteractionHand.OFF_HAND);
+		giant.setTarget(player);
+		GiantMeleeCombatGoal goal = new GiantMeleeCombatGoal(giant, 0.92);
+		boolean[] started = {false};
+		GiantMeleeAction[] selected = {GiantMeleeAction.NONE};
+
+		helper.onEachTick(() -> {
+			if (!started[0]) {
+				if (!player.isUsingItem()) {
+					player.startUsingItem(InteractionHand.OFF_HAND);
+				}
+				if (!player.isBlocking()) {
+					return;
+				}
+				helper.assertTrue(goal.canUse(), "Shield-kick fixture did not activate Giant melee.");
+				goal.start();
+				goal.tick();
+				selected[0] = goal.currentAction();
+				helper.assertTrue(
+					selected[0].family() == GiantMeleeAction.Family.KICK,
+					"Blocking target did not provoke a front kick."
+				);
+				started[0] = true;
+				return;
+			}
+			goal.tick();
+			if (goal.currentActionTicks() < selected[0].impactTick()) {
+				return;
+			}
+			helper.assertTrue(!player.isUsingItem(), "Front kick left the target continuously guarding.");
+			helper.assertTrue(
+				player.getCooldowns().isOnCooldown(player.getOffhandItem()),
+				"Front kick did not apply the configured short shield cooldown."
+			);
+			player.discard();
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 40, padding = 4)
+	public void heavyDamageInterruptsGrabAndSafelyDropsPassenger(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		Villager target = helper.spawn(EntityType.VILLAGER, 7, 2, 4);
+		giant.setNoAi(true);
+		target.setNoAi(true);
+		GiantIntelligence.set(giant, 10);
+		giant.setTarget(target);
+		long interruptsBefore = SmartGiantMetrics.snapshot().meleeInterrupts();
+		GiantMeleeCombatGoal goal = new GiantMeleeCombatGoal(giant, 0.92);
+		helper.assertTrue(goal.canUse(), "Interrupt fixture did not activate Giant melee.");
+		goal.start();
+		goal.tick();
+		GiantMeleeAction action = goal.currentAction();
+		helper.assertTrue(action.family() == GiantMeleeAction.Family.GRAB, "Interrupt fixture did not select a grab.");
+		while (goal.currentActionTicks() < action.impactTick()) {
+			goal.tick();
+		}
+		helper.assertTrue(target.getVehicle() == giant, "Interrupt fixture never reached the held phase.");
+
+		giant.setHealth(giant.getHealth() - 9.0F);
+		goal.tick();
+
+		helper.assertTrue(goal.currentAction() == GiantMeleeAction.NONE, "Heavy damage did not cancel the grab action.");
+		helper.assertTrue(!target.isPassenger(), "Interrupted grab kept the target trapped as a passenger.");
+		helper.assertTrue(
+			!GiantTacticsState.hasGrappleReservation(giant),
+			"Interrupted grab leaked its synchronized passenger reservation."
+		);
+		helper.assertTrue(
+			SmartGiantMetrics.snapshot().meleeInterrupts() == interruptsBefore + 1,
+			"Interrupt diagnostics did not record the cancelled grab."
 		);
 		helper.succeed();
 	}

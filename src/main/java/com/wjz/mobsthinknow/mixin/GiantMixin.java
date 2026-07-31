@@ -52,7 +52,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** 为原版无 Goal 的 Giant 补齐重装战斗、混编小队、头顶射手和双手投送能力。 */
+/** 为原版无 Goal 的 Giant 补齐重装格斗、混编小队、头顶射手、双手投送与瞬时抓取挂点。 */
 @Mixin(Giant.class)
 public abstract class GiantMixin extends Monster implements GiantIntelligenceAccess, GiantTacticsAccess {
 	@Unique
@@ -95,6 +95,12 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 	private static final EntityDataAccessor<Integer> mobsthinknow$MELEE_ACTION_START =
 		SynchedEntityData.defineId(Giant.class, EntityDataSerializers.INT);
 	@Unique
+	private static final EntityDataAccessor<Integer> mobsthinknow$GRAPPLED_TARGET_ID =
+		SynchedEntityData.defineId(Giant.class, EntityDataSerializers.INT);
+	@Unique
+	private static final EntityDataAccessor<Byte> mobsthinknow$GRAPPLE_HAND =
+		SynchedEntityData.defineId(Giant.class, EntityDataSerializers.BYTE);
+	@Unique
 	private int mobsthinknow$giantIntelligence;
 	@Unique
 	private @Nullable UUID mobsthinknow$rightPayloadUuid;
@@ -102,6 +108,8 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 	private @Nullable UUID mobsthinknow$leftPayloadUuid;
 	@Unique
 	private @Nullable UUID mobsthinknow$boardingRiderUuid;
+	@Unique
+	private @Nullable UUID mobsthinknow$grappledTargetUuid;
 
 	protected GiantMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
@@ -121,6 +129,8 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 		builder.define(mobsthinknow$BOARDING_PHASE_START, 0);
 		builder.define(mobsthinknow$MELEE_ACTION, (byte)GiantMeleeAction.NONE.ordinal());
 		builder.define(mobsthinknow$MELEE_ACTION_START, 0);
+		builder.define(mobsthinknow$GRAPPLED_TARGET_ID, 0);
+		builder.define(mobsthinknow$GRAPPLE_HAND, (byte)0);
 	}
 
 	@Inject(method = "<init>", at = @At("TAIL"))
@@ -183,6 +193,9 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 		this.entityData.set(mobsthinknow$BOARDING_PHASE, (byte)GiantBoardingPhase.NONE.ordinal());
 		this.entityData.set(mobsthinknow$MELEE_ACTION, (byte)GiantMeleeAction.NONE.ordinal());
 		this.entityData.set(mobsthinknow$MELEE_ACTION_START, 0);
+		this.mobsthinknow$grappledTargetUuid = null;
+		this.entityData.set(mobsthinknow$GRAPPLED_TARGET_ID, 0);
+		this.entityData.set(mobsthinknow$GRAPPLE_HAND, (byte)0);
 		Giant giant = (Giant)(Object)this;
 		GiantZombieProfile.applyAttributes(giant, ConfigManager.get());
 		SquadTheatrics.stripLeftoverRoleTag(giant);
@@ -200,6 +213,9 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 	@Override
 	protected boolean canAddPassenger(final Entity passenger) {
 		Giant giant = (Giant)(Object)this;
+		if (GiantTacticsState.isGrappledTarget(giant, passenger)) {
+			return true;
+		}
 		if (GiantPassengerLayout.isHeadRider(passenger)) {
 			return GiantPassengerLayout.canAcceptHeadRider(giant, passenger);
 		}
@@ -213,6 +229,10 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 	@Override
 	public Vec3 getPassengerRidingPosition(final Entity passenger) {
 		Giant giant = (Giant)(Object)this;
+		GiantHand grappleHand = GiantTacticsState.grappleHand(giant);
+		if (grappleHand != null && GiantTacticsState.isGrappledTarget(giant, passenger)) {
+			return GiantPassengerLayout.grappleRidingPosition(giant, passenger, grappleHand);
+		}
 		return GiantPassengerLayout.isManagedPassenger(passenger)
 			? GiantPassengerLayout.ridingPosition(giant, passenger)
 			: super.getPassengerRidingPosition(passenger);
@@ -222,7 +242,9 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 	@Override
 	public @Nullable LivingEntity getControllingPassenger() {
 		Entity first = this.getFirstPassenger();
-		return first != null && GiantPassengerLayout.isManagedPassenger(first)
+		Giant giant = (Giant)(Object)this;
+		return first != null && (GiantPassengerLayout.isManagedPassenger(first)
+			|| GiantTacticsState.isGrappledTarget(giant, first))
 			? null
 			: super.getControllingPassenger();
 	}
@@ -375,6 +397,37 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 	@Override
 	public void mobsthinknow$setMeleeActionStartTick(final int tick) {
 		this.entityData.set(mobsthinknow$MELEE_ACTION_START, tick);
+	}
+
+	@Override
+	public @Nullable UUID mobsthinknow$getGrappledTargetUuid() {
+		return this.mobsthinknow$grappledTargetUuid;
+	}
+
+	@Override
+	public void mobsthinknow$setGrappledTargetUuid(final @Nullable UUID uuid) {
+		this.mobsthinknow$grappledTargetUuid = uuid;
+	}
+
+	@Override
+	public int mobsthinknow$getGrappledTargetEntityId() {
+		return this.entityData.get(mobsthinknow$GRAPPLED_TARGET_ID);
+	}
+
+	@Override
+	public void mobsthinknow$setGrappledTargetEntityId(final int entityId) {
+		this.entityData.set(mobsthinknow$GRAPPLED_TARGET_ID, entityId);
+	}
+
+	@Override
+	public @Nullable GiantHand mobsthinknow$getGrappleHand() {
+		int encoded = Byte.toUnsignedInt(this.entityData.get(mobsthinknow$GRAPPLE_HAND));
+		return encoded == 0 ? null : GiantHand.fromIndex(encoded - 1);
+	}
+
+	@Override
+	public void mobsthinknow$setGrappleHand(final @Nullable GiantHand hand) {
+		this.entityData.set(mobsthinknow$GRAPPLE_HAND, hand == null ? (byte)0 : (byte)(hand.index() + 1));
 	}
 
 	@Unique

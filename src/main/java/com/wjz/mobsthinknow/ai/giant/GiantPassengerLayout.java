@@ -13,7 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 巨人三个战术挂点的唯一布局定义：头顶一名射手，固定左右手各一名投掷载荷。
+ * 巨人挂点的唯一布局定义：头顶一名射手，固定左右手各一名投掷载荷，以及格斗期间的瞬时抓取位。
  *
  * <p>左右手优先读取同步的实体槽位，而不是 passenger list 下标。旧存档尚未完成迁移时，
  * 才会把未绑定的真实乘客临时补入空手；服务端下一次 reconcile 会将其写回固定 UUID 槽。</p>
@@ -34,7 +34,7 @@ public final class GiantPassengerLayout {
 
 	public static @Nullable AbstractSkeleton headRider(final Giant giant) {
 		for (Entity passenger : giant.getPassengers()) {
-			if (isHeadRider(passenger)) {
+			if (isHeadRider(passenger) && !GiantTacticsState.isGrappledTarget(giant, passenger)) {
 				return (AbstractSkeleton)passenger;
 			}
 		}
@@ -57,7 +57,9 @@ public final class GiantPassengerLayout {
 
 		// 兼容还没跑到服务端 reconcile 的旧存档以及测试直接 startRiding 的瞬间。
 		for (Entity passenger : giant.getPassengers()) {
-			if (!isPayload(passenger) || assignedEntities.contains(passenger)) {
+			if (!isPayload(passenger)
+				|| GiantTacticsState.isGrappledTarget(giant, passenger)
+				|| assignedEntities.contains(passenger)) {
 				continue;
 			}
 			GiantHand free = firstFree(occupied);
@@ -120,6 +122,31 @@ public final class GiantPassengerLayout {
 		 * Zombie 和 Creeper 的脚底最终才会真正落在同一个掌心高度。
 		 */
 		return handPosition(giant, payload.hand()).add(passenger.getVehicleAttachmentPoint(giant));
+	}
+
+	/** 抓取目标从低位接触点抬到掌心，再沿锁定方向送到抛出点。 */
+	public static Vec3 grappleRidingPosition(
+		final Giant giant,
+		final Entity passenger,
+		final GiantHand hand
+	) {
+		double side = hand == GiantHand.RIGHT ? -2.35 : 2.35;
+		Vec3 caught = new Vec3(side, 2.75, 2.85);
+		Vec3 held = new Vec3(side * 1.12, 5.55, 2.10);
+		Vec3 drawn = held.add(0.0, 0.35, -0.72);
+		Vec3 release = new Vec3(side * 0.72, 5.15, 3.05);
+		double progress = GiantTacticsState.meleeProgress(giant, 0.0F);
+		Vec3 local;
+		if (progress < 0.30) {
+			local = caught;
+		} else if (progress < 0.50) {
+			local = lerp(caught, held, smooth((progress - 0.30) / 0.20));
+		} else if (progress < 0.59) {
+			local = lerp(held, drawn, smooth((progress - 0.50) / 0.09));
+		} else {
+			local = lerp(drawn, release, smooth((progress - 0.59) / 0.08));
+		}
+		return localToWorld(giant, local).add(passenger.getVehicleAttachmentPoint(giant));
 	}
 
 	/**

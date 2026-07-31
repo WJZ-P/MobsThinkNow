@@ -2,7 +2,7 @@ package com.wjz.mobsthinknow.ai.giant;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-/** 巨人生成、乘员、双手投送和近身动作的只读诊断计数器。 */
+/** 巨人生成、乘员、双手投送、近身动作和抓取打断的只读诊断计数器。 */
 public final class SmartGiantMetrics {
 	private static final AtomicLong INSTALLED_GOALS = new AtomicLong();
 	private static final AtomicLong ZOMBIES_CONVERTED = new AtomicLong();
@@ -13,6 +13,9 @@ public final class SmartGiantMetrics {
 	private static final AtomicLong MELEE_ACTIONS_STARTED = new AtomicLong();
 	private static final AtomicLong MELEE_IMPACTS = new AtomicLong();
 	private static final AtomicLong MELEE_VICTIMS_HIT = new AtomicLong();
+	private static final AtomicLong TARGETS_GRABBED = new AtomicLong();
+	private static final AtomicLong GRAB_THROWS_COMPLETED = new AtomicLong();
+	private static final AtomicLong MELEE_INTERRUPTS = new AtomicLong();
 
 	private SmartGiantMetrics() {
 	}
@@ -50,6 +53,18 @@ public final class SmartGiantMetrics {
 		MELEE_VICTIMS_HIT.addAndGet(Math.max(0, victimsHit));
 	}
 
+	public static void grabbedTarget() {
+		TARGETS_GRABBED.incrementAndGet();
+	}
+
+	public static void grabThrowCompleted() {
+		GRAB_THROWS_COMPLETED.incrementAndGet();
+	}
+
+	public static void meleeInterrupted() {
+		MELEE_INTERRUPTS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -60,7 +75,10 @@ public final class SmartGiantMetrics {
 			ZOMBIES_THROWN.get(),
 			MELEE_ACTIONS_STARTED.get(),
 			MELEE_IMPACTS.get(),
-			MELEE_VICTIMS_HIT.get()
+			MELEE_VICTIMS_HIT.get(),
+			TARGETS_GRABBED.get(),
+			GRAB_THROWS_COMPLETED.get(),
+			MELEE_INTERRUPTS.get()
 		);
 	}
 
@@ -73,7 +91,10 @@ public final class SmartGiantMetrics {
 		long zombiesThrown,
 		long meleeActionsStarted,
 		long meleeImpacts,
-		long meleeVictimsHit
+		long meleeVictimsHit,
+		long targetsGrabbed,
+		long grabThrowsCompleted,
+		long meleeInterrupts
 	) {
 	}
 }

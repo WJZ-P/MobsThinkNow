@@ -205,7 +205,7 @@
 	"mobsthinknow.config.giant_zombie_payload_throwing": "头顶射手与双手投送",
 	"mobsthinknow.config.giant_zombie_payload_throwing.tooltip": "小队骷髅可以登上巨人头顶。巨人最多预约两只苦力怕或僵尸，分别抱在左右手，并按错峰弹道投向目标。",
 	"mobsthinknow.config.giant_zombie_melee_actions": "巨人可读近身格斗动作",
-	"mobsthinknow.config.giant_zombie_melee_actions.tooltip": "以智能横扫、掌击、踩踏和双拳砸地替代原版瞬时挥拳。每个动作都有清晰前摇、唯一命中帧、后摇、声音、粒子和手臂占用规则。",
+	"mobsthinknow.config.giant_zombie_melee_actions.tooltip": "加入有限前摇追踪、命中前锁向、碰撞安全踏步、横扫、掌击、踩踏、破盾正蹬、抓取投掷和双拳砸地。抓取期间受到重击会安全放下乘客并进入硬直。",
 	"mobsthinknow.command.spawn_all_giants.success": "已生成 %s 套巨人攻城平台预设（共 %s 个实体）。",
 	"mobsthinknow.command.spawn_all_giants.no_space": "附近没有满足巨人攻城平台十二格净空要求的安全地面。",
 	"mobsthinknow.command.spawn_all_giants.create_failed": "准备巨人、头顶射手和两只手部载荷时失败，未加入任何实体。",

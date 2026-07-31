@@ -54,4 +54,31 @@ class GiantMeleeAnimationTest {
 			assertEquals(0.0F, end.leftLeg().weight(), 1.0E-6F, action.name());
 		}
 	}
+
+	@Test
+	void kickDrawsTheFootBackThenSnapsItForward() {
+		GiantMeleeAnimation.BodyPose windup =
+			GiantMeleeAnimation.sample(GiantMeleeAction.KICK_RIGHT, 0.36F);
+		GiantMeleeAnimation.BodyPose impact =
+			GiantMeleeAnimation.sample(GiantMeleeAction.KICK_RIGHT, 0.54F);
+
+		assertTrue(windup.rightLeg().xRot() > 0.45F);
+		assertTrue(impact.rightLeg().xRot() < -1.15F);
+		assertTrue(impact.leftArm().weight() > 0.60F);
+	}
+
+	@Test
+	void grabReachesLiftsAndThrowsWithOnlyTheChosenArm() {
+		GiantMeleeAnimation.BodyPose reach =
+			GiantMeleeAnimation.sample(GiantMeleeAction.GRAB_LEFT, 0.34F);
+		GiantMeleeAnimation.BodyPose hold =
+			GiantMeleeAnimation.sample(GiantMeleeAction.GRAB_LEFT, 0.54F);
+		GiantMeleeAnimation.BodyPose throwing =
+			GiantMeleeAnimation.sample(GiantMeleeAction.GRAB_LEFT, 0.68F);
+
+		assertEquals(0.0F, reach.rightArm().weight(), 1.0E-6F);
+		assertTrue(reach.leftArm().xRot() < -1.0F);
+		assertTrue(hold.leftArm().weight() > 0.95F);
+		assertTrue(throwing.leftArm().xRot() < -1.25F);
+	}
 }
