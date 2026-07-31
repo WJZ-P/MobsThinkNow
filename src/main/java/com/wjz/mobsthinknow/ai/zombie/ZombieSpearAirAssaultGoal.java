@@ -456,6 +456,21 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 
 		long now = this.now();
 		this.tickOrbitRocketPlan(now);
+		/*
+		 * 公共烟花冷却在极端航线中可能一直压到硬截止的最后一拍。若本轮仍一枚都没发，
+		 * 提前一拍开放最低预算并保留这一帧 ORBITING：玩家能看见最后一次助推，监控端也不会
+		 * 在同一服务端 tick 的“发射后立刻切 ARMING”里漏掉这次事件。下一拍仍严格执行硬截止。
+		 */
+		if (now >= this.orbitDeadline - 1L
+			&& this.orbitRocketsLaunched == 0
+			&& this.availableRocketCount() > 0) {
+			this.nextRocketAt = Math.min(this.nextRocketAt, now);
+			this.nextOrbitRocketAt = Math.min(this.nextOrbitRocketAt, now);
+			this.tickOrbitRocketPlan(now);
+			if (this.orbitRocketsLaunched > 0) {
+				return;
+			}
+		}
 		boolean hasLineOfSight = this.zombie.getSensing().hasLineOfSight(this.target);
 		if (shouldBeginArming(
 			now,
