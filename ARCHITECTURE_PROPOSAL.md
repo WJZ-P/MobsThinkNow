@@ -102,10 +102,11 @@ flowchart TD
     GiantConvert --> GiantMixin["GiantMixin / 完整 Goal + IQ"]
     GiantMixin --> GiantHeartbeat["五物种混编心跳"]
     GiantHeartbeat --> GiantAllocation["头顶射手 + 两只手部载荷预约"]
-    GiantAllocation --> RiderGoal["GiantRiderBoardingGoal / 真实跳跃登顶"]
-    GiantAllocation --> ThrowGoal["GiantPayloadThrowGoal / 双手错峰抛投"]
-    ThrowGoal --> GiantPassenger["真实 passenger / 独立三挂点"]
-    GiantPassenger --> GiantPose["client RenderState / 单侧手臂托举"]
+    GiantAllocation --> TacticsState["GiantTacticsState / 固定左右 UUID 槽"]
+    TacticsState --> RiderGoal["掌心接取 → 肩部 → 头顶"]
+    TacticsState --> ThrowGoal["两条独立手部流水线 / 错峰离手"]
+    ThrowGoal --> GiantPassenger["真实 passenger / 动态掌心挂点"]
+    GiantPassenger --> GiantPose["同步阶段 + 分段关键帧动画"]
 ```
 
 主要职责：
@@ -145,9 +146,11 @@ com.wjz.mobsthinknow
 │  ├─ GiantZombieSpawnConversion       EntityLoad 排队与维度 tick 末事务替换
 │  ├─ GiantZombieProfile               难度化出生率与重型属性边界
 │  ├─ GiantIntelligence                难度化出生区间、持久智力与名称标记
-│  ├─ GiantPassengerLayout             头顶、右手、左手三个真实乘客挂点
-│  ├─ GiantRiderBoardingGoal           小队射手的跳跃登顶状态机
-│  ├─ GiantPayloadThrowGoal            双手收取、瞄准、错峰抛投状态机
+│  ├─ GiantTacticsState                固定左右 UUID、同步阶段与旧存档迁移
+│  ├─ GiantPassengerLayout             动态掌心及掌心—肩部—头顶挂点
+│  ├─ GiantRiderBoardingGoal           小队射手的分阶段接取登顶状态机
+│  ├─ GiantPayloadThrowGoal            两手独立收取、瞄准、错峰抛投状态机
+│  ├─ GiantArmAnimation                接取、托举、蓄力、投掷与恢复关键帧
 │  ├─ GiantThrowMath                   有限提前量、重力补偿与速度硬上限
 │  └─ SmartGiantMetrics                替换、登乘、拾取与抛投诊断指标
 ├─ ai/zombie
@@ -312,19 +315,25 @@ com.wjz.mobsthinknow
 - 协调器每次重建运输关系时按三个阶段处理，并用 `reserved` 集合保证成员唯一：① 每个 Giant 至多
   分配一名高智力普通骷髅；② 苦力怕优先、僵尸其次，按手位轮转给每个 Giant 至多两名载荷；③
   剩余成员才交给蜘蛛。全程只遍历单队上限 K，不做每只 Giant 的附近实体查询；
-- `GiantRiderBoardingGoal` 只读取反向预约，在正式交战后让骷髅寻路、跳起、有限转向并调用强制
-  `startRiding`。头顶挂点补偿 Skeleton 原版 0.7 格 VEHICLE attachment，使脚底恰落在 Giant 的
-  12 格实体顶面；登顶后 Goal 结束，弓/弩状态机继续运行；
-- `GiantPayloadThrowGoal` 只读取协调器给出的至多两名候选。进入五格接取范围后依序建立真实乘客，
-  持有苦力怕时持续 `setSwellDir(-1)`；装满、候选耗尽或 90 tick 超时后进入瞄准。至少瞄准 12 tick，
-  再从列表末端开始以 10～16 tick 间隔抛出，保证第一只手的实体不会因列表压缩突然换边；
+- `GiantRiderBoardingGoal` 只读取反向预约，在正式交战后让骷髅寻路、跳起并锁定登乘 UUID。巨人
+  先用放低的右掌接住射手，再以 `LIFTING → SHOULDER → TO_HEAD` 三段挂点平滑举到 12 格顶面；
+  Goal 在整个乘客阶段持续运行，完成后才把弓/弩控制权交还射手。期间右手保留给登乘，左手流水线
+  仍可工作；
+- `GiantTacticsState` 为左右手分别维护持久 UUID、同步实体 ID、阶段和阶段起始 tick；服务端每 tick
+  对照真实乘客关系修复死亡、外部下车和旧存档 passenger-order 数据。固定槽使任一侧消失后另一侧
+  仍留在原手，不再依赖会压缩的乘客列表下标；
+- `GiantPayloadThrowGoal` 只读取协调器给出的至多两名候选，但两只手分别运行
+  `RENDEZVOUS → PICKUP → HOLDING → AIMING → THROWING → COOLDOWN`。任一侧进入五格即可接取，
+  无需等待另一侧或 90 tick 全局超时；各自至少瞄准 12 tick，真正离手至少错开 10 tick，每侧恢复
+  随机 10～16 tick；
 - `GiantThrowMath` 对目标水平速度做有限提前，按 8～22 tick 预计飞行时间补偿重力，水平速度封顶
   `1.30`、竖直速度限制 `0.28～0.96`。苦力怕离手才调用 `ignite()`；僵尸只继承目标和动量。
   目标失效或热关闭时仍在手中的载荷安全下车；已抛实体 UUID 在该 Goal 实例内去重，避免被同一
   巨人立即重新捡回；
 - Giant 的 `getControllingPassenger` 对三个受管乘员固定返回空，载荷/射手不会夺走 MOVE/LOOK。
-  客户端 `GiantMobRendererMixin` 把真实乘员数投影到 `ZombieRenderState` 两位布尔值，
-  `AbstractZombieModelMixin` 只修改装载侧手臂；实体本身继续使用各自原版渲染器。
+  客户端 `GiantMobRendererMixin` 把每手阶段、进度、载荷存在性及登乘阶段投影到
+  `ZombieRenderState`；`GiantArmAnimation` 分段缓动接取、托举、蓄力、单手投掷和恢复关键帧，
+  `AbstractZombieModelMixin` 与动态掌心挂点共同消费同一状态。实体本身继续使用各自原版渲染器。
 
 ## 2.6 工程兵技能生命周期
 
@@ -907,11 +916,13 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   的四种预设、批量蜘蛛苦力怕投送组和两个全预设快捷入口，并以跨真实 tick 的端到端用例验证
   五格会合、骑乘运输和进入攻击距离后才起爆，并验证蜘蛛让骷髅真实跳跃登乘、五物种共享队伍及
   苦力怕成为最高智力首领；巨人另覆盖生产 Mixin Goal、重型属性、头顶/双手三挂点、乘员不夺控制、
-  双载荷 12 tick 瞄准与 10 tick 以上错峰、苦力怕点燃、僵尸动量，以及排队替换保留源 IQ；
+  固定左右 UUID 槽在一侧移除后不换手、远端候选不阻塞已装载手、低位接取后真实举到掌心、
+  双载荷 12 tick 瞄准与 10 tick 以上错峰、离手挂点连续、苦力怕点燃、僵尸动量，以及
+  掌心接取—肩部停顿—头顶登乘和排队替换保留源 IQ；
   全局 `spawnall` 另验证一次事务式生成 23 个战术根、28 个总实体与四个额外乘员；末影人另覆盖生产 Mixin Goal
    安装、持久智力名称、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
    随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、六个基础生物名、
-  六个复数分类与二十三个战术 literal 全量注册，并真实批量生成六类基础实体；当前共 104 项
+  六个复数分类与二十三个战术 literal 全量注册，并真实批量生成六类基础实体；当前共 108 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
