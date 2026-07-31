@@ -88,11 +88,14 @@ public final class GiantPassengerLayout {
 		if (payload == null) {
 			return giant.position();
 		}
-		return handPosition(giant, payload.handIndex());
+		// positionRider 随后会减去乘员自己的 VEHICLE attachment。僵尸该偏移为 0.7 格、
+		// 苦力怕则不同；在这里先逐实体加回，最终两类载荷的脚底才会真正落在同一掌心高度。
+		return handPosition(giant, payload.handIndex()).add(passenger.getVehicleAttachmentPoint(giant));
 	}
 
 	/**
-	 * 左右手挂点随巨人的身体朝向旋转。索引 0 固定为巨人右手，索引 1 固定为左手。
+	 * 左右手载荷的脚底位置随巨人的身体朝向旋转。索引 0 固定为巨人右手，索引 1 固定为左手；
+	 * 抛投也从同一点离手，因此登乘和释放之间不会再发生额外的纵向跳变。
 	 */
 	public static Vec3 handPosition(final Giant giant, final int handIndex) {
 		double side = handIndex == 0 ? -HAND_SIDE_OFFSET : HAND_SIDE_OFFSET;

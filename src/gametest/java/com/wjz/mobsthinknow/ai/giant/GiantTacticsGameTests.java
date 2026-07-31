@@ -74,6 +74,10 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 		Vec3 left = zombie.position().subtract(giant.position());
 		helper.assertTrue(right.x < -2.4 && left.x > 2.4, "Dual payloads did not occupy opposite hands.");
 		helper.assertTrue(right.z > 1.8 && left.z > 1.8, "Hand payloads were not visibly held forward.");
+		helper.assertTrue(
+			Math.abs(right.y - left.y) < 0.01 && right.y > 5.70,
+			"Different vehicle attachment offsets left a hand payload hanging below the palm."
+		);
 		helper.assertTrue(giant.getControllingPassenger() == null, "A tactical passenger incorrectly drove the Giant.");
 		helper.succeed();
 	}
@@ -88,6 +92,10 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 		zombie.setNoAi(true);
 		helper.assertTrue(creeper.startRiding(giant, true, true), "Creeper payload could not mount.");
 		helper.assertTrue(zombie.startRiding(giant, true, true), "Zombie payload could not mount.");
+		giant.positionRider(creeper);
+		giant.positionRider(zombie);
+		double creeperHeldY = creeper.getY();
+		double zombieHeldY = zombie.getY();
 
 		Player player = helper.makeMockPlayer(GameType.SURVIVAL);
 		Vec3 playerFeet = helper.absoluteVec(new Vec3(22.5, 2.0, 4.5));
@@ -113,6 +121,10 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(secondRelease - firstRelease >= 10, "Both hands released in the same unreadable instant.");
 		helper.assertTrue(creeper.isIgnited() && !creeper.isPassenger(), "Thrown creeper was not released and ignited.");
 		helper.assertTrue(!zombie.isPassenger(), "Thrown zombie remained attached to the Giant.");
+		helper.assertTrue(
+			Math.abs(creeper.getY() - creeperHeldY) < 0.01 && Math.abs(zombie.getY() - zombieHeldY) < 0.01,
+			"A payload jumped vertically while changing from hand passenger to projectile."
+		);
 		Vec3 toward = player.position().subtract(giant.position()).multiply(1.0, 0.0, 1.0).normalize();
 		helper.assertTrue(creeper.getDeltaMovement().dot(toward) > 0.45, "Creeper throw did not travel toward the player.");
 		helper.assertTrue(zombie.getDeltaMovement().dot(toward) > 0.45, "Zombie throw did not travel toward the player.");
