@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.monster.Creeper;
@@ -114,6 +115,10 @@ public final class SpiderShowcaseSpawner {
 		spider.setYBodyRot(spider.getYRot());
 		spider.setYHeadRot(spider.getYRot());
 		spider.finalizeSpawn(level, level.getCurrentDifficultyAt(feet), EntitySpawnReason.COMMAND, null);
+		// 原版 finalizeSpawn 有 1% 概率偷偷附带骷髅骑手；展示预设必须保持确定，避免挤占苦力怕载荷位。
+		for (Entity incidentalPassenger : List.copyOf(spider.getPassengers())) {
+			incidentalPassenger.discard();
+		}
 		spider.setPersistenceRequired();
 		spider.setHealth(spider.getMaxHealth());
 		spider.setCustomName(archetype.displayName());
