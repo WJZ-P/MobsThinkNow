@@ -46,6 +46,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(14.0, config.giantZombieAttackDamage);
 		assertEquals(0.16, config.giantZombieMovementSpeed);
 		assertEquals(true, config.giantZombiePayloadThrowing);
+		assertEquals(true, config.giantZombieMeleeActions);
 	}
 
 	@Test

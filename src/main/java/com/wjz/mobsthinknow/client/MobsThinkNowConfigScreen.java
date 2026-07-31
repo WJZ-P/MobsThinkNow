@@ -358,6 +358,14 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.giant_zombie_payload_throwing.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombiePayloadThrowing = value))
 			.build());
+		giantCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.giant_zombie_melee_actions"),
+			config.giantZombieMeleeActions
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.giant_zombie_melee_actions.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombieMeleeActions = value))
+			.build());
 
 		// Mod Menu 位于客户端；这段提示避免玩家误以为它可以直接修改远程服务器规则。
 		squadCategory.addEntry(entries.startTextDescription(

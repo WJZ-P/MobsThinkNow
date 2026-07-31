@@ -174,6 +174,28 @@ public final class GiantTacticsState {
 		return Mth.clamp(elapsed / phase.durationTicks(), 0.0F, 1.0F);
 	}
 
+	/** 开始一个客户端可见、服务端只结算一次命中帧的近战动作。 */
+	public static void transitionMelee(final Giant giant, final GiantMeleeAction action) {
+		GiantTacticsAccess access = access(giant);
+		access.mobsthinknow$setMeleeAction(action);
+		access.mobsthinknow$setMeleeActionStartTick(currentTick(giant));
+	}
+
+	public static void resetMelee(final Giant giant) {
+		transitionMelee(giant, GiantMeleeAction.NONE);
+	}
+
+	public static GiantMeleeAction meleeAction(final Giant giant) {
+		return access(giant).mobsthinknow$getMeleeAction();
+	}
+
+	public static float meleeProgress(final Giant giant, final float partialTicks) {
+		GiantMeleeAction action = meleeAction(giant);
+		float elapsed = elapsedTicks(currentTick(giant), access(giant).mobsthinknow$getMeleeActionStartTick())
+			+ partialTicks;
+		return Mth.clamp(elapsed / action.durationTicks(), 0.0F, 1.0F);
+	}
+
 	/**
 	 * 服务端真实性校验。固定槽优先；旧世界中尚无 UUID 的直接乘客按空闲手顺序迁移一次。
 	 */

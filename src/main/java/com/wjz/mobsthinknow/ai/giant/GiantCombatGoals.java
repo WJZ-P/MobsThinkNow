@@ -33,12 +33,12 @@ public final class GiantCombatGoals {
 
 		@Override
 		public boolean canUse() {
-			return enabled() && super.canUse();
+			return enabled() && !ConfigManager.get().giantZombieMeleeActions && super.canUse();
 		}
 
 		@Override
 		public boolean canContinueToUse() {
-			return enabled() && super.canContinueToUse();
+			return enabled() && !ConfigManager.get().giantZombieMeleeActions && super.canContinueToUse();
 		}
 	}
 

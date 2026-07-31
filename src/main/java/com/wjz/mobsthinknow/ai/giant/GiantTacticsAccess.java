@@ -6,8 +6,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Giant Mixin 暴露给通用逻辑的最小状态接口。
  *
- * <p>UUID 是存档中的稳定身份；实体 ID、阶段和阶段起始 tick 由 SynchedEntityData
- * 同步给客户端。业务代码只通过 {@link GiantTacticsState} 使用这些原始字段。</p>
+ * <p>UUID 是存档中的稳定身份；实体 ID、手部/登乘阶段、近战动作和各自起始 tick 由
+ * SynchedEntityData 同步给客户端。业务代码只通过 {@link GiantTacticsState} 使用这些原始字段。</p>
  */
 public interface GiantTacticsAccess {
 	@Nullable UUID mobsthinknow$getPayloadUuid(GiantHand hand);
@@ -41,4 +41,12 @@ public interface GiantTacticsAccess {
 	int mobsthinknow$getBoardingPhaseStartTick();
 
 	void mobsthinknow$setBoardingPhaseStartTick(int tick);
+
+	GiantMeleeAction mobsthinknow$getMeleeAction();
+
+	void mobsthinknow$setMeleeAction(GiantMeleeAction action);
+
+	int mobsthinknow$getMeleeActionStartTick();
+
+	void mobsthinknow$setMeleeActionStartTick(int tick);
 }

@@ -12,6 +12,7 @@ import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
@@ -383,6 +384,128 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 				helper.succeed();
 			}
 		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void meleeActionTelegraphsThenDamagesExactlyOnceOnItsImpactFrame(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		Villager target = helper.spawn(EntityType.VILLAGER, 7, 2, 4);
+		giant.setNoAi(true);
+		target.setNoAi(true);
+		GiantIntelligence.set(giant, 10);
+		giant.setTarget(target);
+		float initialHealth = target.getHealth();
+		long impactsBefore = SmartGiantMetrics.snapshot().meleeImpacts();
+		GiantMeleeCombatGoal goal = new GiantMeleeCombatGoal(giant, 0.92);
+		helper.assertTrue(goal.canUse(), "Smart melee goal rejected a valid close target.");
+		goal.start();
+		goal.tick();
+		GiantMeleeAction action = goal.currentAction();
+		helper.assertTrue(action.isActive(), "The Giant did not select a close-combat action.");
+
+		for (int tick = 1; tick < action.impactTick(); tick++) {
+			goal.tick();
+		}
+		helper.assertTrue(
+			target.getHealth() == initialHealth,
+			"The target took damage during the readable windup instead of the impact frame."
+		);
+		goal.tick();
+		helper.assertTrue(target.getHealth() < initialHealth, "The action impact frame dealt no damage.");
+		float healthAfterImpact = target.getHealth();
+		for (int tick = action.impactTick() + 1; tick <= action.durationTicks(); tick++) {
+			goal.tick();
+		}
+		helper.assertTrue(
+			target.getHealth() == healthAfterImpact,
+			"A single melee animation damaged its target more than once."
+		);
+		helper.assertTrue(
+			SmartGiantMetrics.snapshot().meleeImpacts() == impactsBefore + 1,
+			"The diagnostic counter did not record exactly one resolved impact."
+		);
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void twoLoadedHandsForceAStompAndNeverDamageCarriedAllies(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		Creeper rightPayload = helper.spawn(EntityType.CREEPER, 5, 2, 4);
+		Zombie leftPayload = helper.spawn(EntityType.ZOMBIE, 5, 2, 5);
+		Villager target = helper.spawn(EntityType.VILLAGER, 7, 2, 4);
+		giant.setNoAi(true);
+		rightPayload.setNoAi(true);
+		leftPayload.setNoAi(true);
+		target.setNoAi(true);
+		GiantIntelligence.set(giant, 10);
+		GiantTacticsState.assignPayload(giant, GiantHand.RIGHT, rightPayload);
+		GiantTacticsState.transitionHand(giant, GiantHand.RIGHT, GiantHandPhase.HOLDING);
+		GiantTacticsState.assignPayload(giant, GiantHand.LEFT, leftPayload);
+		GiantTacticsState.transitionHand(giant, GiantHand.LEFT, GiantHandPhase.HOLDING);
+		helper.assertTrue(rightPayload.startRiding(giant, true, true), "Right payload setup failed.");
+		helper.assertTrue(leftPayload.startRiding(giant, true, true), "Left payload setup failed.");
+		giant.setTarget(target);
+		float rightHealth = rightPayload.getHealth();
+		float leftHealth = leftPayload.getHealth();
+
+		GiantMeleeCombatGoal goal = new GiantMeleeCombatGoal(giant, 0.92);
+		helper.assertTrue(goal.canUse(), "Loaded Giant rejected a stomp-range target.");
+		goal.start();
+		goal.tick();
+		GiantMeleeAction action = goal.currentAction();
+		helper.assertTrue(
+			action.family() == GiantMeleeAction.Family.STOMP,
+			"A Giant with two loaded hands illegally selected an arm attack."
+		);
+		for (int tick = 0; tick < action.impactTick(); tick++) {
+			goal.tick();
+		}
+		helper.assertTrue(target.getHealth() < target.getMaxHealth(), "Loaded-hand stomp missed its close target.");
+		helper.assertTrue(
+			rightPayload.getHealth() == rightHealth && leftPayload.getHealth() == leftHealth,
+			"The stomp damaged one of the Giant's carried allies."
+		);
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void iqTenGiantUsesTwoHandedGroundSmashAgainstAFrontCrowd(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		Villager target = helper.spawn(EntityType.VILLAGER, 7, 2, 4);
+		Villager second = helper.spawn(EntityType.VILLAGER, 7, 2, 6);
+		Villager third = helper.spawn(EntityType.VILLAGER, 8, 2, 3);
+		Cow neutral = helper.spawn(EntityType.COW, 7, 2, 5);
+		giant.setNoAi(true);
+		target.setNoAi(true);
+		second.setNoAi(true);
+		third.setNoAi(true);
+		neutral.setNoAi(true);
+		GiantIntelligence.set(giant, 10);
+		giant.setTarget(target);
+		float neutralHealth = neutral.getHealth();
+
+		GiantMeleeCombatGoal goal = new GiantMeleeCombatGoal(giant, 0.92);
+		helper.assertTrue(goal.canUse(), "Crowd fixture did not activate Giant melee.");
+		goal.start();
+		goal.tick();
+		helper.assertTrue(
+			goal.currentAction() == GiantMeleeAction.GROUND_SMASH,
+			"An IQ-10 Giant with two free hands did not select its crowd-control smash."
+		);
+		for (int tick = 0; tick < GiantMeleeAction.GROUND_SMASH.impactTick(); tick++) {
+			goal.tick();
+		}
+		helper.assertTrue(
+			target.getHealth() < target.getMaxHealth()
+				&& second.getHealth() < second.getMaxHealth()
+				&& third.getHealth() < third.getMaxHealth(),
+			"The front-centered ground smash failed to hit the complete visible crowd."
+		);
+		helper.assertTrue(
+			neutral.getHealth() == neutralHealth,
+			"The area attack damaged unrelated neutral livestock."
+		);
+		helper.succeed();
 	}
 
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)

@@ -7,6 +7,8 @@ import com.wjz.mobsthinknow.ai.giant.GiantCombatGoals;
 import com.wjz.mobsthinknow.ai.giant.GiantBoardingPhase;
 import com.wjz.mobsthinknow.ai.giant.GiantHand;
 import com.wjz.mobsthinknow.ai.giant.GiantHandPhase;
+import com.wjz.mobsthinknow.ai.giant.GiantMeleeAction;
+import com.wjz.mobsthinknow.ai.giant.GiantMeleeCombatGoal;
 import com.wjz.mobsthinknow.ai.giant.GiantPassengerLayout;
 import com.wjz.mobsthinknow.ai.giant.GiantPayloadThrowGoal;
 import com.wjz.mobsthinknow.ai.giant.GiantTacticsAccess;
@@ -87,6 +89,12 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 	private static final EntityDataAccessor<Integer> mobsthinknow$BOARDING_PHASE_START =
 		SynchedEntityData.defineId(Giant.class, EntityDataSerializers.INT);
 	@Unique
+	private static final EntityDataAccessor<Byte> mobsthinknow$MELEE_ACTION =
+		SynchedEntityData.defineId(Giant.class, EntityDataSerializers.BYTE);
+	@Unique
+	private static final EntityDataAccessor<Integer> mobsthinknow$MELEE_ACTION_START =
+		SynchedEntityData.defineId(Giant.class, EntityDataSerializers.INT);
+	@Unique
 	private int mobsthinknow$giantIntelligence;
 	@Unique
 	private @Nullable UUID mobsthinknow$rightPayloadUuid;
@@ -111,6 +119,8 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 		builder.define(mobsthinknow$BOARDING_RIDER_ID, 0);
 		builder.define(mobsthinknow$BOARDING_PHASE, (byte)GiantBoardingPhase.NONE.ordinal());
 		builder.define(mobsthinknow$BOARDING_PHASE_START, 0);
+		builder.define(mobsthinknow$MELEE_ACTION, (byte)GiantMeleeAction.NONE.ordinal());
+		builder.define(mobsthinknow$MELEE_ACTION_START, 0);
 	}
 
 	@Inject(method = "<init>", at = @At("TAIL"))
@@ -131,6 +141,7 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 		this.goalSelector.addGoal(0, new FloatGoal(giant));
 		this.goalSelector.addGoal(1, new GiantPayloadThrowGoal(giant));
 		this.goalSelector.addGoal(2, new SquadPreparationGoal(giant, 0.86));
+		this.goalSelector.addGoal(3, new GiantMeleeCombatGoal(giant, 0.92));
 		this.goalSelector.addGoal(3, new GiantCombatGoals.Melee(giant, 0.92, true));
 		this.goalSelector.addGoal(7, new GiantCombatGoals.Stroll(giant, 0.70));
 		this.goalSelector.addGoal(8, new LookAtPlayerGoal(giant, Player.class, 16.0F));
@@ -162,7 +173,7 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 		this.mobsthinknow$giantIntelligence = saved == 0 ? 0 : GiantIntelligence.clamp(saved);
 		this.mobsthinknow$rightPayloadUuid = mobsthinknow$readUuid(input, mobsthinknow$RIGHT_PAYLOAD_TAG);
 		this.mobsthinknow$leftPayloadUuid = mobsthinknow$readUuid(input, mobsthinknow$LEFT_PAYLOAD_TAG);
-		// 运行时实体 ID 和动画阶段不能跨世界加载；乘客完成加载后 reconcile 会恢复 HOLDING。
+		// 运行时实体 ID、挂点动画和近战动作不能跨世界加载；乘客完成加载后 reconcile 会恢复 HOLDING。
 		this.entityData.set(mobsthinknow$RIGHT_PAYLOAD_ID, 0);
 		this.entityData.set(mobsthinknow$LEFT_PAYLOAD_ID, 0);
 		this.entityData.set(mobsthinknow$RIGHT_HAND_PHASE, (byte)GiantHandPhase.EMPTY.ordinal());
@@ -170,6 +181,8 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 		this.mobsthinknow$boardingRiderUuid = null;
 		this.entityData.set(mobsthinknow$BOARDING_RIDER_ID, 0);
 		this.entityData.set(mobsthinknow$BOARDING_PHASE, (byte)GiantBoardingPhase.NONE.ordinal());
+		this.entityData.set(mobsthinknow$MELEE_ACTION, (byte)GiantMeleeAction.NONE.ordinal());
+		this.entityData.set(mobsthinknow$MELEE_ACTION_START, 0);
 		Giant giant = (Giant)(Object)this;
 		GiantZombieProfile.applyAttributes(giant, ConfigManager.get());
 		SquadTheatrics.stripLeftoverRoleTag(giant);
@@ -342,6 +355,26 @@ public abstract class GiantMixin extends Monster implements GiantIntelligenceAcc
 	@Override
 	public void mobsthinknow$setBoardingPhaseStartTick(final int tick) {
 		this.entityData.set(mobsthinknow$BOARDING_PHASE_START, tick);
+	}
+
+	@Override
+	public GiantMeleeAction mobsthinknow$getMeleeAction() {
+		return GiantMeleeAction.fromId(Byte.toUnsignedInt(this.entityData.get(mobsthinknow$MELEE_ACTION)));
+	}
+
+	@Override
+	public void mobsthinknow$setMeleeAction(final GiantMeleeAction action) {
+		this.entityData.set(mobsthinknow$MELEE_ACTION, (byte)action.ordinal());
+	}
+
+	@Override
+	public int mobsthinknow$getMeleeActionStartTick() {
+		return this.entityData.get(mobsthinknow$MELEE_ACTION_START);
+	}
+
+	@Override
+	public void mobsthinknow$setMeleeActionStartTick(final int tick) {
+		this.entityData.set(mobsthinknow$MELEE_ACTION_START, tick);
 	}
 
 	@Unique

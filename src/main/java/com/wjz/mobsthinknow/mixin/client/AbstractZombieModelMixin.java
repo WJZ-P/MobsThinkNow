@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.ai.giant.GiantArmAnimation;
 import com.wjz.mobsthinknow.ai.giant.GiantBoardingPhase;
 import com.wjz.mobsthinknow.ai.giant.GiantHand;
 import com.wjz.mobsthinknow.ai.giant.GiantHandPhase;
+import com.wjz.mobsthinknow.ai.giant.GiantMeleeAnimation;
 import com.wjz.mobsthinknow.client.render.GiantCarrierRenderStateAccess;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
@@ -38,6 +39,13 @@ public abstract class AbstractZombieModelMixin {
 	) {
 		GiantCarrierRenderStateAccess carrier = (GiantCarrierRenderStateAccess)state;
 		HumanoidModel<?> model = (HumanoidModel<?>)(Object)this;
+		mobsthinknow$applyMeleePose(
+			model,
+			GiantMeleeAnimation.sample(
+				carrier.mobsthinknow$getGiantMeleeAction(),
+				carrier.mobsthinknow$getGiantMeleeProgress()
+			)
+		);
 		GiantBoardingPhase boardingPhase = carrier.mobsthinknow$getGiantBoardingPhase();
 		GiantArmAnimation.ArmPose rightPose = boardingPhase == GiantBoardingPhase.NONE
 			? mobsthinknow$sampleHand(carrier, GiantHand.RIGHT)
@@ -69,6 +77,32 @@ public abstract class AbstractZombieModelMixin {
 		arm.xRot = Mth.lerp(pose.weight(), arm.xRot, pose.xRot());
 		arm.yRot = Mth.lerp(pose.weight(), arm.yRot, pose.yRot());
 		arm.zRot = Mth.lerp(pose.weight(), arm.zRot, pose.zRot());
+	}
+
+	@Unique
+	private static void mobsthinknow$applyMeleePose(
+		final HumanoidModel<?> model,
+		final GiantMeleeAnimation.BodyPose pose
+	) {
+		mobsthinknow$applyPartPose(model.rightArm, pose.rightArm());
+		mobsthinknow$applyPartPose(model.leftArm, pose.leftArm());
+		mobsthinknow$applyPartPose(model.body, pose.body());
+		mobsthinknow$applyPartPose(model.rightLeg, pose.rightLeg());
+		mobsthinknow$applyPartPose(model.leftLeg, pose.leftLeg());
+		mobsthinknow$applyPartPose(model.head, pose.head());
+	}
+
+	@Unique
+	private static void mobsthinknow$applyPartPose(
+		final ModelPart part,
+		final GiantMeleeAnimation.PartPose pose
+	) {
+		if (pose.weight() <= 0.0F) {
+			return;
+		}
+		part.xRot = Mth.lerp(pose.weight(), part.xRot, pose.xRot());
+		part.yRot = Mth.lerp(pose.weight(), part.yRot, pose.yRot());
+		part.zRot = Mth.lerp(pose.weight(), part.zRot, pose.zRot());
 	}
 
 	@Inject(

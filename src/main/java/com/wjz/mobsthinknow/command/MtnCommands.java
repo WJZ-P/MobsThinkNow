@@ -368,7 +368,7 @@ public final class MtnCommands {
 				endermanMetrics.deliveryTeleports(),
 				endermanMetrics.payloadsIgnited()
 			);
-		message += ", giantAI=%s, giantGoals=%d, giantConversions=%d, giantRiders=%d, giantPayloadsPickedUp=%d, giantCreepersThrown=%d, giantZombiesThrown=%d"
+		message += ", giantAI=%s, giantGoals=%d, giantConversions=%d, giantRiders=%d, giantPayloadsPickedUp=%d, giantCreepersThrown=%d, giantZombiesThrown=%d, giantMeleeActions=%d, giantMeleeImpacts=%d, giantMeleeVictims=%d"
 			.formatted(
 				config.giantZombieAiEnabled,
 				giantMetrics.installedGoals(),
@@ -376,7 +376,10 @@ public final class MtnCommands {
 				giantMetrics.ridersMounted(),
 				giantMetrics.payloadsPickedUp(),
 				giantMetrics.creepersThrown(),
-				giantMetrics.zombiesThrown()
+				giantMetrics.zombiesThrown(),
+				giantMetrics.meleeActionsStarted(),
+				giantMetrics.meleeImpacts(),
+				giantMetrics.meleeVictimsHit()
 			);
 		String statusMessage = message;
 		context.getSource().sendSuccess(() -> Component.literal(statusMessage), false);

@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** 把客户端已同步的两手状态机和射手登乘阶段投影到本帧模型快照。 */
+/** 把客户端已同步的两手、射手登乘和近身格斗状态投影到本帧模型快照。 */
 @Mixin(GiantMobRenderer.class)
 public abstract class GiantMobRendererMixin {
 	@Inject(method = "extractRenderState", at = @At("TAIL"))
@@ -33,6 +33,10 @@ public abstract class GiantMobRendererMixin {
 		carrier.mobsthinknow$setGiantBoardingState(
 			GiantTacticsState.boardingPhase(giant),
 			GiantTacticsState.boardingProgress(giant, partialTicks)
+		);
+		carrier.mobsthinknow$setGiantMeleeState(
+			GiantTacticsState.meleeAction(giant),
+			GiantTacticsState.meleeProgress(giant, partialTicks)
 		);
 	}
 }

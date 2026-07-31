@@ -135,6 +135,8 @@ public final class MobsThinkNowConfig {
 	public double giantZombieMovementSpeed = DEFAULT_GIANT_ZOMBIE_MOVEMENT_SPEED;
 	/** 是否启用头顶射手、双手抱取队友以及对目标的抛投战术。 */
 	public boolean giantZombiePayloadThrowing = true;
+	/** 以带前摇/命中帧/后摇的横扫、拍击、踩踏和双拳砸地替代原版瞬时挥拳。 */
+	public boolean giantZombieMeleeActions = true;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public boolean squadVisualEffects = true;

@@ -204,6 +204,8 @@
 	"mobsthinknow.config.giant_zombie_movement_speed.tooltip": "Attribute base value from 8%-22%, default 16%. Mixed-squad speed bonuses do not stack on an assigned Giant carrier.",
 	"mobsthinknow.config.giant_zombie_payload_throwing": "Head Rider and Dual-hand Throwing",
 	"mobsthinknow.config.giant_zombie_payload_throwing.tooltip": "A squad skeleton may jump onto the Giant head. The Giant reserves up to two creepers or zombies, visibly holds one in each hand, and throws them toward the target with staggered ballistic launches.",
+	"mobsthinknow.config.giant_zombie_melee_actions": "Telegraphed Giant Melee Actions",
+	"mobsthinknow.config.giant_zombie_melee_actions.tooltip": "Replaces instant vanilla punches with context-aware sweeps, palm strikes, stomps, and a two-handed ground smash. Every action has a visible windup, one impact frame, recovery, sound, particles, and hand-occupancy rules.",
 	"mobsthinknow.command.spawn_all_giants.success": "Spawned %s giant siege platform archetypes (%s total entities).",
 	"mobsthinknow.command.spawn_all_giants.no_space": "No nearby ground has the full twelve-block clearance required by a giant siege platform.",
 	"mobsthinknow.command.spawn_all_giants.create_failed": "Preparing the Giant, head rider, and two hand payloads failed; nothing was added.",

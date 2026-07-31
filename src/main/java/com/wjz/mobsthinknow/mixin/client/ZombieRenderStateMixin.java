@@ -3,12 +3,13 @@ package com.wjz.mobsthinknow.mixin.client;
 import com.wjz.mobsthinknow.ai.giant.GiantBoardingPhase;
 import com.wjz.mobsthinknow.ai.giant.GiantHand;
 import com.wjz.mobsthinknow.ai.giant.GiantHandPhase;
+import com.wjz.mobsthinknow.ai.giant.GiantMeleeAction;
 import com.wjz.mobsthinknow.client.render.GiantCarrierRenderStateAccess;
 import net.minecraft.client.renderer.entity.state.ZombieRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
-/** 给共用的 ZombieRenderState 增加巨人专用的双手阶段和登乘动作快照。 */
+/** 给共用的 ZombieRenderState 增加巨人专用的双手、登乘和全身近战动作快照。 */
 @Mixin(ZombieRenderState.class)
 public abstract class ZombieRenderStateMixin implements GiantCarrierRenderStateAccess {
 	@Unique
@@ -27,6 +28,10 @@ public abstract class ZombieRenderStateMixin implements GiantCarrierRenderStateA
 	private GiantBoardingPhase mobsthinknow$boardingPhase = GiantBoardingPhase.NONE;
 	@Unique
 	private float mobsthinknow$boardingProgress;
+	@Unique
+	private GiantMeleeAction mobsthinknow$meleeAction = GiantMeleeAction.NONE;
+	@Unique
+	private float mobsthinknow$meleeProgress;
 
 	@Override
 	public void mobsthinknow$setGiantHandState(
@@ -75,5 +80,21 @@ public abstract class ZombieRenderStateMixin implements GiantCarrierRenderStateA
 	@Override
 	public float mobsthinknow$getGiantBoardingProgress() {
 		return this.mobsthinknow$boardingProgress;
+	}
+
+	@Override
+	public void mobsthinknow$setGiantMeleeState(final GiantMeleeAction action, final float progress) {
+		this.mobsthinknow$meleeAction = action;
+		this.mobsthinknow$meleeProgress = progress;
+	}
+
+	@Override
+	public GiantMeleeAction mobsthinknow$getGiantMeleeAction() {
+		return this.mobsthinknow$meleeAction;
+	}
+
+	@Override
+	public float mobsthinknow$getGiantMeleeProgress() {
+		return this.mobsthinknow$meleeProgress;
 	}
 }
