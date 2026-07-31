@@ -1,5 +1,9 @@
 package com.wjz.mobsthinknow.mixin.client;
 
+import com.wjz.mobsthinknow.ai.giant.GiantArmAnimation;
+import com.wjz.mobsthinknow.ai.giant.GiantBoardingPhase;
+import com.wjz.mobsthinknow.ai.giant.GiantHand;
+import com.wjz.mobsthinknow.ai.giant.GiantHandPhase;
 import com.wjz.mobsthinknow.client.render.GiantCarrierRenderStateAccess;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
@@ -12,6 +16,7 @@ import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemUseAnimation;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -25,24 +30,45 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(AbstractZombieModel.class)
 public abstract class AbstractZombieModelMixin {
-	/** 巨人两只装载手分别覆盖原版双臂前伸结果；空手侧仍保持原版动作。 */
+	/** 每只手按自己的阶段采样关键帧；登乘流程会临时覆盖右手载荷动作。 */
 	@Inject(method = "setupAnim", at = @At("TAIL"))
-	private void mobsthinknow$poseGiantLoadedHands(
+	private void mobsthinknow$poseGiantTacticalHands(
 		final ZombieRenderState state,
 		final CallbackInfo callbackInfo
 	) {
 		GiantCarrierRenderStateAccess carrier = (GiantCarrierRenderStateAccess)state;
 		HumanoidModel<?> model = (HumanoidModel<?>)(Object)this;
-		if (carrier.mobsthinknow$isGiantRightHandLoaded()) {
-			model.rightArm.xRot = -1.03F;
-			model.rightArm.yRot = -0.12F;
-			model.rightArm.zRot = 0.10F;
+		GiantBoardingPhase boardingPhase = carrier.mobsthinknow$getGiantBoardingPhase();
+		GiantArmAnimation.ArmPose rightPose = boardingPhase == GiantBoardingPhase.NONE
+			? mobsthinknow$sampleHand(carrier, GiantHand.RIGHT)
+			: GiantArmAnimation.boardingPose(boardingPhase, carrier.mobsthinknow$getGiantBoardingProgress());
+		mobsthinknow$applyPose(model.rightArm, rightPose);
+		mobsthinknow$applyPose(model.leftArm, mobsthinknow$sampleHand(carrier, GiantHand.LEFT));
+	}
+
+	@Unique
+	private static GiantArmAnimation.ArmPose mobsthinknow$sampleHand(
+		final GiantCarrierRenderStateAccess carrier,
+		final GiantHand hand
+	) {
+		GiantHandPhase phase = carrier.mobsthinknow$getGiantHandPhase(hand);
+		if (phase == GiantHandPhase.EMPTY && carrier.mobsthinknow$isGiantHandLoaded(hand)) {
+			phase = GiantHandPhase.HOLDING;
 		}
-		if (carrier.mobsthinknow$isGiantLeftHandLoaded()) {
-			model.leftArm.xRot = -1.03F;
-			model.leftArm.yRot = 0.12F;
-			model.leftArm.zRot = -0.10F;
+		return GiantArmAnimation.handPose(hand, phase, carrier.mobsthinknow$getGiantHandProgress(hand));
+	}
+
+	@Unique
+	private static void mobsthinknow$applyPose(
+		final ModelPart arm,
+		final GiantArmAnimation.ArmPose pose
+	) {
+		if (pose.weight() <= 0.0F) {
+			return;
 		}
+		arm.xRot = Mth.lerp(pose.weight(), arm.xRot, pose.xRot());
+		arm.yRot = Mth.lerp(pose.weight(), arm.yRot, pose.yRot());
+		arm.zRot = Mth.lerp(pose.weight(), arm.zRot, pose.zRot());
 	}
 
 	@Inject(

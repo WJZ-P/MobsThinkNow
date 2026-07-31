@@ -2,6 +2,9 @@ package com.wjz.mobsthinknow.command;
 
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.giant.GiantIntelligence;
+import com.wjz.mobsthinknow.ai.giant.GiantHand;
+import com.wjz.mobsthinknow.ai.giant.GiantHandPhase;
+import com.wjz.mobsthinknow.ai.giant.GiantTacticsState;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieProfile;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
@@ -157,7 +160,11 @@ public final class GiantShowcaseSpawner {
 		configureChild(zombie, "mobsthinknow.showcase.giant_zombie_payload", "Giant Zombie Payload", ChatFormatting.DARK_GREEN);
 		ZombieIntelligence.set(zombie, 9);
 
-		// 顺序就是头顶、右手、左手；真实乘员关系负责同步、存档与客户端实体渲染。
+		// 展示指令直接写入固定槽：即使后续一侧离手，另一侧也不会因 passenger list 压缩而换手。
+		GiantTacticsState.assignPayload(giant, GiantHand.RIGHT, creeper);
+		GiantTacticsState.transitionHand(giant, GiantHand.RIGHT, GiantHandPhase.HOLDING);
+		GiantTacticsState.assignPayload(giant, GiantHand.LEFT, zombie);
+		GiantTacticsState.transitionHand(giant, GiantHand.LEFT, GiantHandPhase.HOLDING);
 		if (!rider.startRiding(giant, true, true)
 			|| !creeper.startRiding(giant, true, true)
 			|| !zombie.startRiding(giant, true, true)) {

@@ -1,10 +1,27 @@
 package com.wjz.mobsthinknow.client.render;
 
-/** 巨人渲染快照上左右手是否正托着实体载荷的瞬时标记。 */
+import com.wjz.mobsthinknow.ai.giant.GiantBoardingPhase;
+import com.wjz.mobsthinknow.ai.giant.GiantHand;
+import com.wjz.mobsthinknow.ai.giant.GiantHandPhase;
+
+/** GiantMobRenderer 写入、AbstractZombieModel 读取的单帧战术动作快照。 */
 public interface GiantCarrierRenderStateAccess {
-	void mobsthinknow$setGiantHeldPayloads(boolean rightHand, boolean leftHand);
+	void mobsthinknow$setGiantHandState(
+		GiantHand hand,
+		GiantHandPhase phase,
+		float progress,
+		boolean loaded
+	);
 
-	boolean mobsthinknow$isGiantRightHandLoaded();
+	GiantHandPhase mobsthinknow$getGiantHandPhase(GiantHand hand);
 
-	boolean mobsthinknow$isGiantLeftHandLoaded();
+	float mobsthinknow$getGiantHandProgress(GiantHand hand);
+
+	boolean mobsthinknow$isGiantHandLoaded(GiantHand hand);
+
+	void mobsthinknow$setGiantBoardingState(GiantBoardingPhase phase, float progress);
+
+	GiantBoardingPhase mobsthinknow$getGiantBoardingPhase();
+
+	float mobsthinknow$getGiantBoardingProgress();
 }

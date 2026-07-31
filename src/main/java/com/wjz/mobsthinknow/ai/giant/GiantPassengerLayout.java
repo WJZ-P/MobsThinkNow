@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.ai.giant;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -12,18 +13,21 @@ import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 巨人三个战术挂点的唯一布局定义：头顶一名射手，左右手各一名投掷载荷。
+ * 巨人三个战术挂点的唯一布局定义：头顶一名射手，固定左右手各一名投掷载荷。
  *
- * <p>乘员关系本身由原版同步与存档；这里仅按实体种类解释直接乘员，避免依赖易变的
- * passenger list 下标。这样抛掉右手载荷后，左手载荷也不会突然跳到另一侧。</p>
+ * <p>左右手优先读取同步的实体槽位，而不是 passenger list 下标。旧存档尚未完成迁移时，
+ * 才会把未绑定的真实乘客临时补入空手；服务端下一次 reconcile 会将其写回固定 UUID 槽。</p>
  */
 public final class GiantPassengerLayout {
 	public static final int MAXIMUM_PAYLOADS = 2;
-	// Skeleton 的原版 VEHICLE attachment 在脚底上方 0.7 格；加回该偏移后脚底恰好落在 12 格高的巨人头顶。
-	private static final double HEAD_HEIGHT = 12.70;
-	private static final double HAND_HEIGHT = 5.75;
+	private static final double HEAD_FEET_HEIGHT = 12.0;
+	private static final double HAND_FEET_HEIGHT = 5.75;
 	private static final double HAND_SIDE_OFFSET = 2.75;
 	private static final double HAND_FORWARD_OFFSET = 2.05;
+
+	private static final Vec3 BOARDING_LOW_PALM = new Vec3(-2.75, 2.25, 2.35);
+	private static final Vec3 BOARDING_SHOULDER = new Vec3(-1.70, 8.35, 0.55);
+	private static final Vec3 BOARDING_HEAD = new Vec3(0.0, HEAD_FEET_HEIGHT, 0.0);
 
 	private GiantPassengerLayout() {
 	}
@@ -39,14 +43,31 @@ public final class GiantPassengerLayout {
 
 	public static List<LivingPayload> payloads(final Giant giant) {
 		List<LivingPayload> result = new ArrayList<>(MAXIMUM_PAYLOADS);
-		for (Entity passenger : giant.getPassengers()) {
-			if (isPayload(passenger)) {
-				result.add(new LivingPayload(passenger, result.size()));
-				if (result.size() == MAXIMUM_PAYLOADS) {
-					break;
-				}
+		EnumSet<GiantHand> occupied = EnumSet.noneOf(GiantHand.class);
+		List<Entity> assignedEntities = new ArrayList<>(MAXIMUM_PAYLOADS);
+
+		for (GiantHand hand : GiantHand.values()) {
+			Entity entity = GiantTacticsState.payloadForHand(giant, hand);
+			if (entity != null) {
+				result.add(new LivingPayload(entity, hand));
+				occupied.add(hand);
+				assignedEntities.add(entity);
 			}
 		}
+
+		// 兼容还没跑到服务端 reconcile 的旧存档以及测试直接 startRiding 的瞬间。
+		for (Entity passenger : giant.getPassengers()) {
+			if (!isPayload(passenger) || assignedEntities.contains(passenger)) {
+				continue;
+			}
+			GiantHand free = firstFree(occupied);
+			if (free == null) {
+				break;
+			}
+			result.add(new LivingPayload(passenger, free));
+			occupied.add(free);
+		}
+		result.sort(java.util.Comparator.comparingInt(payload -> payload.hand().index()));
 		return List.copyOf(result);
 	}
 
@@ -72,38 +93,115 @@ public final class GiantPassengerLayout {
 	}
 
 	public static boolean hasFreeHeadSeat(final Giant giant) {
-		return headRider(giant) == null;
+		return headRider(giant) == null && GiantTacticsState.boardingRider(giant) == null;
+	}
+
+	public static boolean canAcceptHeadRider(final Giant giant, final Entity passenger) {
+		AbstractSkeleton tracked = GiantTacticsState.boardingRider(giant);
+		return headRider(giant) == null && (tracked == null || tracked == passenger);
 	}
 
 	public static boolean hasFreeHand(final Giant giant) {
-		return payloads(giant).size() < MAXIMUM_PAYLOADS;
+		return GiantTacticsState.firstUnreservedHand(giant) != null;
 	}
 
 	/** 返回传给原版 positionRider 的世界坐标挂点。 */
 	public static Vec3 ridingPosition(final Giant giant, final Entity passenger) {
 		if (isHeadRider(passenger)) {
-			return giant.position().add(0.0, HEAD_HEIGHT, 0.0);
+			Vec3 feet = boardingFeetPosition(giant, passenger);
+			return feet.add(passenger.getVehicleAttachmentPoint(giant));
 		}
 		LivingPayload payload = payload(giant, passenger);
 		if (payload == null) {
 			return giant.position();
 		}
-		// positionRider 随后会减去乘员自己的 VEHICLE attachment。僵尸该偏移为 0.7 格、
-		// 苦力怕则不同；在这里先逐实体加回，最终两类载荷的脚底才会真正落在同一掌心高度。
-		return handPosition(giant, payload.handIndex()).add(passenger.getVehicleAttachmentPoint(giant));
+		/*
+		 * positionRider 随后会减去乘员自己的 VEHICLE attachment。这里按具体实体加回该偏移，
+		 * Zombie 和 Creeper 的脚底最终才会真正落在同一个掌心高度。
+		 */
+		return handPosition(giant, payload.hand()).add(passenger.getVehicleAttachmentPoint(giant));
 	}
 
 	/**
-	 * 左右手载荷的脚底位置随巨人的身体朝向旋转。索引 0 固定为巨人右手，索引 1 固定为左手；
-	 * 抛投也从同一点离手，因此登乘和释放之间不会再发生额外的纵向跳变。
+	 * 左右手载荷的脚底位置随巨人的身体朝向旋转；抛投也从完全相同的点离手。
 	 */
-	public static Vec3 handPosition(final Giant giant, final int handIndex) {
-		double side = handIndex == 0 ? -HAND_SIDE_OFFSET : HAND_SIDE_OFFSET;
-		float yawRadians = -giant.yBodyRot * Mth.DEG_TO_RAD;
-		Vec3 local = new Vec3(side, HAND_HEIGHT, HAND_FORWARD_OFFSET).yRot(yawRadians);
-		return giant.position().add(local);
+	public static Vec3 handPosition(final Giant giant, final GiantHand hand) {
+		double side = hand == GiantHand.RIGHT ? -HAND_SIDE_OFFSET : HAND_SIDE_OFFSET;
+		Vec3 base = new Vec3(side, HAND_FEET_HEIGHT, HAND_FORWARD_OFFSET);
+		GiantHandPhase phase = GiantTacticsState.handPhase(giant, hand);
+		double progress = GiantTacticsState.handPhaseProgress(giant, hand, 0.0F);
+		Vec3 local = switch (phase) {
+			case PICKUP -> {
+				Vec3 lowPalm = new Vec3(side, 2.25, 2.35);
+				yield progress <= 0.52
+					? lowPalm
+					: lerp(lowPalm, base, smooth((progress - 0.52) / 0.48));
+			}
+			case AIMING -> lerp(base, base.add(0.0, 0.48, -0.92), smooth(progress));
+			case THROWING -> {
+				Vec3 aimed = base.add(0.0, 0.48, -0.92);
+				Vec3 forward = base.add(0.0, 0.22, 0.78);
+				yield progress < 0.55
+					? lerp(aimed, forward, smooth(progress / 0.55))
+					: lerp(forward, base, smooth((progress - 0.55) / 0.45));
+			}
+			default -> base;
+		};
+		return localToWorld(giant, local);
 	}
 
-	public record LivingPayload(Entity entity, int handIndex) {
+	/** 兼容测试与旧调用点的数字索引。 */
+	public static Vec3 handPosition(final Giant giant, final int handIndex) {
+		return handPosition(giant, GiantHand.fromIndex(handIndex));
+	}
+
+	/**
+	 * 射手一旦被接住就不再瞬移：先位于放低的右掌，再平滑举到肩部，短暂停顿后移到头顶。
+	 */
+	public static Vec3 boardingFeetPosition(final Giant giant, final Entity passenger) {
+		if (!GiantTacticsState.isBoardingRider(giant, passenger)) {
+			return localToWorld(giant, BOARDING_HEAD);
+		}
+		GiantBoardingPhase phase = GiantTacticsState.boardingPhase(giant);
+		double progress = GiantTacticsState.boardingProgress(giant, 0.0F);
+		Vec3 local = switch (phase) {
+			case CATCHING -> BOARDING_LOW_PALM;
+			case LIFTING -> lerp(BOARDING_LOW_PALM, BOARDING_SHOULDER, smooth(progress));
+			case SHOULDER -> BOARDING_SHOULDER;
+			case TO_HEAD -> progress < 0.65
+				? lerp(BOARDING_SHOULDER, BOARDING_HEAD, smooth(progress / 0.65))
+				: BOARDING_HEAD;
+			case NONE -> BOARDING_HEAD;
+		};
+		return localToWorld(giant, local);
+	}
+
+	private static @Nullable GiantHand firstFree(final EnumSet<GiantHand> occupied) {
+		for (GiantHand hand : GiantHand.values()) {
+			if (!occupied.contains(hand)) {
+				return hand;
+			}
+		}
+		return null;
+	}
+
+	private static Vec3 localToWorld(final Giant giant, final Vec3 local) {
+		float yawRadians = -giant.yBodyRot * Mth.DEG_TO_RAD;
+		return giant.position().add(local.yRot(yawRadians));
+	}
+
+	private static Vec3 lerp(final Vec3 from, final Vec3 to, final double progress) {
+		return from.add(to.subtract(from).scale(progress));
+	}
+
+	private static double smooth(final double value) {
+		double clamped = Mth.clamp(value, 0.0, 1.0);
+		return clamped * clamped * (3.0 - 2.0 * clamped);
+	}
+
+	public record LivingPayload(Entity entity, GiantHand hand) {
+		public int handIndex() {
+			return this.hand.index();
+		}
 	}
 }
