@@ -36,9 +36,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * 为管理命令生成一组可直接观察的战术僵尸样本。
  *
- * <p>这里生成的是当前 Mod 的“装备/职责兵种”，而不是尸壳、溺尸或僵尸村民等原版实体变种；
- * 后三者目前没有注入本 Mod 的普通僵尸 AI。觅食和受击撤退属于所有合格僵尸的临场状态，
- * 因此也不会为了凑数重复生成一个静态样本。</p>
+ * <p>前九项展示普通僵尸的装备/职责，后三项展示尸壳、溺尸与僵尸村民接入同一智力和
+ * 小队协议后的实体形态。觅食和受击撤退属于合格地面成员的临场状态，因此不会再为它们
+ * 重复生成静态样本。</p>
  */
 public final class ZombieShowcaseSpawner {
 	public static final int MAX_BATCH_SIZE = 100;
@@ -55,7 +55,7 @@ public final class ZombieShowcaseSpawner {
 	}
 
 	/**
-	 * 在命令源面前排出 3×3 阵型。所有落点先统一预检，空间不足时一只也不生成，
+	 * 在命令源面前排出十二成员的紧凑混合阵型。所有落点先统一预检，空间不足时一只也不生成，
 	 * 避免玩家只拿到残缺阵容；真正加入世界时若出现异常，同样回滚已经加入的实体。
 	 */
 	public static SpawnResult spawnAll(final CommandSourceStack source) {
@@ -65,12 +65,11 @@ public final class ZombieShowcaseSpawner {
 		}
 
 		List<ShowcaseArchetype> archetypes = List.of(ShowcaseArchetype.values());
-		List<BlockPos> positions = ShowcaseSpawnPlacement.findFormation(
+		List<BlockPos> positions = ShowcaseSpawnPlacement.findMixedFormation(
 			level,
 			source.getPosition(),
 			source.getRotation().y,
-			archetypes.size(),
-			EntityType.ZOMBIE
+			archetypes.stream().<EntityType<?>>map(ShowcaseArchetype::entityType).toList()
 		);
 		if (positions.size() != archetypes.size()) {
 			return SpawnResult.failed(Failure.NO_SPACE);
@@ -110,7 +109,7 @@ public final class ZombieShowcaseSpawner {
 			source.getPosition(),
 			source.getRotation().y,
 			count,
-			EntityType.ZOMBIE
+			archetype.entityType()
 		);
 		if (positions.size() != count) {
 			return SpawnResult.failed(Failure.NO_SPACE);
@@ -158,7 +157,7 @@ public final class ZombieShowcaseSpawner {
 		final Vec3 faceToward,
 		final ShowcaseArchetype archetype
 	) {
-		Zombie zombie = EntityType.ZOMBIE.create(level, EntitySpawnReason.COMMAND);
+		Zombie zombie = archetype.entityType().create(level, EntitySpawnReason.COMMAND);
 		if (zombie == null) {
 			return null;
 		}
@@ -184,6 +183,16 @@ public final class ZombieShowcaseSpawner {
 		final Zombie zombie,
 		final ShowcaseArchetype archetype
 	) {
+		zombie.setBaby(false);
+		zombie.setPersistenceRequired();
+		zombie.setHealth(zombie.getMaxHealth());
+		if (archetype.isVanillaVariant()) {
+			// 变种只固定智力和展示名；其原版装备、溺尸三叉戟与转换语义全部保留。
+			zombie.setCustomName(archetype.displayName());
+			ZombieIntelligence.set(zombie, archetype.intelligence());
+			zombie.setCustomNameVisible(true);
+			return;
+		}
 		// finalizeSpawn 会正确安装随机个体属性与 Mod Goal；随后只清理随机出生装备，换成确定样本。
 		zombie.stopUsingItem();
 		((ZombieFlightAccess)zombie).mobsthinknow$stopFallFlying();
@@ -271,12 +280,22 @@ public final class ZombieShowcaseSpawner {
 		BUILDER("mobsthinknow.showcase.builder", "Zombie Engineer", ChatFormatting.GREEN, 10),
 		WATER_SUPPORT("mobsthinknow.showcase.water_support", "Water Support Zombie", ChatFormatting.DARK_AQUA, 8),
 		LAVA_HARASSER("mobsthinknow.showcase.lava_harasser", "Lava Harasser Zombie", ChatFormatting.GOLD, 9),
-		AIR_ASSAULT("mobsthinknow.showcase.air_assault", "Spear Air-Assault Zombie", ChatFormatting.LIGHT_PURPLE, 10);
+		AIR_ASSAULT("mobsthinknow.showcase.air_assault", "Spear Air-Assault Zombie", ChatFormatting.LIGHT_PURPLE, 10),
+		HUSK("mobsthinknow.showcase.husk", "Husk", ChatFormatting.GOLD, 6, EntityType.HUSK),
+		DROWNED("mobsthinknow.showcase.drowned", "Drowned", ChatFormatting.DARK_AQUA, 7, EntityType.DROWNED),
+		ZOMBIE_VILLAGER(
+			"mobsthinknow.showcase.zombie_villager",
+			"Zombie Villager",
+			ChatFormatting.GREEN,
+			8,
+			EntityType.ZOMBIE_VILLAGER
+		);
 
 		private final String translationKey;
 		private final String fallback;
 		private final ChatFormatting color;
 		private final int intelligence;
+		private final EntityType<? extends Zombie> entityType;
 
 		ShowcaseArchetype(
 			final String translationKey,
@@ -284,10 +303,21 @@ public final class ZombieShowcaseSpawner {
 			final ChatFormatting color,
 			final int intelligence
 		) {
+			this(translationKey, fallback, color, intelligence, EntityType.ZOMBIE);
+		}
+
+		ShowcaseArchetype(
+			final String translationKey,
+			final String fallback,
+			final ChatFormatting color,
+			final int intelligence,
+			final EntityType<? extends Zombie> entityType
+		) {
 			this.translationKey = translationKey;
 			this.fallback = fallback;
 			this.color = color;
 			this.intelligence = intelligence;
+			this.entityType = entityType;
 		}
 
 		public Component displayName() {
@@ -301,6 +331,14 @@ public final class ZombieShowcaseSpawner {
 
 		public int intelligence() {
 			return this.intelligence;
+		}
+
+		public EntityType<? extends Zombie> entityType() {
+			return this.entityType;
+		}
+
+		public boolean isVanillaVariant() {
+			return this.entityType != EntityType.ZOMBIE;
 		}
 	}
 

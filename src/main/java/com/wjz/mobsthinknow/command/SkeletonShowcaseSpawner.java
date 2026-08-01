@@ -16,12 +16,12 @@ import net.minecraft.world.entity.DropChances;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.monster.skeleton.Skeleton;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
-/** 为管理指令生成可稳定复现的普通骷髅远程兵种。 */
+/** 为管理指令生成可稳定复现的骷髅家族远程兵种与主世界变种。 */
 public final class SkeletonShowcaseSpawner {
 	public static final int MAX_BATCH_SIZE = 100;
 	private static final int SHOWCASE_FIREWORKS = 6;
@@ -37,7 +37,7 @@ public final class SkeletonShowcaseSpawner {
 	private SkeletonShowcaseSpawner() {
 	}
 
-	/** 在命令源前方一次生成弓手、弩手和爆炸烟花弩手。 */
+	/** 在命令源前方生成三种普通骷髅战术装备，以及流浪者、沼骸和干尸。 */
 	public static SpawnResult spawnAll(final CommandSourceStack source) {
 		ServerLevel level = source.getLevel();
 		if (level.getDifficulty() == Difficulty.PEACEFUL) {
@@ -45,12 +45,11 @@ public final class SkeletonShowcaseSpawner {
 		}
 
 		List<ShowcaseArchetype> archetypes = List.of(ShowcaseArchetype.values());
-		List<BlockPos> positions = ShowcaseSpawnPlacement.findFormation(
+		List<BlockPos> positions = ShowcaseSpawnPlacement.findMixedFormation(
 			level,
 			source.getPosition(),
 			source.getRotation().y,
-			archetypes.size(),
-			EntityType.SKELETON
+			archetypes.stream().<EntityType<?>>map(ShowcaseArchetype::entityType).toList()
 		);
 		if (positions.size() != archetypes.size()) {
 			return SpawnResult.failed(Failure.NO_SPACE);
@@ -77,7 +76,7 @@ public final class SkeletonShowcaseSpawner {
 			source.getPosition(),
 			source.getRotation().y,
 			count,
-			EntityType.SKELETON
+			archetype.entityType()
 		);
 		if (positions.size() != count) {
 			return SpawnResult.failed(Failure.NO_SPACE);
@@ -99,7 +98,7 @@ public final class SkeletonShowcaseSpawner {
 		List<PreparedSkeleton> prepared = new ArrayList<>(archetypes.size());
 		for (int index = 0; index < archetypes.size(); index++) {
 			ShowcaseArchetype archetype = archetypes.get(index);
-			Skeleton skeleton = createSkeleton(level, positions.get(index), faceToward, archetype);
+			AbstractSkeleton skeleton = createSkeleton(level, positions.get(index), faceToward, archetype);
 			if (skeleton == null) {
 				discardPrepared(prepared);
 				return SpawnResult.failed(Failure.CREATE_FAILED);
@@ -118,13 +117,13 @@ public final class SkeletonShowcaseSpawner {
 		return SpawnResult.succeeded(spawned);
 	}
 
-	static Skeleton createSkeleton(
+	static AbstractSkeleton createSkeleton(
 		final ServerLevel level,
 		final BlockPos feet,
 		final Vec3 faceToward,
 		final ShowcaseArchetype archetype
 	) {
-		Skeleton skeleton = EntityType.SKELETON.create(level, EntitySpawnReason.COMMAND);
+		AbstractSkeleton skeleton = archetype.entityType().create(level, EntitySpawnReason.COMMAND);
 		if (skeleton == null) {
 			return null;
 		}
@@ -145,7 +144,16 @@ public final class SkeletonShowcaseSpawner {
 		return skeleton;
 	}
 
-	private static void configureLoadout(final Skeleton skeleton, final ShowcaseArchetype archetype) {
+	private static void configureLoadout(final AbstractSkeleton skeleton, final ShowcaseArchetype archetype) {
+		skeleton.setPersistenceRequired();
+		skeleton.setHealth(skeleton.getMaxHealth());
+		if (archetype.isVanillaVariant()) {
+			// 保留流浪者减速箭、沼骸毒箭和干尸虚弱箭，只固定测试所需的智力与名称。
+			skeleton.setCustomName(archetype.displayName());
+			SkeletonIntelligence.set(skeleton, archetype.intelligence());
+			skeleton.setCustomNameVisible(true);
+			return;
+		}
 		skeleton.stopUsingItem();
 		for (EquipmentSlot slot : HUMANOID_EQUIPMENT) {
 			skeleton.setItemSlot(slot, ItemStack.EMPTY);
@@ -172,7 +180,7 @@ public final class SkeletonShowcaseSpawner {
 		skeleton.reassessWeaponGoal();
 	}
 
-	private static void equip(final Skeleton skeleton, final EquipmentSlot slot, final ItemStack stack) {
+	private static void equip(final AbstractSkeleton skeleton, final EquipmentSlot slot, final ItemStack stack) {
 		skeleton.setItemSlot(slot, stack);
 		skeleton.setDropChance(slot, DropChances.DEFAULT_EQUIPMENT_DROP_CHANCE);
 	}
@@ -192,13 +200,17 @@ public final class SkeletonShowcaseSpawner {
 			"Firework Crossbow Skeleton",
 			ChatFormatting.LIGHT_PURPLE,
 			10
-		);
+		),
+		STRAY("stray", "mobsthinknow.showcase.stray", "Stray", ChatFormatting.AQUA, 7, EntityType.STRAY),
+		BOGGED("bogged", "mobsthinknow.showcase.bogged", "Bogged", ChatFormatting.DARK_GREEN, 8, EntityType.BOGGED),
+		PARCHED("parched", "mobsthinknow.showcase.parched", "Parched", ChatFormatting.GOLD, 9, EntityType.PARCHED);
 
 		private final String commandId;
 		private final String translationKey;
 		private final String fallback;
 		private final ChatFormatting color;
 		private final int intelligence;
+		private final EntityType<? extends AbstractSkeleton> entityType;
 
 		ShowcaseArchetype(
 			final String commandId,
@@ -207,11 +219,23 @@ public final class SkeletonShowcaseSpawner {
 			final ChatFormatting color,
 			final int intelligence
 		) {
+			this(commandId, translationKey, fallback, color, intelligence, EntityType.SKELETON);
+		}
+
+		ShowcaseArchetype(
+			final String commandId,
+			final String translationKey,
+			final String fallback,
+			final ChatFormatting color,
+			final int intelligence,
+			final EntityType<? extends AbstractSkeleton> entityType
+		) {
 			this.commandId = commandId;
 			this.translationKey = translationKey;
 			this.fallback = fallback;
 			this.color = color;
 			this.intelligence = intelligence;
+			this.entityType = entityType;
 		}
 
 		public String commandId() {
@@ -225,6 +249,14 @@ public final class SkeletonShowcaseSpawner {
 		public int intelligence() {
 			return this.intelligence;
 		}
+
+		public EntityType<? extends AbstractSkeleton> entityType() {
+			return this.entityType;
+		}
+
+		public boolean isVanillaVariant() {
+			return this.entityType != EntityType.SKELETON;
+		}
 	}
 
 	public enum Failure {
@@ -235,7 +267,7 @@ public final class SkeletonShowcaseSpawner {
 		ADD_FAILED
 	}
 
-	public record SpawnedSkeleton(ShowcaseArchetype archetype, Skeleton skeleton) {
+	public record SpawnedSkeleton(ShowcaseArchetype archetype, AbstractSkeleton skeleton) {
 	}
 
 	public record SpawnResult(List<SpawnedSkeleton> spawned, Failure failure) {
@@ -252,6 +284,6 @@ public final class SkeletonShowcaseSpawner {
 		}
 	}
 
-	private record PreparedSkeleton(ShowcaseArchetype archetype, Skeleton skeleton) {
+	private record PreparedSkeleton(ShowcaseArchetype archetype, AbstractSkeleton skeleton) {
 	}
 }

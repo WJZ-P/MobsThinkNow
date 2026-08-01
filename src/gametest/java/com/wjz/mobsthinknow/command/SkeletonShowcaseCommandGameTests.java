@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.command;
 
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -12,13 +13,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.monster.skeleton.Skeleton;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
-/** 从真实 Brigadier 入口验证所有普通骷髅测试兵种和批量参数。 */
+/** 从真实 Brigadier 入口验证骷髅家族战术兵种、主世界变种和批量参数。 */
 public final class SkeletonShowcaseCommandGameTests implements CustomTestMethodInvoker {
 	@GameTest(
 		structure = "mobsthinknow-gametest:air_assault_arena",
@@ -37,11 +38,19 @@ public final class SkeletonShowcaseCommandGameTests implements CustomTestMethodI
 			);
 		}
 
-		List<Skeleton> skeletons = skeletonsNear(helper, sourceBlock, 12.0);
-		helper.assertTrue(skeletons.size() == 3, "Specific commands did not create all three skeleton archetypes.");
-		assertExactlyOne(helper, skeletons, skeleton -> skeleton.getMainHandItem().is(Items.BOW), "bow skeleton");
+		List<AbstractSkeleton> skeletons = skeletonsNear(helper, sourceBlock, 12.0);
+		helper.assertTrue(
+			skeletons.size() == SkeletonShowcaseSpawner.ShowcaseArchetype.values().length,
+			"Specific commands did not create every skeleton-family entry."
+		);
 		assertExactlyOne(helper, skeletons, skeleton ->
-			skeleton.getMainHandItem().is(Items.CROSSBOW) && skeleton.getOffhandItem().isEmpty(),
+			skeleton.getType() == EntityType.SKELETON && skeleton.getMainHandItem().is(Items.BOW),
+			"bow skeleton"
+		);
+		assertExactlyOne(helper, skeletons, skeleton ->
+			skeleton.getType() == EntityType.SKELETON
+				&& skeleton.getMainHandItem().is(Items.CROSSBOW)
+				&& skeleton.getOffhandItem().isEmpty(),
 			"ordinary crossbow skeleton"
 		);
 		assertExactlyOne(helper, skeletons, SkeletonShowcaseCommandGameTests::hasExplosiveCrossbow, "firework crossbow skeleton");
@@ -71,10 +80,10 @@ public final class SkeletonShowcaseCommandGameTests implements CustomTestMethodI
 			"mtn spawn skeleton_firework_crossbow 4"
 		);
 
-		List<Skeleton> skeletons = skeletonsNear(helper, sourceBlock, 14.0);
+		List<AbstractSkeleton> skeletons = skeletonsNear(helper, sourceBlock, 14.0);
 		helper.assertTrue(skeletons.size() == 4, "The skeleton batch command did not create exactly four entities.");
 		helper.assertTrue(
-			skeletons.stream().map(Skeleton::blockPosition).distinct().count() == 4,
+			skeletons.stream().map(AbstractSkeleton::blockPosition).distinct().count() == 4,
 			"Two skeleton test entities shared one feet position."
 		);
 		helper.assertTrue(
@@ -100,8 +109,11 @@ public final class SkeletonShowcaseCommandGameTests implements CustomTestMethodI
 			"mtn spawnskeletons"
 		);
 
-		List<Skeleton> skeletons = skeletonsNear(helper, sourceBlock, 14.0);
-		helper.assertTrue(skeletons.size() == 3, "The skeleton shortcut did not create one of every archetype.");
+		List<AbstractSkeleton> skeletons = skeletonsNear(helper, sourceBlock, 14.0);
+		helper.assertTrue(
+			skeletons.size() == SkeletonShowcaseSpawner.ShowcaseArchetype.values().length,
+			"The skeleton shortcut did not create one of every tactical loadout and variant."
+		);
 		helper.assertTrue(
 			skeletons.stream().allMatch(skeleton -> skeleton.isPersistenceRequired() && skeleton.isCustomNameVisible()),
 			"A skeleton showcase entity was not persistent or had no visible archetype name."
@@ -111,7 +123,7 @@ public final class SkeletonShowcaseCommandGameTests implements CustomTestMethodI
 			Collectors.counting()
 		));
 		helper.assertTrue(
-			intelligenceCounts.equals(Map.of(5, 1L, 8, 1L, 10, 1L)),
+			intelligenceCounts.equals(Map.of(5, 1L, 7, 1L, 8, 2L, 9, 1L, 10, 1L)),
 			"Skeleton showcase intelligence no longer matches its abilities: " + intelligenceCounts
 		);
 		helper.succeed();
@@ -130,19 +142,19 @@ public final class SkeletonShowcaseCommandGameTests implements CustomTestMethodI
 			.withSuppressedOutput();
 	}
 
-	private static List<Skeleton> skeletonsNear(
+	private static List<AbstractSkeleton> skeletonsNear(
 		final GameTestHelper helper,
 		final BlockPos sourceBlock,
 		final double radius
 	) {
 		return helper.getLevel().getEntitiesOfClass(
-			Skeleton.class,
+			AbstractSkeleton.class,
 			new AABB(sourceBlock).inflate(radius, 8.0, radius),
-			skeleton -> skeleton.getType() == EntityType.SKELETON && skeleton.isAlive()
+			skeleton -> OverworldUndeadFamilies.isSkeletonFamily(skeleton) && skeleton.isAlive()
 		);
 	}
 
-	private static boolean hasExplosiveCrossbow(final Skeleton skeleton) {
+	private static boolean hasExplosiveCrossbow(final AbstractSkeleton skeleton) {
 		return skeleton.getMainHandItem().is(Items.CROSSBOW)
 			&& skeleton.getOffhandItem().is(Items.FIREWORK_ROCKET)
 			&& skeleton.getOffhandItem().has(DataComponents.FIREWORKS);
@@ -150,8 +162,8 @@ public final class SkeletonShowcaseCommandGameTests implements CustomTestMethodI
 
 	private static void assertExactlyOne(
 		final GameTestHelper helper,
-		final List<Skeleton> skeletons,
-		final Predicate<Skeleton> predicate,
+		final List<AbstractSkeleton> skeletons,
+		final Predicate<AbstractSkeleton> predicate,
 		final String archetype
 	) {
 		long count = skeletons.stream().filter(predicate).count();

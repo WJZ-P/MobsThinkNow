@@ -84,7 +84,7 @@ public final class MtnCommands {
 		LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("spawn")
 			.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 			.executes(MtnCommands::listSpawnTypes);
-		// 先注册全局、分类与基础实体入口；后面的二十三个战术预设仍保留独立 Tab literal。
+		// 先注册全局、分类与基础实体入口；后面的二十九个战术/变种预设仍保留独立 Tab literal。
 		command.then(Commands.literal("all").executes(MtnCommands::spawnAll));
 		command.then(Commands.literal("zombies").executes(MtnCommands::spawnAllZombies));
 		command.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons));
@@ -368,7 +368,7 @@ public final class MtnCommands {
 				endermanMetrics.deliveryTeleports(),
 				endermanMetrics.payloadsIgnited()
 			);
-		message += ", giantAI=%s, giantGoals=%d, giantConversions=%d, giantRiders=%d, giantPayloadsPickedUp=%d, giantCreepersThrown=%d, giantZombiesThrown=%d, giantMeleeActions=%d, giantMeleeImpacts=%d, giantMeleeVictims=%d, giantGrabs=%d, giantGrabThrows=%d, giantMeleeInterrupts=%d"
+		message += ", giantAI=%s, giantGoals=%d, giantConversions=%d, giantRiders=%d, giantPayloadsPickedUp=%d, giantCreepersThrown=%d, giantZombiesThrown=%d, giantMeleeActions=%d, giantMeleeImpacts=%d, giantMeleeVictims=%d, giantGrabs=%d, giantGrabThrows=%d, giantMeleeInterrupts=%d, giantSafeReleaseRelocations=%d"
 			.formatted(
 				config.giantZombieAiEnabled,
 				giantMetrics.installedGoals(),
@@ -382,7 +382,8 @@ public final class MtnCommands {
 				giantMetrics.meleeVictimsHit(),
 				giantMetrics.targetsGrabbed(),
 				giantMetrics.grabThrowsCompleted(),
-				giantMetrics.meleeInterrupts()
+				giantMetrics.meleeInterrupts(),
+				giantMetrics.grappleReleaseRelocations()
 			);
 		String statusMessage = message;
 		context.getSource().sendSuccess(() -> Component.literal(statusMessage), false);
@@ -452,7 +453,7 @@ public final class MtnCommands {
 			context.getSource().sendSuccess(
 				() -> Component.translatableWithFallback(
 					"mobsthinknow.command.spawn_all_zombies.success",
-					"Spawned %s tactical zombie archetypes in a 3x3 formation.",
+					"Spawned %s zombie-family entries in a compact mixed formation.",
 					count
 				),
 				true
@@ -467,7 +468,7 @@ public final class MtnCommands {
 			);
 			case NO_SPACE -> new ErrorMessage(
 				"mobsthinknow.command.spawn_all_zombies.no_space",
-				"No nearby ground has enough safe space for the complete 3x3 zombie formation."
+				"No nearby ground has enough safe space for the complete zombie-family formation."
 			);
 			case CREATE_FAILED -> new ErrorMessage(
 				"mobsthinknow.command.spawn_all_zombies.create_failed",

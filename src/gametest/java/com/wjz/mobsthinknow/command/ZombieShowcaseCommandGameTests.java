@@ -6,6 +6,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -46,18 +47,16 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 				source,
 				"mtn spawn " + archetype.commandId()
 			);
-		}
-
-		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
-			Zombie.class,
-			new AABB(sourceBlock).inflate(12.0, 8.0, 12.0),
-			zombie -> zombie.getType() == EntityType.ZOMBIE && zombie.isAlive()
-		);
-		helper.assertTrue(zombies.size() == 9, "Specific spawn commands did not create exactly nine zombies.");
-		for (ZombieShowcaseSpawner.ShowcaseArchetype archetype
-			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
 			String expectedName = archetype.displayName().getString();
-			long matchingNames = zombies.stream()
+			List<Zombie> matching = helper.getLevel().getEntitiesOfClass(
+				Zombie.class,
+				new AABB(sourceBlock).inflate(10.0, 8.0, 10.0),
+				zombie -> OverworldUndeadFamilies.isZombieFamily(zombie)
+					&& zombie.isAlive()
+					&& zombie.getCustomName() != null
+					&& zombie.getCustomName().getString().contains(expectedName)
+			);
+			long matchingNames = matching.stream()
 				.filter(zombie -> zombie.getCustomName() != null)
 				.filter(zombie -> zombie.getCustomName().getString().contains(expectedName))
 				.count();
@@ -65,6 +64,7 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 				matchingNames == 1,
 				"Command literal " + archetype.commandId() + " did not route to exactly one named archetype."
 			);
+			matching.forEach(Zombie::discard);
 		}
 		helper.succeed();
 	}
@@ -130,21 +130,29 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 			.withSuppressedOutput();
 
 		helper.getLevel().getServer().getCommands().performPrefixedCommand(source, "mtn spawnall zombies");
-		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
+		List<Zombie> family = helper.getLevel().getEntitiesOfClass(
 			Zombie.class,
 			new AABB(sourceBlock).inflate(20.0, 8.0, 20.0),
-			zombie -> zombie.getType() == EntityType.ZOMBIE && zombie.isAlive()
+			zombie -> OverworldUndeadFamilies.isZombieFamily(zombie) && zombie.isAlive()
 		);
+		List<Zombie> zombies = family.stream().filter(zombie -> zombie.getType() == EntityType.ZOMBIE).toList();
 
-		helper.assertTrue(zombies.size() == 9, "The command did not create exactly nine tactical zombie archetypes.");
 		helper.assertTrue(
-			zombies.stream().allMatch(zombie -> zombie.isPersistenceRequired() && zombie.isCustomNameVisible()),
+			family.size() == ZombieShowcaseSpawner.ShowcaseArchetype.values().length,
+			"The command did not create every tactical loadout and zombie variant."
+		);
+		helper.assertTrue(zombies.size() == 9, "The command no longer creates exactly nine ordinary tactical zombies.");
+		helper.assertTrue(
+			family.stream().allMatch(zombie -> zombie.isPersistenceRequired() && zombie.isCustomNameVisible()),
 			"A showcase zombie was not persistent or did not expose its archetype name."
 		);
 		helper.assertTrue(
-			zombies.stream().map(Zombie::blockPosition).distinct().count() == 9,
+			family.stream().map(Zombie::blockPosition).distinct().count() == family.size(),
 			"Two showcase zombies were placed on the same feet position."
 		);
+		assertExactlyOne(helper, family, zombie -> zombie.getType() == EntityType.HUSK, "husk");
+		assertExactlyOne(helper, family, zombie -> zombie.getType() == EntityType.DROWNED, "drowned");
+		assertExactlyOne(helper, family, zombie -> zombie.getType() == EntityType.ZOMBIE_VILLAGER, "zombie villager");
 
 		assertExactlyOne(helper, zombies, zombie ->
 			zombie.getMainHandItem().isEmpty()

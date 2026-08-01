@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.command;
 
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -15,7 +16,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.Giant;
-import net.minecraft.world.entity.monster.skeleton.Skeleton;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.phys.AABB;
@@ -124,17 +125,17 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			source,
 			command
 		);
-		// 23 根实体只占前方五排；竖直范围覆盖 12 格高巨人与其头顶射手。
+		// 29 根实体占据前方紧凑阵型；竖直范围覆盖 12 格高巨人与其头顶射手。
 		AABB searchBox = new AABB(sourceBlock).move(0.0, 0.0, 8.0).inflate(12.0, 16.0, 12.0);
 		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
 			Zombie.class,
 			searchBox,
-			zombie -> zombie.getType() == EntityType.ZOMBIE && isShowcase(zombie)
+			zombie -> OverworldUndeadFamilies.isZombieFamily(zombie) && isShowcase(zombie)
 		);
-		List<Skeleton> skeletons = helper.getLevel().getEntitiesOfClass(
-			Skeleton.class,
+		List<AbstractSkeleton> skeletons = helper.getLevel().getEntitiesOfClass(
+			AbstractSkeleton.class,
 			searchBox,
-			skeleton -> skeleton.getType() == EntityType.SKELETON && isShowcase(skeleton)
+			skeleton -> OverworldUndeadFamilies.isSkeletonFamily(skeleton) && isShowcase(skeleton)
 		);
 		List<Creeper> creepers = helper.getLevel().getEntitiesOfClass(
 			Creeper.class,
@@ -158,12 +159,12 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		);
 
 		helper.assertTrue(
-			zombies.size() == 10,
-			"Global spawnall expected nine roots plus one Giant-held zombie but found " + zombies.size() + "."
+			zombies.size() == 13,
+			"Global spawnall expected twelve zombie-family roots plus one Giant-held zombie but found " + zombies.size() + "."
 		);
 		helper.assertTrue(
-			skeletons.size() == 4,
-			"Global spawnall expected three roots plus one Giant head rider but found " + skeletons.size() + "."
+			skeletons.size() == 7,
+			"Global spawnall expected six skeleton-family roots plus one Giant head rider but found " + skeletons.size() + "."
 		);
 		helper.assertTrue(
 			spiders.size() == 4,
@@ -216,8 +217,8 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"At least two global showcase roots occupied the same feet position."
 		);
 		helper.assertTrue(
-			zombies.size() + skeletons.size() + creepers.size() + spiders.size() + endermen.size() + giants.size() == 28,
-			"Global spawnall did not create exactly 28 entities including all mounted riders and payloads."
+			zombies.size() + skeletons.size() + creepers.size() + spiders.size() + endermen.size() + giants.size() == 34,
+			"Global spawnall did not create exactly 34 entities including all variants, riders, and payloads."
 		);
 		helper.succeed();
 	}

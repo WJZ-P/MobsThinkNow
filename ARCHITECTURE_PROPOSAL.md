@@ -1,23 +1,25 @@
 # 《怪物不再愚蠢 / Mobs Think Now》技术架构
 
-> 当前状态：普通僵尸、普通骷髅、普通苦力怕、普通蜘蛛、普通末影人、巨人战术与五物种混编小队已经实现。目标版本为 Minecraft Java
+> 当前状态：僵尸家族、骷髅家族、普通苦力怕、普通蜘蛛、普通末影人、巨人战术与五类混编小队已经实现。目标版本为 Minecraft Java
 > 26.1.2、Fabric Loader 0.19.3、Fabric API 0.155.2+26.1.2、Java 25。
 
 ## 1. 首版边界
 
-- 只改造原版普通僵尸 `minecraft:zombie`、普通骷髅 `minecraft:skeleton`、普通苦力怕 `minecraft:creeper`、
-  普通蜘蛛 `minecraft:spider`、普通末影人 `minecraft:enderman` 与原版巨人 `minecraft:giant`；
+- 僵尸家族白名单为 `minecraft:zombie`、`minecraft:husk`、`minecraft:drowned`、
+  `minecraft:zombie_villager`；骷髅家族白名单为 `minecraft:skeleton`、`minecraft:stray`、
+  `minecraft:bogged`、`minecraft:parched`；同时改造普通苦力怕、普通蜘蛛、普通末影人与原版巨人；
 - 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩、末影人抱实体、巨人托举实体等姿态；
 - 不提高生成量；个体速度、最大生命、伤害与追踪距离围绕随难度变化的均值随机浮动；
 - 复用原版视线、GoalSelector、导航、近战距离和命中判定；
 - 世界对象只在服务器主线程访问，不把实体和导航器交给工作线程；
-- 尸壳、溺尸、僵尸村民、骷髅变种和其他 Mod 实体暂不注入。
+- 僵尸猪灵、凋灵骷髅、僵尸鹦鹉螺、骆驼尸壳和其他 Mod 实体明确不在白名单中；溺尸保留
+  两栖导航与三叉戟战斗，只共享智力、小队心跳、选举、会议和部署。
 
 ## 2. 总体结构
 
 ```mermaid
 flowchart TD
-    Spawn["普通僵尸创建"] --> Mixin["ZombieMixin"]
+    Spawn["受支持僵尸家族创建"] --> Mixin["ZombieMixin"]
     Mixin --> Intelligence["持久智力值 1～10"]
     Intelligence --> NameTag["名字末尾智力数字"]
     Mixin --> Traits["固定声线 + 难度化永久属性"]
@@ -100,7 +102,7 @@ flowchart TD
     GiantRoll --> EntityLoad["ENTITY_LOAD 排队"]
     EntityLoad --> GiantConvert["END_LEVEL_TICK 事务替换"]
     GiantConvert --> GiantMixin["GiantMixin / 完整 Goal + IQ"]
-    GiantMixin --> GiantHeartbeat["五物种混编心跳"]
+    GiantMixin --> GiantHeartbeat["五类混编心跳"]
     GiantHeartbeat --> GiantAllocation["头顶射手 + 两只手部载荷预约"]
     GiantAllocation --> TacticsState["GiantTacticsState / 固定左右 UUID 槽"]
     TacticsState --> RiderGoal["掌心接取 → 肩部 → 头顶"]
@@ -160,6 +162,7 @@ com.wjz.mobsthinknow
 │  ├─ GiantMeleeGeometry               横扫、掌击、踩踏、正蹬、抓取与砸地区域纯几何
 │  ├─ GiantMeleeMotion                 有限角速度锁向与分段根运动曲线
 │  ├─ GiantMeleeAnimation              双臂、躯干和双腿的确定性关键帧
+│  ├─ GiantGrappleRelease              下车前后双碰撞箱与局部/脚边安全落点搜索
 │  ├─ GiantThrowMath                   有限提前量、重力补偿与速度硬上限
 │  └─ SmartGiantMetrics                替换、登乘、抛投与近战诊断指标
 ├─ ai/zombie
@@ -197,26 +200,27 @@ com.wjz.mobsthinknow
 │  ├─ ZombieShieldCombat                举盾接近、随机守候、延迟反击与放盾收招
 │  ├─ SmartZombieMetrics                运行指标
 │  └─ squad
-│     ├─ ZombieSquadCoordinator         五物种混编、黑板、分层载具分配、状态机与命令
+│     ├─ ZombieSquadCoordinator         五类家族混编、黑板、分层载具分配、状态机与命令
 │     ├─ SquadLeaderElection            最高智力 + UUID 随机票首领选举
 │     ├─ SquadRolePlanner                智力到战术复杂度的映射 + 兵种职位偏好
-│     ├─ SquadPreparationGoal            苦力怕/蜘蛛/巨人集结与部署命令适配
-│     ├─ SquadMemberHeartbeat            苦力怕/蜘蛛/巨人 O(1) 感知心跳
+│     ├─ SquadPreparationGoal            溺尸/苦力怕/蜘蛛/巨人集结与部署命令适配
+│     ├─ SquadMemberHeartbeat            无近战包装成员的 O(1) 感知心跳
 │     ├─ SquadTheatrics                 职业名牌、首领光环与会议声画表现层
 │     ├─ WeaponClass                    主手武器的战术分类
 │     ├─ UtilityClass                   水/岩浆战场工具分类
 │     └─ SquadDirective                 单个混编成员收到的只读命令
 ├─ command/MtnCommands                  status、reload、全兵种阵型与指定兵种生成
-├─ command/ZombieShowcaseSpawner        安全落点检查、确定兵种装备与命令生成事务
-├─ command/SkeletonShowcaseSpawner      弓/弩/爆炸弩测试兵种与批量生成事务
+├─ ai/utility/OverworldUndeadFamilies   主世界亡灵家族白名单与地面战术边界
+├─ command/ZombieShowcaseSpawner        九种装备职责、三种家族变种与命令生成事务
+├─ command/SkeletonShowcaseSpawner      三种远程装备、三种家族变种与批量生成事务
 ├─ command/CreeperShowcaseSpawner       猎手/绕后/破墙/带电预设与批量生成事务
 ├─ command/SpiderShowcaseSpawner        猎手/伏击/首领/苦力怕投送组生成事务
 ├─ command/EndermanShowcaseSpawner      猎手/预装真实苦力怕投送组生成事务
 ├─ command/GiantShowcaseSpawner         头顶射手/双手载荷攻城平台生成事务
 ├─ command/ShowcaseSpawnPlacement       跨物种共用的碰撞、地基与阵型预检
 ├─ config                               JSON 配置、校验和热重载
-├─ mixin/ZombieMixin                    僵尸 Goal 替换与智力存档注入
-├─ mixin/AbstractSkeletonMixin          骷髅 Goal、智力、负载与混编心跳注入
+├─ mixin/ZombieMixin                    僵尸家族 Goal 边界、智力存档与混编心跳注入
+├─ mixin/AbstractSkeletonMixin          骷髅家族 Goal、智力、负载与混编心跳注入
 ├─ mixin/CreeperMixin                   苦力怕 Goal 替换、智力存档与带电测试访问
 ├─ mixin/SpiderMixin                    蜘蛛 Goal、智力存档与载荷非驾驶者语义
 ├─ mixin/EnderManMixin                  末影人 Goal、智力存档、胸前乘客挂点与载荷非驾驶者语义
@@ -224,8 +228,22 @@ com.wjz.mobsthinknow
 └─ mixin/client                         盾牌/进食/举矛、骷髅双手弩、末影人环抱与巨人双手托举姿态仲裁
 ```
 
+## 2.0 僵尸家族复用边界
+
+- `OverworldUndeadFamilies` 只接受僵尸、尸壳、溺尸和僵尸村民。四者共享智力、类型名称、
+  小队候选登记、最高智力选举、会议/部署、职业分配、换届、友伤过滤和首领声画反馈；
+- 僵尸、尸壳和僵尸村民可以安全复用 `SmartZombieGroundNavigation` 与普通僵尸地面战术 Goal。
+  原版仅在普通僵尸出生时随机发放的武装、特殊桶、空袭与巨人替换仍保持普通僵尸专属；
+- 溺尸不替换两栖导航、入水/上岸和三叉戟 Goal，只额外安装小队准备 Goal 与独立 O(1) 心跳。
+  僵尸转化为溺尸时转移智力与建筑库存并按新实体类型重建名称，不持久化旧小队引用。
+
 ## 2.1 骷髅远程战术与混编边界
 
+- `OverworldUndeadFamilies` 只接受骷髅、流浪者、沼骸和干尸；凋灵骷髅因近战定位明确排除。
+  四者共享智力、名称、远程拉扯、逃跑、掩体、预判、友伤过滤、选举、远程职位和载具预约；
+- `SkeletonBowIntervals` 在智能 Goal 构造时读取具体类型：骷髅/流浪者保持困难 20、其他难度
+  40 tick，沼骸/干尸保持困难 50、其他难度 70 tick。具体实体的减速、毒与虚弱箭仍通过原版
+  `performRangedAttack` 生成；自然弩装只对普通骷髅掷骰；
 - 弓与弩共用智力化偏好射程；近距离 `KITE` 始终保持头、身体和远程武器朝向目标，
   全速脱离则放下武器、面向路径正向奔跑，两种状态互不混淆；
 - `SkeletonEmergencyDisengageGoal` 只读取当前 `LivingEntity` 目标，不按玩家/铁傀儡分类，
@@ -235,9 +253,9 @@ com.wjz.mobsthinknow
   `0.68/0.76/0.84`，上界均为 `1.0`，所以旧智力速度曲线仍是绝对上限；
 - 弩使用物品组件中的真实 `CHARGED_PROJECTILES` 状态，爆炸烟花是有限库存。小于六格时
   保留已装填弹药并优先拉开，烟花耗尽后 `Monster#getProjectile` 自然回落到普通箭；
-- 混编协调器仍按“相同目标 + 空间格”分桶。僵尸、骷髅、苦力怕、蜘蛛与巨人都提交 O(1) 心跳并参与统一选举、换届；
-  非首领骷髅强制使用 `RANGED` 角色及智力化射击站位；
-- 同队五物种的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
+- 混编协调器仍按“相同目标 + 空间格”分桶。受支持僵尸家族、骷髅家族、苦力怕、蜘蛛与巨人
+  都提交 O(1) 心跳并参与统一选举、换届；非首领骷髅家族成员强制使用 `RANGED` 角色及智力化射击站位；
+- 同队五类成员的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
 
 ## 2.2 苦力怕威胁与反制边界
 
@@ -331,9 +349,11 @@ com.wjz.mobsthinknow
   `7.6` 格有界实体查询，再用局部 forward/side 几何过滤实际形状、墙后实体、真实乘员与同队成员；
   掌击和正蹬最终只保留最近目标，抓取只接受前摇时锁定的主目标。抓取命中后写入独立 UUID、运行时
   实体 ID 与手位槽，再用真实 passenger 驱动接住—抬起—后拉—抛出挂点；单 tick 掉血达到
-  `max(6, 最大生命×5%)` 会安全下车并让巨人硬直。客户端从同步动作 ID/起始 tick 采样同一关键帧曲线；
+  `max(6, 最大生命×5%)` 会安全下车并让巨人硬直。`GiantGrappleRelease` 在离手瞬间同时验证乘客下车前
+  与下车后的碰撞箱、世界边界及巨人本体，按掌心局部八向、原版下车点、巨人脚边安全环依次选点；
+  极端封闭时保留原版下车结果而不主动塞回墙内。客户端从同步动作 ID/起始 tick 采样同一关键帧曲线；
 - 协调器每次重建运输关系时按三个阶段处理，并用 `reserved` 集合保证成员唯一：① 每个 Giant 至多
-  分配一名高智力普通骷髅；② 苦力怕优先、僵尸其次，按手位轮转给每个 Giant 至多两名载荷；③
+  分配一名高智力骷髅家族成员；② 苦力怕优先、僵尸家族其次，按手位轮转给每个 Giant 至多两名载荷；③
   剩余成员才交给蜘蛛。全程只遍历单队上限 K，不做每只 Giant 的附近实体查询；
 - `GiantRiderBoardingGoal` 只读取反向预约，在正式交战后让骷髅寻路、跳起并锁定登乘 UUID。巨人
   先用放低的右掌接住射手，再以 `LIFTING → SHOULDER → TO_HEAD` 三段挂点平滑举到 12 格顶面；
@@ -341,11 +361,12 @@ com.wjz.mobsthinknow
   仍可工作；
 - `GiantTacticsState` 为左右手分别维护持久 UUID、同步实体 ID、阶段和阶段起始 tick；服务端每 tick
   对照真实乘客关系修复死亡、外部下车和旧存档 passenger-order 数据。固定槽使任一侧消失后另一侧
-  仍留在原手，不再依赖会压缩的乘客列表下标；
+  仍留在原手，不再依赖会压缩的乘客列表下标。统一手部仲裁同时考虑载荷预约、阶段机、抓取动作手与
+  射手登乘右手；抓取手字段暂时不完整时保守冻结双手，避免旧乘客迁移穿模；
 - `GiantPayloadThrowGoal` 只读取协调器给出的至多两名候选，但两只手分别运行
   `RENDEZVOUS → PICKUP → HOLDING → AIMING → THROWING → COOLDOWN`。任一侧进入五格即可接取，
   无需等待另一侧或 90 tick 全局超时；各自至少瞄准 12 tick，真正离手至少错开 10 tick，每侧恢复
-  随机 10～16 tick；
+  随机 10～16 tick；更高优先级的投送 Goal 在同步近战动作活跃时不会启动，因此不会中途取消抓取；
 - `GiantThrowMath` 对目标水平速度做有限提前，按 8～22 tick 预计飞行时间补偿重力，水平速度封顶
   `1.30`、竖直速度限制 `0.28～0.96`。苦力怕离手才调用 `ignite()`；僵尸只继承目标和动量。
   目标失效或热关闭时仍在手中的载荷安全下车；已抛实体 UUID 在该 Goal 实例内去重，避免被同一
@@ -549,7 +570,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 |---|---:|---|
 | `enabled` | `true` | 总开关 |
 | `zombieAiEnabled` | `true` | 僵尸 AI 开关 |
-| `skeletonAiEnabled` | `true` | 普通骷髅智力、远程走位、掩体和脱离总开关 |
+| `skeletonAiEnabled` | `true` | 主世界骷髅家族智力、远程走位、掩体和脱离总开关 |
 | `skeletonEmergencyDisengage` | `true` | 任意当前目标贴脸时放下远程武器并全速脱离 |
 | `skeletonCrossbows` | `true` | 自然生成普通骷髅是否可成为弩手 |
 | `skeletonCrossbowChance` | `0.18` | 弩手基础概率，再按难度与个体智力缩放 |
@@ -888,7 +909,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 - `ZombieCombatUrgency` 读取原版 `lastHurtByMob` 与时间戳。最近 40 tick 内有存活生物
   攻击者时，仅日晒 Goal 和危险水源回收不参与竞争；真实着火仍以灭火为优先。火焰熄灭
   后 priority 0 实例立即结束，日晒或战斗实例在下一轮重新竞争；
-- `ZombieMixin#createNavigation` 为普通僵尸安装 `SmartZombieGroundNavigation`，其余
+- `ZombieMixin#createNavigation` 为僵尸、尸壳和僵尸村民安装 `SmartZombieGroundNavigation`；溺尸继续
+  使用自身覆盖的两栖导航。其余
   `GroundPathNavigation`、A*、路径代价和 `MoveControl` 均保持原版。自定义
   `SmartZombieWalkNodeEvaluator` 只增加一条节点规则：若脚下方块具有通用 `OPEN=true`
   且真实顶面不再 `isFaceSturdy(UP)`，该节点返回 `BLOCKED`。因此原版门、栅栏门、
@@ -910,7 +932,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   低/高智力职位规划、武器攻速冷却换算与圆弧目的地、空手软方块破坏时长以及
   草方块到泥土的采集语义，以及巨人难度化出生率、排除的出生原因、智力区间、目标提前量与抛投速度上限；
 - Minecraft 服务端 GameTest：生产 Mixin 安装、智力经过真实实体存读链保持不变、
-  五物种小队与非僵尸最高智力首领当选、UUID 票并列抽签、首领移除后自动换届、受击撤退触发与 5 格安全半径终止、
+  五类小队与非僵尸最高智力首领当选、UUID 票并列抽签、首领移除后自动换届、八种主世界亡灵
+  在同一目标下进入同队且最高智力干尸当选、三个明确排除类型不登记、受击撤退触发与 5 格安全半径终止、
   盾卫无攻击时随机试探/成功格挡后延迟 2～4 tick 放盾反击/挥击后延迟重举、
   斧手真实下落跳劈 1.5 倍伤害、
   剑手按 13 tick 组件冷却周旋且不跳跃、IQ 门槛/无食物不接管、面包单份消费、
@@ -927,26 +950,27 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   留下水源后抵达可达阴影；另有“出生点比洞内高两格、洞口水平仅偏移两格”的真实导航
   回归，验证近邻三维阴影扫描不会漏掉低处洞口；本轮新增近期受击的着火僵尸真实进入附近水体、水桶兵必得
   深海探索者 III 靴子与浮水导航、撤退确定性水幕和同队水桶兵脚下灭火；另用真实 Brigadier
-  入口逐条验证九种指定兵种子命令；工程兵另覆盖真实放置/点燃 TNT、owner 与 80 tick
+  入口逐条验证十二种僵尸家族子命令；工程兵另覆盖真实放置/点燃 TNT、owner 与 80 tick
   引信、真实水/岩浆源投放—等待—BucketPickup 回收、五秒近身点燃、临时工具后的双手恢复、
-  流体事务与正式身份存读，以及九兵种样本中 `builder`、`water_support`、`lava_harasser`
+  流体事务与正式身份存读，以及九个普通僵尸装备预设中 `builder`、`water_support`、`lava_harasser`
   恰好三种带工程兵标记；苦力怕另覆盖生产 Mixin 的双 Goal 替换、观察目标触发真实绕后路径、
   鸣响后继续导航到预测爆点、近期泥土墙提交与黑曜石拒绝，以及真实 Brigadier 的四种预设、
   批量带电破墙手和两个全预设快捷入口；蜘蛛另覆盖生产 Mixin 的五 Goal 接入、真实速度预判跳扑、
   附近苦力怕的一对一预约、三 tick 真实跳跃登乘、骑乘后持续注视目标、随机降速上限与真实骑乘、
   载荷不会夺取坐骑控制权、投送距离内起爆、永久速度 II 特质，以及真实 Brigadier
   的四种预设、批量蜘蛛苦力怕投送组和两个全预设快捷入口，并以跨真实 tick 的端到端用例验证
-  五格会合、骑乘运输和进入攻击距离后才起爆，并验证蜘蛛让骷髅真实跳跃登乘、五物种共享队伍及
+  五格会合、骑乘运输和进入攻击距离后才起爆，并验证蜘蛛让骷髅真实跳跃登乘、五类成员共享队伍及
   苦力怕成为最高智力首领；巨人另覆盖生产 Mixin Goal、重型属性、头顶/双手三挂点、乘员不夺控制、
   固定左右 UUID 槽在一侧移除后不换手、远端候选不阻塞已装载手、低位接取后真实举到掌心、
   双载荷 12 tick 瞄准与 10 tick 以上错峰、离手挂点连续、苦力怕点燃、僵尸动量，以及
   掌心接取—肩部停顿—头顶登乘、排队替换保留源 IQ，以及格斗前摇不提前伤害、唯一命中帧、
   双载荷手只能踩踏且不误伤乘员、IQ 10 面对正面人群选择双拳砸地，以及有限转向后锁死攻击方向、
-  高智力单体抓取—真实乘客—抛出、重击打断后安全下车并清理同步槽；
-  全局 `spawnall` 另验证一次事务式生成 23 个战术根、28 个总实体与四个额外乘员；末影人另覆盖生产 Mixin Goal
+  高智力单体抓取—真实乘客—抛出、重击打断后安全下车并清理同步槽、抓取动作手不会被载荷迁移/
+  高优先级投送 Goal 抢占，以及阻塞掌心能够改选世界边界内且不碰撞巨人或方块的释放点；
+  全局 `spawnall` 另验证一次事务式生成 29 个战术/变种根、34 个总实体与五个额外乘员；末影人另覆盖生产 Mixin Goal
    安装、持久智力名称、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
    随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、六个基础生物名、
-  六个复数分类与二十三个战术 literal 全量注册，并真实批量生成六类基础实体；当前共 116 项
+  六个复数分类与二十九个战术/变种 literal 全量注册，并真实批量生成六类基础实体；当前共 118 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。

@@ -126,7 +126,7 @@ public final class GiantShowcaseSpawner {
 		GiantIntelligence.set(giant, archetype.intelligence());
 		giant.setCustomNameVisible(true);
 
-		Skeleton rider = SkeletonShowcaseSpawner.createSkeleton(
+		Skeleton rider = (Skeleton)SkeletonShowcaseSpawner.createSkeleton(
 			level,
 			feet,
 			faceToward,

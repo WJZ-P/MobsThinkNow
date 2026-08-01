@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * 为无参数 {@code /mtn spawnall} 生成当前全部智能 AI 战术预设。
- * 二十三个根实体统一预检、统一准备并事务式加入世界；所有坐骑、射手和载荷随根实体加入。
+ * 二十九个根实体统一预检、统一准备并事务式加入世界；所有坐骑、射手和载荷随根实体加入。
  */
 public final class AllShowcaseSpawner {
 	public static final int ZOMBIE_ARCHETYPES = ZombieShowcaseSpawner.ShowcaseArchetype.values().length;
@@ -75,7 +75,7 @@ public final class AllShowcaseSpawner {
 		for (ZombieShowcaseSpawner.ShowcaseArchetype archetype
 			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
 			specs.add(new SpawnSpec(
-				EntityType.ZOMBIE,
+				archetype.entityType(),
 				(level, feet, faceToward) -> ZombieShowcaseSpawner.createZombie(
 					level,
 					feet,
@@ -87,7 +87,7 @@ public final class AllShowcaseSpawner {
 		for (SkeletonShowcaseSpawner.ShowcaseArchetype archetype
 			: SkeletonShowcaseSpawner.ShowcaseArchetype.values()) {
 			specs.add(new SpawnSpec(
-				EntityType.SKELETON,
+				archetype.entityType(),
 				(level, feet, faceToward) -> SkeletonShowcaseSpawner.createSkeleton(
 					level,
 					feet,
