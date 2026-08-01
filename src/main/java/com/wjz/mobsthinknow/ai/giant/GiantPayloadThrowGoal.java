@@ -64,7 +64,10 @@ public final class GiantPayloadThrowGoal extends Goal {
 
 	@Override
 	public boolean canUse() {
-		if (!enabled() || !this.giant.isAlive() || !validTarget(this.giant.getTarget())) {
+		if (!enabled()
+			|| !this.giant.isAlive()
+			|| GiantTacticsState.meleeAction(this.giant).isActive()
+			|| !validTarget(this.giant.getTarget())) {
 			return false;
 		}
 		this.target = this.giant.getTarget();
@@ -146,8 +149,7 @@ public final class GiantPayloadThrowGoal extends Goal {
 
 	private void claimOpenHands() {
 		for (GiantHand hand : GiantHand.values()) {
-			if (GiantTacticsState.handPhase(this.giant, hand) != GiantHandPhase.EMPTY
-				|| GiantTacticsState.hasPayloadReservation(this.giant, hand)
+			if (!GiantTacticsState.isHandAvailableForPayload(this.giant, hand)
 				|| (hand == GiantHand.RIGHT && this.rightHandReservedForBoarding())) {
 				continue;
 			}

@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.ai.giant;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.EnumSet;
@@ -42,7 +43,7 @@ public final class GiantRiderBoardingGoal extends Goal {
 
 	@Override
 	public boolean canUse() {
-		if (!enabled() || !this.skeleton.isAlive() || this.skeleton.getType() != EntityType.SKELETON
+		if (!enabled() || !this.skeleton.isAlive() || !OverworldUndeadFamilies.isSkeletonFamily(this.skeleton)
 			|| this.skeleton.isPassenger() || !(this.skeleton.level() instanceof ServerLevel level)) {
 			return false;
 		}

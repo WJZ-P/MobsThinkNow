@@ -82,12 +82,21 @@ public final class GiantTacticsState {
 
 	public static @Nullable GiantHand firstUnreservedHand(final Giant giant) {
 		for (GiantHand hand : GiantHand.values()) {
-			if (payloadCandidate(giant, hand) == null
-				&& access(giant).mobsthinknow$getPayloadUuid(hand) == null) {
+			if (isHandAvailableForPayload(giant, hand)) {
 				return hand;
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * 新载荷只能预约真正空闲的手。抓取槽、手部流水线阶段和射手登乘用到的右手均具有更高优先级。
+	 */
+	public static boolean isHandAvailableForPayload(final Giant giant, final GiantHand hand) {
+		return !hasPayloadReservation(giant, hand)
+			&& handPhase(giant, hand) == GiantHandPhase.EMPTY
+			&& !isHandReservedByGrapple(giant, hand)
+			&& (hand != GiantHand.RIGHT || boardingPhase(giant) == GiantBoardingPhase.NONE);
 	}
 
 	public static boolean hasPayloadReservation(final Giant giant, final GiantHand hand) {
@@ -238,6 +247,15 @@ public final class GiantTacticsState {
 		GiantTacticsAccess access = access(giant);
 		return access.mobsthinknow$getGrappledTargetUuid() != null
 			|| access.mobsthinknow$getGrappledTargetEntityId() != 0;
+	}
+
+	/** 抓取只占用实际动作手；同步字段暂时不完整时保守地冻结双手，避免载荷穿模。 */
+	public static boolean isHandReservedByGrapple(final Giant giant, final GiantHand hand) {
+		if (!hasGrappleReservation(giant)) {
+			return false;
+		}
+		GiantHand reserved = grappleHand(giant);
+		return reserved == null || reserved == hand;
 	}
 
 	public static boolean isGrappledTarget(final Giant giant, final Entity entity) {

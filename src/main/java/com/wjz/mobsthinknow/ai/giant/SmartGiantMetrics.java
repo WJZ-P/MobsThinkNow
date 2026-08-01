@@ -16,6 +16,7 @@ public final class SmartGiantMetrics {
 	private static final AtomicLong TARGETS_GRABBED = new AtomicLong();
 	private static final AtomicLong GRAB_THROWS_COMPLETED = new AtomicLong();
 	private static final AtomicLong MELEE_INTERRUPTS = new AtomicLong();
+	private static final AtomicLong GRAPPLE_RELEASE_RELOCATIONS = new AtomicLong();
 
 	private SmartGiantMetrics() {
 	}
@@ -65,6 +66,10 @@ public final class SmartGiantMetrics {
 		MELEE_INTERRUPTS.incrementAndGet();
 	}
 
+	public static void grappleReleaseRelocated() {
+		GRAPPLE_RELEASE_RELOCATIONS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -78,7 +83,8 @@ public final class SmartGiantMetrics {
 			MELEE_VICTIMS_HIT.get(),
 			TARGETS_GRABBED.get(),
 			GRAB_THROWS_COMPLETED.get(),
-			MELEE_INTERRUPTS.get()
+			MELEE_INTERRUPTS.get(),
+			GRAPPLE_RELEASE_RELOCATIONS.get()
 		);
 	}
 
@@ -94,7 +100,8 @@ public final class SmartGiantMetrics {
 		long meleeVictimsHit,
 		long targetsGrabbed,
 		long grabThrowsCompleted,
-		long meleeInterrupts
+		long meleeInterrupts,
+		long grappleReleaseRelocations
 	) {
 	}
 }

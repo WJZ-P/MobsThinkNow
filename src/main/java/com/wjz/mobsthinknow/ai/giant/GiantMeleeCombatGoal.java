@@ -447,7 +447,7 @@ public final class GiantMeleeCombatGoal extends Goal {
 	}
 
 	private boolean handAvailable(final GiantHand hand) {
-		if (GiantTacticsState.hasGrappleReservation(this.giant)
+		if (GiantTacticsState.isHandReservedByGrapple(this.giant, hand)
 			|| GiantTacticsState.hasPayloadReservation(this.giant, hand)
 			|| GiantTacticsState.handPhase(this.giant, hand) != GiantHandPhase.EMPTY) {
 			return false;
@@ -495,16 +495,30 @@ public final class GiantMeleeCombatGoal extends Goal {
 			return;
 		}
 		Vec3 releasePosition = grabbed.position();
+		AABB heldBounds = grabbed.getBoundingBox();
 		if (grabbed.getVehicle() == this.giant) {
 			grabbed.stopRiding();
-			grabbed.snapTo(
-				releasePosition.x,
-				releasePosition.y,
-				releasePosition.z,
-				grabbed.getYRot(),
-				grabbed.getXRot()
-			);
 		}
+		GiantHand releaseHand = GiantTacticsState.grappleHand(this.giant);
+		Vec3 safeRelease = GiantGrappleRelease.find(
+			this.giant,
+			grabbed,
+			releasePosition,
+			heldBounds,
+			this.attackForward,
+			releaseHand
+		);
+		if (safeRelease.distanceToSqr(releasePosition) > 1.0E-6) {
+			SmartGiantMetrics.grappleReleaseRelocated();
+		}
+		grabbed.snapTo(
+			safeRelease.x,
+			safeRelease.y,
+			safeRelease.z,
+			grabbed.getYRot(),
+			grabbed.getXRot()
+		);
+		releasePosition = safeRelease;
 		Vec3 velocity = thrown
 			? this.attackForward.scale(GRAB_THROW_HORIZONTAL_SPEED).add(0.0, GRAB_THROW_VERTICAL_SPEED, 0.0)
 			: this.attackForward.scale(0.18).add(0.0, 0.12, 0.0);

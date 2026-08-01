@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.giant;
 
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -45,6 +46,17 @@ public final class GiantPassengerLayout {
 		List<LivingPayload> result = new ArrayList<>(MAXIMUM_PAYLOADS);
 		EnumSet<GiantHand> occupied = EnumSet.noneOf(GiantHand.class);
 		List<Entity> assignedEntities = new ArrayList<>(MAXIMUM_PAYLOADS);
+		GiantHand grappleHand = GiantTacticsState.grappleHand(giant);
+		if (GiantTacticsState.hasGrappleReservation(giant)) {
+			if (grappleHand == null) {
+				occupied.addAll(EnumSet.allOf(GiantHand.class));
+			} else {
+				occupied.add(grappleHand);
+			}
+		}
+		if (GiantTacticsState.boardingPhase(giant) != GiantBoardingPhase.NONE) {
+			occupied.add(GiantHand.RIGHT);
+		}
 
 		for (GiantHand hand : GiantHand.values()) {
 			Entity entity = GiantTacticsState.payloadForHand(giant, hand);
@@ -87,11 +99,12 @@ public final class GiantPassengerLayout {
 	}
 
 	public static boolean isHeadRider(final Entity entity) {
-		return entity instanceof AbstractSkeleton;
+		return entity instanceof AbstractSkeleton && OverworldUndeadFamilies.isSkeletonFamily(entity);
 	}
 
 	public static boolean isPayload(final Entity entity) {
-		return entity instanceof Creeper || entity instanceof Zombie;
+		return entity instanceof Creeper
+			|| (entity instanceof Zombie && OverworldUndeadFamilies.isZombieFamily(entity));
 	}
 
 	public static boolean hasFreeHeadSeat(final Giant giant) {

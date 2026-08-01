@@ -640,6 +640,47 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 		});
 	}
 
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void grappleHandCannotBeStolenByPayloadMigrationOrItsHigherPriorityGoal(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		giant.setNoAi(true);
+		Player grappled = helper.makeMockPlayer(GameType.SURVIVAL);
+		Vec3 grappledFeet = helper.absoluteVec(new Vec3(7.0, 2.0, 4.0));
+		grappled.snapTo(grappledFeet.x, grappledFeet.y, grappledFeet.z, 90.0F, 0.0F);
+		helper.assertTrue(helper.getLevel().addFreshEntity(grappled), "Grapple hand fixture player was not added.");
+		Zombie payload = helper.spawn(EntityType.ZOMBIE, 6, 2, 5);
+		payload.setNoAi(true);
+		Villager target = helper.spawn(EntityType.VILLAGER, 9, 2, 4);
+		target.setNoAi(true);
+
+		GiantTacticsState.transitionMelee(giant, GiantMeleeAction.GRAB_RIGHT);
+		GiantTacticsState.beginGrapple(giant, GiantHand.RIGHT, grappled);
+		helper.assertTrue(
+			GiantTacticsState.firstUnreservedHand(giant) == GiantHand.LEFT,
+			"A right-hand grapple did not reserve only its real action hand."
+		);
+		helper.assertTrue(payload.startRiding(giant, true, true), "The free left hand rejected its payload fixture.");
+		GiantTacticsState.reconcile(giant);
+		helper.assertTrue(
+			GiantTacticsState.handFor(giant, payload) == GiantHand.LEFT,
+			"Fallback payload migration stole the active grapple hand."
+		);
+		helper.assertTrue(
+			GiantTacticsState.firstUnreservedHand(giant) == null,
+			"A grapple plus one payload incorrectly exposed a third Giant hand."
+		);
+		helper.assertTrue(grappled.getVehicle() == giant, "Reconciliation did not preserve the real grapple passenger.");
+
+		giant.setTarget(target);
+		GiantPayloadThrowGoal payloadGoal = new GiantPayloadThrowGoal(giant);
+		helper.assertTrue(
+			!payloadGoal.canUse(),
+			"The higher-priority payload goal preempted a synchronized melee action."
+		);
+		grappled.discard();
+		helper.succeed();
+	}
+
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 50, padding = 4)
 	public void highIntelligenceGiantGrabsLiftsAndThrowsSingleTarget(final GameTestHelper helper) {
 		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
@@ -701,6 +742,50 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 			target.discard();
 			helper.succeed();
 		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void blockedGrappleReleaseSearchChoosesCollisionFreeAlternative(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		giant.setNoAi(true);
+		giant.setYBodyRot(-90.0F);
+		giant.setYRot(-90.0F);
+		Player target = helper.makeMockPlayer(GameType.SURVIVAL);
+		Vec3 desired = helper.absoluteVec(new Vec3(8.5, 5.0, 4.5));
+		target.snapTo(desired.x, desired.y, desired.z, 90.0F, 0.0F);
+		helper.assertTrue(helper.getLevel().addFreshEntity(target), "Safe-release player fixture was not added.");
+		BlockPos obstruction = new BlockPos(8, 5, 4);
+		helper.setBlock(obstruction, Blocks.STONE);
+		helper.setBlock(obstruction.above(), Blocks.STONE);
+		// 实体内生成完整方块可能触发推出逻辑；重新放回期望掌心后再采集两套释放碰撞箱。
+		target.snapTo(desired.x, desired.y, desired.z, 90.0F, 0.0F);
+		AABB heldBounds = target.getBoundingBox();
+		helper.assertTrue(
+			!helper.getLevel().noCollision(target, heldBounds),
+			"Release obstruction did not intersect the held passenger fixture."
+		);
+
+		Vec3 safeRelease = GiantGrappleRelease.find(
+			giant,
+			target,
+			desired,
+			heldBounds,
+			new Vec3(1.0, 0.0, 0.0),
+			GiantHand.RIGHT
+		);
+		AABB relocatedBounds = heldBounds.move(safeRelease.subtract(desired));
+		helper.assertTrue(
+			safeRelease.distanceToSqr(desired) > 0.20,
+			"Blocked grapple palm did not select a different release point."
+		);
+		helper.assertTrue(
+			helper.getLevel().getWorldBorder().isWithinBounds(relocatedBounds)
+				&& !relocatedBounds.intersects(giant.getBoundingBox().inflate(0.05))
+				&& helper.getLevel().noCollision(target, relocatedBounds),
+			"Grapple release search returned a colliding or out-of-bounds candidate."
+		);
+		target.discard();
+		helper.succeed();
 	}
 
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 30, padding = 4)
