@@ -74,7 +74,7 @@ public final class MobsThinkNowConfig {
 	public boolean skeletonAiEnabled = true;
 	/** 任意当前敌对目标贴脸时使用优先级 1 的独立 Goal 放下远程武器并正向逃跑。 */
 	public boolean skeletonEmergencyDisengage = true;
-	/** 普通骷髅自然生成时可替换为弩手；原版骷髅并不会自行使用弩，因此由本 Mod 状态机接管。 */
+	/** 普通骷髅自然生成时可替换为弩手；其他家族变种保留各自特殊箭与辨识度。 */
 	public boolean skeletonCrossbows = true;
 	public double skeletonCrossbowChance = DEFAULT_SKELETON_CROSSBOW_CHANCE;
 	/** 仅智力 7～10 的弩手有机会携带有限爆炸烟花，耗尽后自动继续使用普通箭。 */
@@ -183,7 +183,7 @@ public final class MobsThinkNowConfig {
 	public double squadSpeedBonus = 0.10;
 	/** 武装小队总开关。默认关闭：持械概率、兵种职位、破盾和包抄加速全部由它统一控制。 */
 	public boolean armedSquads = false;
-	/** 所有持剑/斧的普通僵尸按武器冷却周旋；斧手会优先尝试跳劈。 */
+	/** 所有受支持地面僵尸家族成员持剑/斧时按武器冷却周旋；斧手会优先尝试跳劈。 */
 	public boolean weaponCombatTactics = true;
 	/** 原版自然生成的持矛僵尸是否自动装备鞘翅和 16～64 枚烟花，改用空中突刺。 */
 	public boolean spearAirAssault = true;

@@ -5,7 +5,7 @@ import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
 /**
- * 每只普通骷髅稳定不变的逃跑速度因子。
+ * 每只受支持骷髅家族成员稳定不变的逃跑速度因子。
  *
  * <p>原来的智力速度曲线继续作为该骷髅的绝对上限；难度只抬高随机区间下界，
  * 所以困难难度平均更快，但任何个体都不会超过改动前的最大逃跑速度。</p>

@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.EnumSet;
@@ -295,8 +296,8 @@ public final class SpiderSquadCarrierGoal extends Goal {
 	}
 
 	public static boolean isSupportedPassenger(final Entity entity) {
-		return entity.getType() == EntityType.ZOMBIE
-			|| entity.getType() == EntityType.SKELETON
+		return OverworldUndeadFamilies.isZombieFamily(entity)
+			|| OverworldUndeadFamilies.isSkeletonFamily(entity)
 			|| entity.getType() == EntityType.CREEPER;
 	}
 

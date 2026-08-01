@@ -7,6 +7,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
+import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieRetreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieShieldMemory;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceName;
@@ -16,6 +17,7 @@ import com.wjz.mobsthinknow.ai.giant.GiantIntelligenceName;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieSpawnConversion;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligenceName;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.command.MtnCommands;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -45,7 +47,7 @@ public final class MobsThinkNow implements ModInitializer {
 		MtnCommands.register();
 		// finalizeSpawn 只负责掷概率；实体确认入世后排队，在维度 tick 末做无递归替换。
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
-			if (entity instanceof Zombie zombie) {
+			if (entity instanceof Zombie zombie && zombie.getType() == net.minecraft.world.entity.EntityType.ZOMBIE) {
 				GiantZombieSpawnConversion.queueIfMarked(zombie, level);
 			}
 		});
@@ -76,7 +78,7 @@ public final class MobsThinkNow implements ModInitializer {
 		});
 		// 在 die() 记录“Named entity died”日志之前恢复职业名牌；只做表现清理，不改变死亡结果。
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, damageSource, damageAmount) -> {
-			if (entity instanceof Zombie zombie) {
+			if (entity instanceof Zombie zombie && OverworldUndeadFamilies.isZombieFamily(zombie)) {
 				ZombieRetreatMemory.discard(zombie);
 				ZombieShieldMemory.discard(zombie);
 				ZombieFireSupportMemory.discard(zombie);
@@ -85,7 +87,8 @@ public final class MobsThinkNow implements ModInitializer {
 				ZombieFoodEquipment.restore(zombie, true);
 				ZombieEngineerEquipment.restore(zombie, true);
 				ZombieIntelligenceName.removeSyntheticMarker(zombie);
-			} else if (entity instanceof AbstractSkeleton skeleton) {
+			} else if (entity instanceof AbstractSkeleton skeleton
+				&& OverworldUndeadFamilies.isSkeletonFamily(skeleton)) {
 				ZombieSquadCoordinator.onMemberDying(skeleton);
 				SkeletonIntelligenceName.removeSyntheticMarker(skeleton);
 			} else if (entity instanceof Creeper creeper) {
@@ -104,18 +107,24 @@ public final class MobsThinkNow implements ModInitializer {
 		});
 		// ALLOW_DEATH 仍可能被后注册的复活机制取消；材料只在不可撤销的死亡事件中掉落，避免复制或误掉落。
 		ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
-			if (entity instanceof Zombie zombie) {
+			if (entity instanceof Zombie zombie && OverworldUndeadFamilies.isZombieFamily(zombie)) {
 				ZombieBuilderInventory.dropAll(zombie);
 			}
 		});
 		ServerLivingEntityEvents.MOB_CONVERSION.register((previous, converted, conversionContext) -> {
-			if (previous instanceof Zombie oldZombie && converted instanceof Zombie newZombie) {
+			if (previous instanceof Zombie oldZombie
+				&& converted instanceof Zombie newZombie
+				&& OverworldUndeadFamilies.isZombieFamily(oldZombie)
+				&& OverworldUndeadFamilies.isZombieFamily(newZombie)) {
 				ZombieBuilderInventory.transfer(oldZombie, newZombie);
+				int intelligence = ZombieIntelligence.get(oldZombie);
+				ZombieIntelligence.set(newZombie, intelligence);
+				ZombieIntelligenceName.apply(newZombie, intelligence);
 			}
 		});
 		// 同一入口先快照生命值，并在斧击举盾僵尸时补上原版只对玩家生效的破盾冷却。
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, damageSource, damageAmount) -> {
-			if (entity instanceof Zombie zombie) {
+			if (entity instanceof Zombie zombie && OverworldUndeadFamilies.isZombieFamily(zombie)) {
 				MobsThinkNowConfig config = ConfigManager.get();
 				// 必须先快照生命值：ZombieArmory 可能因斧击收盾，随后原版才会结算实际扣血。
 				ZombieRetreatMemory.beginDamage(zombie);
@@ -127,6 +136,7 @@ public final class MobsThinkNow implements ModInitializer {
 					ZombieSquadCoordinator.onSquadMemberAttacked(zombie, attacker);
 				}
 			} else if (entity instanceof AbstractSkeleton skeleton
+				&& OverworldUndeadFamilies.isSkeletonFamily(skeleton)
 				&& damageSource.getEntity() instanceof LivingEntity attacker) {
 				ZombieSquadCoordinator.onSquadMemberAttacked(skeleton, attacker);
 			} else if (entity instanceof Creeper creeper
@@ -143,7 +153,7 @@ public final class MobsThinkNow implements ModInitializer {
 			return true;
 		});
 		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, damageSource, baseDamage, damage, blocked) -> {
-			if (entity instanceof Zombie zombie) {
+			if (entity instanceof Zombie zombie && OverworldUndeadFamilies.isZombieFamily(zombie)) {
 				// 仅在盾牌成功把最终伤害完全挡为零时恢复旧动画；真实受伤继续使用原版反馈。
 				ZombieShieldMemory.finishDamageAnimation(zombie, damage, blocked);
 				// 等原版结算确认“盾牌参与且零实伤”后再发反击信号，背刺与破盾不冒充成功格挡。

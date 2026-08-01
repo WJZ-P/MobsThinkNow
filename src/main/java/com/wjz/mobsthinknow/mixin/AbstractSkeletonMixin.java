@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonBowIntervals;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCrossbowLoadout;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonEscapeSpeedAccess;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonEscapeSpeedProfile;
@@ -13,11 +14,11 @@ import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonCrossbowAttackGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.skeleton.SquadSkeletonHurtByTargetGoal;
 import com.wjz.mobsthinknow.ai.giant.GiantRiderBoardingGoal;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
-import net.minecraft.world.Difficulty;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntitySpawnReason;
@@ -46,7 +47,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
-/** 只改造原版普通骷髅；流浪者、沼骸、凋灵骷髅等变种先保留各自原版节奏。 */
+/** 改造主世界骷髅家族；特殊箭与各变种原版射击节奏仍由对应实体保留。 */
 @Mixin(AbstractSkeleton.class)
 public abstract class AbstractSkeletonMixin extends Monster implements SkeletonIntelligenceAccess, SkeletonEscapeSpeedAccess {
 	@Unique
@@ -81,7 +82,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	@Inject(method = "registerGoals", at = @At("TAIL"))
 	private void mobsthinknow$installSquadFriendlyFireTargetGoal(final CallbackInfo callbackInfo) {
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
-		if (skeleton.getType() != EntityType.SKELETON) {
+		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)) {
 			return;
 		}
 		// 只替换 AbstractSkeleton 自己注册的精确原版类，不移除其他模组添加的 HurtByTargetGoal 子类。
@@ -91,13 +92,13 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	}
 
 	/**
-	 * 原版每次换装都会重建“弓或近战”Goal。等它完成判断后，仅把普通持弓骷髅的原版
+	 * 原版每次换装都会重建“弓或近战”Goal。等它完成判断后，把受支持持弓骷髅的原版
 	 * RangedBowAttackGoal 换成兼容包装；非弓装备继续沿用原版 meleeGoal。
 	 */
 	@Inject(method = "reassessWeaponGoal", at = @At("TAIL"))
 	private void mobsthinknow$installSmartBowGoal(final CallbackInfo callbackInfo) {
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
-		if (skeleton.getType() != EntityType.SKELETON) {
+		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)) {
 			return;
 		}
 
@@ -108,7 +109,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 			this.goalSelector.removeGoal(this.mobsthinknow$smartCrossbowGoal);
 		}
 		if (this.mobsthinknow$smartBowGoal == null) {
-			int vanillaInterval = skeleton.level().getDifficulty() == Difficulty.HARD ? 20 : 40;
+			int vanillaInterval = SkeletonBowIntervals.vanillaInterval(skeleton);
 			this.mobsthinknow$smartBowGoal = new SmartSkeletonBowAttackGoal(
 				skeleton,
 				1.0,
@@ -152,7 +153,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	protected void addAdditionalSaveData(final ValueOutput output) {
 		super.addAdditionalSaveData(output);
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
-		if (skeleton.getType() == EntityType.SKELETON) {
+		if (OverworldUndeadFamilies.isSkeletonFamily(skeleton)) {
 			output.putInt(mobsthinknow$INTELLIGENCE_TAG, this.mobsthinknow$getSkeletonIntelligence());
 			SkeletonEscapeSpeedProfile.save(skeleton, output);
 		}
@@ -161,7 +162,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	@Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
 	private void mobsthinknow$loadSkeletonIntelligence(final ValueInput input, final CallbackInfo callbackInfo) {
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
-		if (skeleton.getType() != EntityType.SKELETON) {
+		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)) {
 			return;
 		}
 		int saved = input.getIntOr(mobsthinknow$INTELLIGENCE_TAG, 0);
@@ -181,12 +182,15 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 		final CallbackInfoReturnable<SpawnGroupData> callbackInfo
 	) {
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
-		if (skeleton.getType() != EntityType.SKELETON) {
+		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)) {
 			return;
 		}
 		SkeletonIntelligenceName.apply(skeleton, this.mobsthinknow$getSkeletonIntelligence());
 		SkeletonEscapeSpeedProfile.initialize(skeleton);
-		SkeletonCrossbowLoadout.maybeEquip(skeleton, skeleton.level().getDifficulty(), ConfigManager.get());
+		// 只有普通骷髅参与随机弩装；流浪者、沼骸和干尸保留原版特殊箭与出生辨识度。
+		if (skeleton.getType() == EntityType.SKELETON) {
+			SkeletonCrossbowLoadout.maybeEquip(skeleton, skeleton.level().getDifficulty(), ConfigManager.get());
+		}
 		// 换成弩时 setItemSlot 会重评一次；显式再调用可覆盖其他 Mod 直接修改 ItemStack 的路径。
 		skeleton.reassessWeaponGoal();
 	}
@@ -196,7 +200,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 		super.customServerAiStep(serverLevel);
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
 		MobsThinkNowConfig config = ConfigManager.get();
-		if (skeleton.getType() != EntityType.SKELETON
+		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)
 			|| !config.enabled
 			|| !config.skeletonAiEnabled
 			|| !config.packSurrounding) {
@@ -259,7 +263,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	) {
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
 		MobsThinkNowConfig config = ConfigManager.get();
-		if (skeleton.getType() != EntityType.SKELETON
+		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)
 			|| !config.enabled
 			|| !config.skeletonAiEnabled
 			|| !config.skeletonPredictiveAim) {

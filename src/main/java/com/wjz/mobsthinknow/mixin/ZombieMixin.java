@@ -36,6 +36,9 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieWeaponPickupGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieProfile;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieSpawnAccess;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.DifficultyInstance;
@@ -47,6 +50,7 @@ import net.minecraft.world.entity.ai.goal.SpearUseGoal;
 import net.minecraft.world.entity.ai.goal.ZombieAttackGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
+import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.ItemStack;
@@ -107,13 +111,34 @@ public abstract class ZombieMixin extends Monster implements
 	/** 只替换僵尸的节点分类器，导航、A* 与 MoveControl 仍沿用原版实现。 */
 	@Override
 	protected PathNavigation createNavigation(final Level level) {
-		return new SmartZombieGroundNavigation((Zombie)(Object)this, level);
+		Zombie zombie = (Zombie)(Object)this;
+		return OverworldUndeadFamilies.usesGroundZombieTactics(zombie.getType())
+			? new SmartZombieGroundNavigation(zombie, level)
+			: new GroundPathNavigation(zombie, level);
+	}
+
+	/** 所有人形僵尸共享友伤过滤；溺尸只额外接受集结和部署命令，不替换两栖战斗 Goal。 */
+	@Inject(method = "registerGoals", at = @At("TAIL"))
+	private void mobsthinknow$installFamilySquadGoals(final CallbackInfo callbackInfo) {
+		Zombie zombie = (Zombie)(Object)this;
+		if (!OverworldUndeadFamilies.isZombieFamily(zombie)) {
+			return;
+		}
+		boolean alreadyInstalled = this.targetSelector.getAvailableGoals().stream()
+			.anyMatch(wrapped -> wrapped.getGoal() instanceof SquadHurtByTargetGoal);
+		if (!alreadyInstalled) {
+			this.targetSelector.removeAllGoals(goal -> goal.getClass() == HurtByTargetGoal.class);
+			this.targetSelector.addGoal(1, new SquadHurtByTargetGoal(zombie));
+		}
+		if (zombie.getType() == EntityType.DROWNED) {
+			this.goalSelector.addGoal(0, new SquadPreparationGoal(zombie, 1.0));
+		}
 	}
 
 	@Inject(method = "addBehaviourGoals", at = @At("TAIL"))
 	private void mobsthinknow$replaceZombieAttackGoal(final CallbackInfo callbackInfo) {
 		Zombie zombie = (Zombie)(Object)this;
-		if (zombie.getType() != EntityType.ZOMBIE) {
+		if (!OverworldUndeadFamilies.usesGroundZombieTactics(zombie.getType())) {
 			return;
 		}
 
@@ -164,6 +189,10 @@ public abstract class ZombieMixin extends Monster implements
 
 	@Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
 	private void mobsthinknow$saveIntelligence(final ValueOutput output, final CallbackInfo callbackInfo) {
+		Zombie zombie = (Zombie)(Object)this;
+		if (!OverworldUndeadFamilies.isZombieFamily(zombie)) {
+			return;
+		}
 		// 智力是个体特征，必须持久化；小队归属和命令刻意不保存，避免重载世界后引用失效实体。
 		output.putInt(mobsthinknow$INTELLIGENCE_TAG, this.mobsthinknow$getIntelligence());
 		ZombieBuilderInventory.save((Zombie)(Object)this, output);
@@ -177,6 +206,10 @@ public abstract class ZombieMixin extends Monster implements
 
 	@Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
 	private void mobsthinknow$loadIntelligence(final ValueInput input, final CallbackInfo callbackInfo) {
+		Zombie candidate = (Zombie)(Object)this;
+		if (!OverworldUndeadFamilies.isZombieFamily(candidate)) {
+			return;
+		}
 		int saved = input.getIntOr(mobsthinknow$INTELLIGENCE_TAG, 0);
 		this.mobsthinknow$intelligence = saved == 0 ? 0 : ZombieIntelligence.clamp(saved);
 		// 实体基础数据（含 CustomName）先于本回调加载；崩溃残留的职业名牌在这里剥掉。
@@ -188,7 +221,7 @@ public abstract class ZombieMixin extends Monster implements
 		ZombieEngineerProfile.load(zombie, input);
 		ZombieVoiceProfile.load(zombie, input);
 		ZombieSpecialEquipment.load(zombie, input);
-		if (zombie.getType() == EntityType.ZOMBIE) {
+		if (OverworldUndeadFamilies.isZombieFamily(zombie)) {
 			ZombieIntelligenceName.apply(zombie, this.mobsthinknow$getIntelligence());
 		}
 	}
@@ -202,6 +235,9 @@ public abstract class ZombieMixin extends Monster implements
 		// 原版转化会把 CustomName 原样复制给新实体（僵尸→溺尸等）；转化前剥掉职业名牌，
 		// 避免溺尸顶着本 Mod 的名牌继续存在。
 		Zombie zombie = (Zombie)(Object)this;
+		if (!OverworldUndeadFamilies.isZombieFamily(zombie)) {
+			return;
+		}
 		ZombieEngineerEquipment.restore(zombie, false);
 		SquadTheatrics.stripLeftoverRoleTag(zombie);
 		ZombieIntelligenceName.removeSyntheticMarker(zombie);
@@ -216,7 +252,7 @@ public abstract class ZombieMixin extends Monster implements
 		final CallbackInfoReturnable<SpawnGroupData> callbackInfo
 	) {
 		Zombie zombie = (Zombie)(Object)this;
-		if (zombie.getType() == EntityType.ZOMBIE) {
+		if (OverworldUndeadFamilies.isZombieFamily(zombie)) {
 			ZombieIntelligenceName.apply(zombie, this.mobsthinknow$getIntelligence());
 			// 提前固化声线；首次环境音与后续小队叫声都会使用同一中心音高。
 			ZombieVoiceProfile.factor(zombie);
@@ -239,6 +275,16 @@ public abstract class ZombieMixin extends Monster implements
 			config
 		)) {
 			this.mobsthinknow$giantReplacement = true;
+		}
+	}
+
+	/** 独立心跳保证溺尸的原版两栖 Goal 未运行近战时，也能参与同一轮发现、选举与重选。 */
+	@Override
+	protected void customServerAiStep(final ServerLevel serverLevel) {
+		super.customServerAiStep(serverLevel);
+		Zombie zombie = (Zombie)(Object)this;
+		if (zombie.getType() == EntityType.DROWNED) {
+			SquadMemberHeartbeat.tick(serverLevel, zombie, ConfigManager.get().zombieAiEnabled);
 		}
 	}
 
@@ -373,6 +419,9 @@ public abstract class ZombieMixin extends Monster implements
 	/** 原版每次发声的小抖动保留，再乘固定个体声线，幼年僵尸的高音规则也照常叠加。 */
 	@Override
 	public float getVoicePitch() {
-		return super.getVoicePitch() * ZombieVoiceProfile.factor((Zombie)(Object)this);
+		Zombie zombie = (Zombie)(Object)this;
+		return super.getVoicePitch() * (OverworldUndeadFamilies.isZombieFamily(zombie)
+			? ZombieVoiceProfile.factor(zombie)
+			: 1.0F);
 	}
 }

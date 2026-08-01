@@ -6,7 +6,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 
-/** 把普通苦力怕与蜘蛛的直接感知转换为统一协调器心跳。 */
+/** 把未通过智能近战包装提交感知的成员转换为统一协调器心跳。 */
 public final class SquadMemberHeartbeat {
 	private SquadMemberHeartbeat() {
 	}

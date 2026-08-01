@@ -7,7 +7,7 @@ import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import org.jspecify.annotations.Nullable;
 
-/** 在普通骷髅名称末尾追加结构化的智力数字，并保留玩家命名牌名称。 */
+/** 在受支持骷髅家族成员名称末尾追加结构化智力数字，并保留玩家命名牌名称。 */
 public final class SkeletonIntelligenceName {
 	private static final String ROLE_KEY_PREFIX = "mobsthinknow.role.";
 

@@ -6,6 +6,7 @@ import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.monster.zombie.Drowned;
 import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 
 /**
@@ -18,7 +19,7 @@ public final class SquadHurtByTargetGoal extends HurtByTargetGoal {
 	private final Zombie zombie;
 
 	public SquadHurtByTargetGoal(final Zombie zombie) {
-		super(zombie);
+		super(zombie, ignoredDamageTypes(zombie));
 		// 保留原版语义：僵尸的警报不会把僵尸猪灵卷进战斗。
 		this.setAlertOthers(ZombifiedPiglin.class);
 		this.zombie = zombie;
@@ -38,5 +39,10 @@ public final class SquadHurtByTargetGoal extends HurtByTargetGoal {
 			return false;
 		}
 		return super.canUse();
+	}
+
+	/** 溺尸原版不会因另一只溺尸的伤害改换目标；替换 Goal 时保留这条边界。 */
+	private static Class<?>[] ignoredDamageTypes(final Zombie zombie) {
+		return zombie instanceof Drowned ? new Class<?>[] {Drowned.class} : new Class<?>[0];
 	}
 }

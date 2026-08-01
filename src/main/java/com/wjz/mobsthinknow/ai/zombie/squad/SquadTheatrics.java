@@ -17,8 +17,10 @@ import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import org.jspecify.annotations.Nullable;
@@ -293,10 +295,17 @@ public final class SquadTheatrics {
 
 	private static void playVoice(final ServerLevel level, final Mob mob, final float volume, final float expression) {
 		if (mob instanceof Zombie zombie) {
+			var sound = zombie.getType() == EntityType.HUSK
+				? SoundEvents.HUSK_AMBIENT
+				: zombie.getType() == EntityType.DROWNED
+					? (zombie.isInWater() ? SoundEvents.DROWNED_AMBIENT_WATER : SoundEvents.DROWNED_AMBIENT)
+					: zombie.getType() == EntityType.ZOMBIE_VILLAGER
+						? SoundEvents.ZOMBIE_VILLAGER_AMBIENT
+						: SoundEvents.ZOMBIE_AMBIENT;
 			level.playSound(
 				null,
 				zombie,
-				SoundEvents.ZOMBIE_AMBIENT,
+				sound,
 				SoundSource.HOSTILE,
 				volume,
 				ZombieVoiceProfile.expressivePitch(zombie, expression)
@@ -312,7 +321,18 @@ public final class SquadTheatrics {
 			level.playSound(null, mob, SoundEvents.SPIDER_AMBIENT, SoundSource.HOSTILE, volume, expression * individual);
 			return;
 		}
-		// 骷髅没有僵尸声线字段；UUID 哈希提供稳定的小幅个体差异，重进世界后也不会变声。
+		if (mob instanceof AbstractSkeleton skeleton) {
+			var sound = skeleton.getType() == EntityType.STRAY
+				? SoundEvents.STRAY_AMBIENT
+				: skeleton.getType() == EntityType.BOGGED
+					? SoundEvents.BOGGED_AMBIENT
+					: skeleton.getType() == EntityType.PARCHED
+						? SoundEvents.PARCHED_AMBIENT
+						: SoundEvents.SKELETON_AMBIENT;
+			level.playSound(null, skeleton, sound, SoundSource.HOSTILE, volume, expression * individual);
+			return;
+		}
+		// 其余无专用声线成员使用 UUID 哈希提供稳定的小幅差异，重进世界后也不会变声。
 		level.playSound(
 			null,
 			mob,

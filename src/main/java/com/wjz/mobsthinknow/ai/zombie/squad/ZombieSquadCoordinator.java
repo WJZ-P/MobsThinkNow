@@ -5,6 +5,7 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.giant.GiantIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
@@ -120,7 +121,7 @@ public final class ZombieSquadCoordinator {
 		onMemberDying(zombie);
 	}
 
-	/** 供仇恨 Goal 判断“攻击者是不是同队队友”；两个实体都登记在同一支五物种小队才算。 */
+	/** 供仇恨 Goal 判断“攻击者是不是同队队友”；两个实体都登记在同一支五类混编小队才算。 */
 	public static boolean areSquadmates(final Mob first, final Mob second) {
 		if (first.level() != second.level() || !(first.level() instanceof ServerLevel serverLevel)) {
 			return false;
@@ -729,7 +730,7 @@ public final class ZombieSquadCoordinator {
 
 		List<MemberRecord> payloads = available.stream()
 			.filter(member -> !reserved.contains(member.mob.getId()))
-			.filter(member -> isCreeperMember(member.mob) || member.mob.getType() == EntityType.ZOMBIE)
+			.filter(member -> isCreeperMember(member.mob) || OverworldUndeadFamilies.isZombieFamily(member.mob))
 			.sorted(Comparator.comparingInt((MemberRecord member) -> giantPayloadPriority(member.mob))
 				.thenComparing(Comparator.comparingInt((MemberRecord member) -> intelligenceOf(member.mob)).reversed())
 				.thenComparingInt(member -> member.mob.getId()))
@@ -1238,15 +1239,15 @@ public final class ZombieSquadCoordinator {
 
 	private static boolean isSupportedMember(final Mob mob) {
 		MobsThinkNowConfig config = ConfigManager.get();
-		return (mob.getType() == EntityType.ZOMBIE && config.zombieAiEnabled)
-			|| (mob.getType() == EntityType.SKELETON && config.skeletonAiEnabled)
+		return (OverworldUndeadFamilies.isZombieFamily(mob) && config.zombieAiEnabled)
+			|| (OverworldUndeadFamilies.isSkeletonFamily(mob) && config.skeletonAiEnabled)
 			|| (mob.getType() == EntityType.CREEPER && config.creeperAiEnabled)
 			|| (mob.getType() == EntityType.SPIDER && config.spiderAiEnabled)
 			|| (mob.getType() == EntityType.GIANT && config.giantZombieAiEnabled);
 	}
 
 	private static boolean isRangedMember(final @Nullable Mob mob) {
-		return mob instanceof AbstractSkeleton && mob.getType() == EntityType.SKELETON;
+		return mob instanceof AbstractSkeleton && OverworldUndeadFamilies.isSkeletonFamily(mob);
 	}
 
 	private static boolean isCreeperMember(final @Nullable Mob mob) {

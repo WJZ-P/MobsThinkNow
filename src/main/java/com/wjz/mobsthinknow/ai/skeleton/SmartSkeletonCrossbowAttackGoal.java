@@ -16,7 +16,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ChargedProjectiles;
 
 /**
- * 普通骷髅专用弩战状态机：在射程外接近、射程内侧移、近身时保持瞄准拉扯，完成真实装填后
+ * 骷髅家族共用的弩战状态机：在射程外接近、射程内侧移、近身时保持瞄准拉扯，完成真实装填后
  * 再射出箭或副手里的爆炸烟花。贴脸全力逃跑仍由优先级 1 的独立 Goal 抢占。
  */
 public final class SmartSkeletonCrossbowAttackGoal extends Goal {

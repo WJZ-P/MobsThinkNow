@@ -6,7 +6,6 @@ import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.List;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
@@ -18,7 +17,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 普通骷髅的远程战斗状态机。
+ * 主世界骷髅家族共用的远程战斗状态机。
  *
  * <p>关闭总开关或骷髅开关时，整个生命周期直接委托给原版
  * {@link RangedBowAttackGoal}；开启时则在同一 Goal 内完成接敌、持续侧移、持弓拉扯、
@@ -43,6 +42,8 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 
 	private final AbstractSkeleton skeleton;
 	private final double speedModifier;
+	/** 创建 Goal 时按具体变种读取的原版间隔；沼骸和干尸保持 50/70 tick 的慢射节奏。 */
+	private final int baseAttackInterval;
 	private boolean smartMode;
 	private int attackTime;
 	private int seeTime;
@@ -70,6 +71,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		super(skeleton, speedModifier, vanillaAttackInterval, attackRadius);
 		this.skeleton = skeleton;
 		this.speedModifier = speedModifier;
+		this.baseAttackInterval = vanillaAttackInterval;
 	}
 
 	@Override
@@ -644,8 +646,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	}
 
 	private int nextAttackInterval() {
-		int vanillaInterval = this.skeleton.level().getDifficulty() == Difficulty.HARD ? 20 : 40;
-		return Math.max(12, vanillaInterval + this.skeleton.getRandom().nextInt(9) - 4);
+		return Math.max(12, this.baseAttackInterval + this.skeleton.getRandom().nextInt(9) - 4);
 	}
 
 	private int nextStrafeWindow() {
