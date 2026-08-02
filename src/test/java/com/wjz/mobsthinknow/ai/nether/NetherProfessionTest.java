@@ -45,6 +45,40 @@ class NetherProfessionTest {
 			NetherProfession.HOGLIN_RAVAGER,
 			NetherProfessionProfile.choose(NetherProfessionFamily.HOGLIN, false, false, 3, 0.31)
 		);
+		assertEquals(
+			NetherProfession.WITHER_SKELETON_DUELIST,
+			NetherProfessionProfile.choose(NetherProfessionFamily.WITHER_SKELETON, false, false, 1, 0.10)
+		);
+		assertEquals(
+			NetherProfession.WITHER_SKELETON_HEXER,
+			NetherProfessionProfile.choose(NetherProfessionFamily.WITHER_SKELETON, false, false, 3, 0.10)
+		);
+	}
+
+	@Test
+	void existingSpecialistWeaponsKeepTheirDedicatedProfession() {
+		for (int difficulty = 1; difficulty <= 3; difficulty++) {
+			assertEquals(
+				NetherProfession.ZOMBIFIED_PIGLIN_LANCER,
+				NetherProfessionProfile.choose(
+					NetherProfessionFamily.ZOMBIFIED_PIGLIN,
+					true,
+					false,
+					difficulty,
+					0.99
+				)
+			);
+			assertEquals(
+				NetherProfession.WITHER_SKELETON_HEXER,
+				NetherProfessionProfile.choose(
+					NetherProfessionFamily.WITHER_SKELETON,
+					true,
+					false,
+					difficulty,
+					0.99
+				)
+			);
+		}
 	}
 
 	@Test
@@ -80,6 +114,15 @@ class NetherProfessionTest {
 		assertTrue(
 			NetherProfessionTactics.magmaPounceMultiplier(NetherProfession.MAGMA_AMBUSHER)
 				> NetherProfessionTactics.magmaPounceMultiplier(NetherProfession.MAGMA_TITAN)
+		);
+		assertTrue(
+			NetherProfessionTactics.undeadMoveSpeed(NetherProfession.ZOMBIFIED_PIGLIN_BERSERKER)
+				> NetherProfessionTactics.undeadMoveSpeed(NetherProfession.ZOMBIFIED_PIGLIN_WARCALLER)
+		);
+		assertTrue(NetherProfessionTactics.undeadUsesLunge(NetherProfession.WITHER_SKELETON_REAPER));
+		assertTrue(
+			NetherProfessionTactics.undeadRecoveryTicks(NetherProfession.WITHER_SKELETON_DUELIST)
+				> NetherProfessionTactics.undeadRecoveryTicks(NetherProfession.WITHER_SKELETON_REAPER)
 		);
 	}
 }

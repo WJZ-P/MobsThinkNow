@@ -106,6 +106,16 @@ public final class NetherShowcaseCommandGameTests implements CustomTestMethodInv
 			.allMatch(mob -> mob.getMainHandItem().is(Items.CROSSBOW)),
 			"The Piglin marksman did not retain its crossbow."
 		);
+		helper.assertTrue(mobs.stream()
+			.filter(mob -> NetherProfessionProfile.get(mob) == NetherProfession.ZOMBIFIED_PIGLIN_LANCER)
+			.allMatch(mob -> mob.getMainHandItem().is(Items.GOLDEN_SPEAR)),
+			"The Zombified Piglin lancer did not retain its golden spear."
+		);
+		helper.assertTrue(mobs.stream()
+			.filter(mob -> NetherProfessionProfile.get(mob) == NetherProfession.WITHER_SKELETON_HEXER)
+			.allMatch(mob -> mob.getMainHandItem().is(Items.BOW)),
+			"The Wither Skeleton hexer did not retain its bow."
+		);
 		helper.assertTrue(mobs.stream().filter(mob -> mob instanceof MagmaCube).allMatch(mob -> {
 			MagmaCube cube = (MagmaCube)mob;
 			return switch (NetherProfessionProfile.get(cube)) {

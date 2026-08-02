@@ -17,6 +17,7 @@ import net.minecraft.world.entity.monster.Zoglin;
 import net.minecraft.world.entity.monster.hoglin.Hoglin;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.piglin.PiglinBrute;
+import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -35,7 +36,9 @@ public final class NetherTacticsGameTests implements CustomTestMethodInvoker {
 			EntityType.GHAST,
 			EntityType.HOGLIN,
 			EntityType.ZOGLIN,
-			EntityType.MAGMA_CUBE
+			EntityType.MAGMA_CUBE,
+			EntityType.ZOMBIFIED_PIGLIN,
+			EntityType.WITHER_SKELETON
 		};
 		BlockPos feet = helper.absolutePos(new BlockPos(4, 2, 4));
 		for (EntityType<?> type : types) {
@@ -70,6 +73,8 @@ public final class NetherTacticsGameTests implements CustomTestMethodInvoker {
 		Hoglin hoglin = helper.spawn(EntityType.HOGLIN, 5, 2, 3);
 		Zoglin zoglin = helper.spawn(EntityType.ZOGLIN, 6, 2, 3);
 		MagmaCube cube = helper.spawn(EntityType.MAGMA_CUBE, 7, 2, 3);
+		ZombifiedPiglin zombifiedPiglin = helper.spawn(EntityType.ZOMBIFIED_PIGLIN, 8, 2, 3);
+		var witherSkeleton = helper.spawn(EntityType.WITHER_SKELETON, 9, 2, 3);
 
 		piglin.setImmuneToZombification(true);
 		brute.setImmuneToZombification(true);
@@ -78,9 +83,11 @@ public final class NetherTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(hoglin instanceof HoglinChargeAccess, "Hoglin charge-state bridge was not mixed in.");
 		helper.assertTrue(zoglin instanceof HoglinChargeAccess, "Zoglin did not reuse the charge-state bridge.");
 		helper.assertTrue(
-			SmartNetherMetrics.snapshot().installedControllers() == before + 7,
-			"Expected seven Nether runtime controllers/goals to install exactly once."
+			SmartNetherMetrics.snapshot().installedControllers() == before + 9,
+			"Expected nine Nether runtime controllers/goals to install exactly once."
 		);
+		zombifiedPiglin.discard();
+		witherSkeleton.discard();
 		ghast.discard();
 		cube.discard();
 		helper.succeed();
@@ -245,6 +252,46 @@ public final class NetherTacticsGameTests implements CustomTestMethodInvoker {
 			}
 			if (elapsed[0] >= 80) {
 				helper.assertTrue(false, "Magma Cube did not perform a predictive real jump.");
+			}
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 70, padding = 4)
+	public void zombifiedPiglinBerserkerTelegraphsBeforeItsMidRangeLunge(final GameTestHelper helper) {
+		for (int x = 2; x <= 13; x++) {
+			for (int z = 3; z <= 7; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.BLACKSTONE);
+			}
+		}
+		ZombifiedPiglin piglin = helper.spawn(EntityType.ZOMBIFIED_PIGLIN, 4, 2, 5);
+		Villager target = helper.spawn(EntityType.VILLAGER, 10, 2, 5);
+		target.setNoAi(true);
+		piglin.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.GOLDEN_SWORD));
+		NetherProfessionProfile.set(piglin, NetherProfession.ZOMBIFIED_PIGLIN_BERSERKER);
+		piglin.setTarget(target);
+		long before = SmartNetherMetrics.snapshot().netherUndeadLunges();
+		int[] elapsed = {0};
+		Vec3[] lungeOrigin = {null};
+
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			piglin.setTarget(target);
+			if (SmartNetherMetrics.snapshot().netherUndeadLunges() > before) {
+				if (lungeOrigin[0] == null) {
+					helper.assertTrue(elapsed[0] >= 6, "Berserker lunged without a readable windup window.");
+					lungeOrigin[0] = piglin.position();
+				} else if (piglin.position().subtract(lungeOrigin[0]).horizontalDistanceSqr() > 0.04) {
+					// 速度会在实体移动积分时被地面摩擦消费；跨 tick 的真实位移才是玩家最终看到的突进。
+					helper.succeed();
+				}
+			}
+			if (elapsed[0] >= 60) {
+				helper.assertTrue(
+					false,
+					lungeOrigin[0] == null
+						? "Berserker never advanced from windup into its mid-range lunge."
+						: "Berserker entered lunge state but produced no visible displacement."
+				);
 			}
 		});
 	}

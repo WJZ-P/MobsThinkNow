@@ -13,9 +13,9 @@ import org.junit.jupiter.api.Test;
 
 class NetherProfessionAssetsTest {
 	@Test
-	void allTwentyFourProfessionTexturesExistWithTheVanillaAtlasDimensions() throws IOException {
+	void allThirtyProfessionTexturesExistWithTheVanillaAtlasDimensions() throws IOException {
 		List<ExpectedTexture> expected = expectedTextures();
-		assertEquals(24, expected.size());
+		assertEquals(30, expected.size());
 		for (ExpectedTexture texture : expected) {
 			String resource = "/assets/mobsthinknow/textures/entity/nether/" + texture.path();
 			try (InputStream stream = NetherProfessionAssetsTest.class.getResourceAsStream(resource)) {
@@ -50,6 +50,8 @@ class NetherProfessionAssetsTest {
 					result.add(new ExpectedTexture("zoglin/" + name + ".png", 128, 64));
 				}
 				case MAGMA_CUBE -> result.add(new ExpectedTexture("magma_cube/" + name + ".png", 64, 64));
+				case ZOMBIFIED_PIGLIN -> result.add(new ExpectedTexture("zombified_piglin/" + name + ".png", 64, 64));
+				case WITHER_SKELETON -> result.add(new ExpectedTexture("wither_skeleton/" + name + ".png", 64, 32));
 				case NONE -> {
 				}
 			}

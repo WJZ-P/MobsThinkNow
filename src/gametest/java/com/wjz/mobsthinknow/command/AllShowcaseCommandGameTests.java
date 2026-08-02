@@ -69,6 +69,8 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"blaze",
 			"ghast",
 			"magma_cube",
+			"zombified_piglin",
+			"wither_skeleton",
 			"zombies",
 			"skeletons",
 			"creepers",
@@ -130,6 +132,8 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		assertBaseAlias(helper, source, sourceBlock, "blaze", EntityType.BLAZE);
 		assertBaseAlias(helper, source, sourceBlock, "ghast", EntityType.GHAST);
 		assertBaseAlias(helper, source, sourceBlock, "magma_cube", EntityType.MAGMA_CUBE);
+		assertBaseAlias(helper, source, sourceBlock, "zombified_piglin", EntityType.ZOMBIFIED_PIGLIN);
+		assertBaseAlias(helper, source, sourceBlock, "wither_skeleton", EntityType.WITHER_SKELETON);
 		helper.succeed();
 	}
 
