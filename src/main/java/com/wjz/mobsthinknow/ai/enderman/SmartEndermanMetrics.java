@@ -2,7 +2,7 @@ package com.wjz.mobsthinknow.ai.enderman;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-/** 末影人苦力怕投送的只读诊断指标；计数器不参与战术决策。 */
+/** 末影人职业战斗与苦力怕投送的只读诊断指标；计数器不参与战术决策。 */
 public final class SmartEndermanMetrics {
 	private static final AtomicLong INSTALLED_GOALS = new AtomicLong();
 	private static final AtomicLong CARRIER_SEARCHES = new AtomicLong();
@@ -10,6 +10,11 @@ public final class SmartEndermanMetrics {
 	private static final AtomicLong PAYLOADS_PICKED_UP = new AtomicLong();
 	private static final AtomicLong DELIVERY_TELEPORTS = new AtomicLong();
 	private static final AtomicLong PAYLOADS_IGNITED = new AtomicLong();
+	private static final AtomicLong COMBAT_TELEPORTS = new AtomicLong();
+	private static final AtomicLong SHIELD_BLOCKS = new AtomicLong();
+	private static final AtomicLong SHIELD_COUNTER_HITS = new AtomicLong();
+	private static final AtomicLong SPEAR_CHARGES = new AtomicLong();
+	private static final AtomicLong PROFESSION_HITS = new AtomicLong();
 
 	private SmartEndermanMetrics() {
 	}
@@ -38,6 +43,26 @@ public final class SmartEndermanMetrics {
 		PAYLOADS_IGNITED.incrementAndGet();
 	}
 
+	public static void combatTeleport() {
+		COMBAT_TELEPORTS.incrementAndGet();
+	}
+
+	public static void shieldBlock() {
+		SHIELD_BLOCKS.incrementAndGet();
+	}
+
+	public static void shieldCounterHit() {
+		SHIELD_COUNTER_HITS.incrementAndGet();
+	}
+
+	public static void spearCharge() {
+		SPEAR_CHARGES.incrementAndGet();
+	}
+
+	public static void professionHit() {
+		PROFESSION_HITS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -45,7 +70,12 @@ public final class SmartEndermanMetrics {
 			CANDIDATE_CHECKS.get(),
 			PAYLOADS_PICKED_UP.get(),
 			DELIVERY_TELEPORTS.get(),
-			PAYLOADS_IGNITED.get()
+			PAYLOADS_IGNITED.get(),
+			COMBAT_TELEPORTS.get(),
+			SHIELD_BLOCKS.get(),
+			SHIELD_COUNTER_HITS.get(),
+			SPEAR_CHARGES.get(),
+			PROFESSION_HITS.get()
 		);
 	}
 
@@ -55,7 +85,12 @@ public final class SmartEndermanMetrics {
 		long candidateChecks,
 		long payloadsPickedUp,
 		long deliveryTeleports,
-		long payloadsIgnited
+		long payloadsIgnited,
+		long combatTeleports,
+		long shieldBlocks,
+		long shieldCounterHits,
+		long spearCharges,
+		long professionHits
 	) {
 	}
 }

@@ -413,7 +413,7 @@ public final class MtnCommands {
 				spiderMetrics.creepersMounted(),
 				spiderMetrics.deliveryFuses()
 			);
-		message += ", endermanAI=%s, endermanGoals=%d, endermanCarrierSearches=%d, endermanCandidateChecks=%d, endermanPayloadsPickedUp=%d, endermanDeliveryTeleports=%d, endermanPayloadsIgnited=%d"
+		message += ", endermanAI=%s, endermanGoals=%d, endermanCarrierSearches=%d, endermanCandidateChecks=%d, endermanPayloadsPickedUp=%d, endermanDeliveryTeleports=%d, endermanPayloadsIgnited=%d, endermanCombatTeleports=%d, endermanShieldBlocks=%d, endermanShieldCounterHits=%d, endermanSpearCharges=%d, endermanProfessionHits=%d"
 			.formatted(
 				config.endermanAiEnabled,
 				endermanMetrics.installedGoals(),
@@ -421,7 +421,12 @@ public final class MtnCommands {
 				endermanMetrics.candidateChecks(),
 				endermanMetrics.payloadsPickedUp(),
 				endermanMetrics.deliveryTeleports(),
-				endermanMetrics.payloadsIgnited()
+				endermanMetrics.payloadsIgnited(),
+				endermanMetrics.combatTeleports(),
+				endermanMetrics.shieldBlocks(),
+				endermanMetrics.shieldCounterHits(),
+				endermanMetrics.spearCharges(),
+				endermanMetrics.professionHits()
 			);
 		message += ", giantAI=%s, giantGoals=%d, giantConversions=%d, giantRiders=%d, giantPayloadsPickedUp=%d, giantCreepersThrown=%d, giantZombiesThrown=%d, giantMeleeActions=%d, giantMeleeImpacts=%d, giantMeleeVictims=%d, giantGrabs=%d, giantGrabThrows=%d, giantMeleeInterrupts=%d, giantSafeReleaseRelocations=%d"
 			.formatted(

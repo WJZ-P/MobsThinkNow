@@ -77,6 +77,7 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 	@Override
 	public boolean canUse() {
 		if (!enabled() || !this.enderman.isAlive() || this.enderman.getType() != EntityType.ENDERMAN
+			|| EndermanProfessionProfile.get(this.enderman) != EndermanProfession.CREEPER_HERALD
 			|| this.enderman.getCarriedBlock() != null || !(this.enderman.level() instanceof ServerLevel)) {
 			return false;
 		}
@@ -113,6 +114,9 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 			return true;
 		}
 		if (!enabled()) {
+			return false;
+		}
+		if (EndermanProfessionProfile.get(this.enderman) != EndermanProfession.CREEPER_HERALD) {
 			return false;
 		}
 		Player currentTarget = this.target;

@@ -2,6 +2,8 @@ package com.wjz.mobsthinknow.command;
 
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligence;
+import com.wjz.mobsthinknow.ai.enderman.EndermanProfession;
+import com.wjz.mobsthinknow.ai.enderman.EndermanProfessionProfile;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -19,7 +21,7 @@ import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
-/** 为测试指令生成普通末影猎手，以及已经把真实苦力怕抱在胸前的预装投送兵。 */
+/** 为测试指令生成四种末影人职业，以及已经把真实苦力怕抱在胸前的预装使者。 */
 public final class EndermanShowcaseSpawner {
 	public static final int MAX_BATCH_SIZE = 100;
 
@@ -118,6 +120,7 @@ public final class EndermanShowcaseSpawner {
 		enderman.setHealth(enderman.getMaxHealth());
 		enderman.setCustomName(archetype.displayName());
 		EndermanIntelligence.set(enderman, archetype.intelligence());
+		EndermanProfessionProfile.applyShowcaseLoadout(enderman, archetype.profession());
 		enderman.setCustomNameVisible(true);
 
 		Creeper payload = null;
@@ -160,9 +163,28 @@ public final class EndermanShowcaseSpawner {
 		HUNTER(
 			"enderman_hunter",
 			"mobsthinknow.showcase.enderman_hunter",
-			"Enderman Hunter",
+			"Enderman Riftblade",
 			ChatFormatting.DARK_PURPLE,
 			7,
+			EndermanProfession.RIFTBLADE,
+			false
+		),
+		VOID_GUARD(
+			"enderman_void_guard",
+			"mobsthinknow.showcase.enderman_void_guard",
+			"Enderman Void Guard",
+			ChatFormatting.AQUA,
+			9,
+			EndermanProfession.VOID_GUARD,
+			false
+		),
+		VOID_LANCER(
+			"enderman_void_lancer",
+			"mobsthinknow.showcase.enderman_void_lancer",
+			"Enderman Void Lancer",
+			ChatFormatting.GOLD,
+			9,
+			EndermanProfession.VOID_LANCER,
 			false
 		),
 		CREEPER_BOMBER(
@@ -171,6 +193,7 @@ public final class EndermanShowcaseSpawner {
 			"Enderman Creeper Bomber",
 			ChatFormatting.LIGHT_PURPLE,
 			10,
+			EndermanProfession.CREEPER_HERALD,
 			true
 		);
 
@@ -179,6 +202,7 @@ public final class EndermanShowcaseSpawner {
 		private final String fallback;
 		private final ChatFormatting color;
 		private final int intelligence;
+		private final EndermanProfession profession;
 		private final boolean carriesCreeper;
 
 		ShowcaseArchetype(
@@ -187,6 +211,7 @@ public final class EndermanShowcaseSpawner {
 			final String fallback,
 			final ChatFormatting color,
 			final int intelligence,
+			final EndermanProfession profession,
 			final boolean carriesCreeper
 		) {
 			this.commandId = commandId;
@@ -194,6 +219,7 @@ public final class EndermanShowcaseSpawner {
 			this.fallback = fallback;
 			this.color = color;
 			this.intelligence = intelligence;
+			this.profession = profession;
 			this.carriesCreeper = carriesCreeper;
 		}
 
@@ -207,6 +233,10 @@ public final class EndermanShowcaseSpawner {
 
 		public int intelligence() {
 			return this.intelligence;
+		}
+
+		public EndermanProfession profession() {
+			return this.profession;
 		}
 
 		public boolean carriesCreeper() {

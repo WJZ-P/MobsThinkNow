@@ -19,6 +19,7 @@ public abstract class EndermanModelMixin {
 		final CallbackInfo callbackInfo
 	) {
 		if (!((EndermanCarrierRenderStateAccess)state).mobsthinknow$isHoldingCreeper()) {
+			this.mobsthinknow$poseProfessionEquipment(state);
 			return;
 		}
 		HumanoidModel<?> model = (HumanoidModel<?>)(Object)this;
@@ -30,5 +31,28 @@ public abstract class EndermanModelMixin {
 		leftArm.yRot = 0.18F;
 		rightArm.zRot = 0.08F;
 		leftArm.zRot = -0.08F;
+	}
+
+	private void mobsthinknow$poseProfessionEquipment(final EndermanRenderState state) {
+		HumanoidModel<?> model = (HumanoidModel<?>)(Object)this;
+		poseArm(model.rightArm, state.rightArmPose, false, state.isUsingItem);
+		poseArm(model.leftArm, state.leftArmPose, true, state.isUsingItem);
+	}
+
+	private static void poseArm(
+		final ModelPart arm,
+		final HumanoidModel.ArmPose pose,
+		final boolean left,
+		final boolean usingItem
+	) {
+		if (pose == HumanoidModel.ArmPose.BLOCK) {
+			arm.xRot = -0.92F;
+			arm.yRot = left ? 0.52F : -0.52F;
+			arm.zRot = left ? -0.14F : 0.14F;
+		} else if (pose == HumanoidModel.ArmPose.SPEAR) {
+			arm.xRot = usingItem ? -1.32F : -0.88F;
+			arm.yRot = left ? 0.08F : -0.08F;
+			arm.zRot = left ? -0.04F : 0.04F;
+		}
 	}
 }

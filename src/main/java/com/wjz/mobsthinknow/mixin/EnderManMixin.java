@@ -4,13 +4,26 @@ import com.wjz.mobsthinknow.ai.enderman.EndermanCreeperDeliveryGoal;
 import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligence;
 import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligenceAccess;
 import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligenceName;
+import com.wjz.mobsthinknow.ai.enderman.EndermanProfession;
+import com.wjz.mobsthinknow.ai.enderman.EndermanProfessionAccess;
+import com.wjz.mobsthinknow.ai.enderman.EndermanProfessionCombatGoal;
+import com.wjz.mobsthinknow.ai.enderman.EndermanProfessionProfile;
+import com.wjz.mobsthinknow.ai.enderman.EndermanVoidLancerGoal;
 import com.wjz.mobsthinknow.ai.enderman.SmartEndermanMetrics;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.BlocksAttacks;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
@@ -23,22 +36,39 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** 普通末影人的智力、苦力怕投送 Goal 和胸前实体挂点接入。 */
+/** 普通末影人的智力、同步职业、职业战斗、苦力怕投送和胸前实体挂点接入。 */
 @Mixin(EnderMan.class)
-public abstract class EnderManMixin extends Monster implements EndermanIntelligenceAccess {
+public abstract class EnderManMixin extends Monster implements EndermanIntelligenceAccess, EndermanProfessionAccess {
 	@Unique
 	private static final String mobsthinknow$INTELLIGENCE_TAG = "MobsThinkNowIntelligence";
 	@Unique
+	private static final EntityDataAccessor<Byte> mobsthinknow$PROFESSION_ID =
+		SynchedEntityData.defineId(EnderMan.class, EntityDataSerializers.BYTE);
+	@Unique
 	private int mobsthinknow$endermanIntelligence;
+	@Unique
+	private @Nullable EndermanProfessionCombatGoal mobsthinknow$professionCombatGoal;
 
 	protected EnderManMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
 	}
 
 	@Inject(method = "registerGoals", at = @At("TAIL"))
-	private void mobsthinknow$installCreeperDeliveryGoal(final CallbackInfo callbackInfo) {
+	private void mobsthinknow$installProfessionGoals(final CallbackInfo callbackInfo) {
+		this.goalSelector.removeAllGoals(goal -> goal.getClass() == MeleeAttackGoal.class);
+		this.mobsthinknow$professionCombatGoal = new EndermanProfessionCombatGoal((EnderMan)(Object)this);
 		this.goalSelector.addGoal(1, new EndermanCreeperDeliveryGoal((EnderMan)(Object)this));
+		this.goalSelector.addGoal(2, new EndermanVoidLancerGoal((EnderMan)(Object)this));
+		this.goalSelector.addGoal(2, this.mobsthinknow$professionCombatGoal);
 		SmartEndermanMetrics.goalInstalled();
+	}
+
+	@Inject(method = "defineSynchedData", at = @At("TAIL"))
+	private void mobsthinknow$defineProfession(
+		final SynchedEntityData.Builder builder,
+		final CallbackInfo callbackInfo
+	) {
+		builder.define(mobsthinknow$PROFESSION_ID, EndermanProfession.NONE.id());
 	}
 
 	@Inject(method = "<init>", at = @At("TAIL"))
@@ -56,6 +86,7 @@ public abstract class EnderManMixin extends Monster implements EndermanIntellige
 	@Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
 	private void mobsthinknow$saveEndermanIntelligence(final ValueOutput output, final CallbackInfo callbackInfo) {
 		output.putInt(mobsthinknow$INTELLIGENCE_TAG, this.mobsthinknow$getEndermanIntelligence());
+		EndermanProfessionProfile.save((EnderMan)(Object)this, output);
 	}
 
 	@Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
@@ -63,7 +94,30 @@ public abstract class EnderManMixin extends Monster implements EndermanIntellige
 		int saved = input.getIntOr(mobsthinknow$INTELLIGENCE_TAG, 0);
 		this.mobsthinknow$endermanIntelligence = saved == 0 ? 0 : EndermanIntelligence.clamp(saved);
 		EnderMan enderman = (EnderMan)(Object)this;
+		EndermanProfessionProfile.load(enderman, input);
 		EndermanIntelligenceName.apply(enderman, this.mobsthinknow$getEndermanIntelligence());
+	}
+
+	/**
+	 * 原版盾牌对任意 LivingEntity 都能结算真实格挡，但“斧类禁用盾牌”只在 Player 覆盖中实现。
+	 * 这里给虚空盾卫补上同一组件语义，并把真实成功格挡交给职业 Goal 安排延迟反击。
+	 */
+	@Override
+	protected void blockUsingItem(final ServerLevel level, final LivingEntity attacker) {
+		ItemStack blockingItem = this.getItemBlockingWith();
+		super.blockUsingItem(level, attacker);
+		if (blockingItem == null
+			|| EndermanProfessionProfile.get((EnderMan)(Object)this) != EndermanProfession.VOID_GUARD) {
+			return;
+		}
+		if (this.mobsthinknow$professionCombatGoal != null) {
+			this.mobsthinknow$professionCombatGoal.onShieldBlock(attacker);
+		}
+		BlocksAttacks blocksAttacks = blockingItem.get(DataComponents.BLOCKS_ATTACKS);
+		float disableSeconds = attacker.getSecondsToDisableBlocking();
+		if (blocksAttacks != null && disableSeconds > 0.0F) {
+			blocksAttacks.disable(level, (EnderMan)(Object)this, disableSeconds, blockingItem);
+		}
 	}
 
 	/**
@@ -100,5 +154,18 @@ public abstract class EnderManMixin extends Monster implements EndermanIntellige
 	@Override
 	public void mobsthinknow$setEndermanIntelligence(final int intelligence) {
 		this.mobsthinknow$endermanIntelligence = EndermanIntelligence.clamp(intelligence);
+	}
+
+	@Override
+	public EndermanProfession mobsthinknow$getEndermanProfession() {
+		return EndermanProfession.fromId(this.entityData.get(mobsthinknow$PROFESSION_ID));
+	}
+
+	@Override
+	public void mobsthinknow$setEndermanProfession(final EndermanProfession profession) {
+		this.entityData.set(
+			mobsthinknow$PROFESSION_ID,
+			(profession == null ? EndermanProfession.NONE : profession).id()
+		);
 	}
 }
