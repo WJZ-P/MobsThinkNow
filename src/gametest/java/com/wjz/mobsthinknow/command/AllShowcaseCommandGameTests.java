@@ -56,6 +56,7 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 
 		Set<String> expected = new HashSet<>(List.of(
 			"all",
+			"overworld_assault",
 			"zombie",
 			"skeleton",
 			"creeper",

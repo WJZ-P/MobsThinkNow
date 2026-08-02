@@ -30,6 +30,7 @@
 			"com.wjz.mobsthinknow.command.GiantShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.ai.nether.NetherTacticsGameTests",
 			"com.wjz.mobsthinknow.command.NetherShowcaseCommandGameTests",
+			"com.wjz.mobsthinknow.command.OverworldAssaultCommandGameTests",
 			"com.wjz.mobsthinknow.command.AllShowcaseCommandGameTests"
 		]
 	},

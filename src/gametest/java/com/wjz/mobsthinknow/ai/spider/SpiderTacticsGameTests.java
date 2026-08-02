@@ -6,6 +6,7 @@ import com.wjz.mobsthinknow.ai.skeleton.MountedSkeletonTargetGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadAssaultPlan;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
@@ -198,6 +199,10 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 			}
 			helper.assertTrue(view.memberCount() == 4, "The four-species squad omitted one of its hostile members.");
 			helper.assertTrue(view.leaderEntityId() == creeper.getId(), "The unique IQ-10 creeper was not elected leader.");
+			helper.assertTrue(
+				view.assaultPlan() == SquadAssaultPlan.COMBINED_ARMS,
+				"A high-IQ four-species squad did not choose the combined-arms assault plan."
+			);
 			SquadDirective creeperOrder = coordinator.directiveFor(creeper);
 			SquadDirective spiderOrder = coordinator.directiveFor(spider);
 			SquadDirective skeletonOrder = coordinator.directiveFor(skeleton);
