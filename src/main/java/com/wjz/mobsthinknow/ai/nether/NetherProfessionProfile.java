@@ -13,6 +13,11 @@ import net.minecraft.world.entity.monster.hoglin.Hoglin;
 import net.minecraft.world.entity.monster.piglin.AbstractPiglin;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.piglin.PiglinBrute;
+import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
+import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
@@ -29,6 +34,13 @@ public final class NetherProfessionProfile {
 	}
 
 	public static NetherProfessionFamily familyOf(final Entity entity) {
+		// 僵尸猪灵与凋灵骷髅必须先于宽泛的人形父类逻辑判断；它们拥有独立 UV 与战术。
+		if (entity instanceof ZombifiedPiglin) {
+			return NetherProfessionFamily.ZOMBIFIED_PIGLIN;
+		}
+		if (entity instanceof WitherSkeleton) {
+			return NetherProfessionFamily.WITHER_SKELETON;
+		}
 		if (entity instanceof AbstractPiglin) {
 			return NetherProfessionFamily.PIGLIN;
 		}
@@ -78,23 +90,34 @@ public final class NetherProfessionProfile {
 		if (family == NetherProfessionFamily.NONE) {
 			return NetherProfession.NONE;
 		}
-		boolean rangedPiglin = mob instanceof Piglin && mob.isHolding(Items.CROSSBOW);
+		boolean specialistWeapon = mob instanceof Piglin && mob.isHolding(Items.CROSSBOW)
+			|| mob instanceof ZombifiedPiglin && mob.getMainHandItem().has(DataComponents.KINETIC_WEAPON)
+			|| mob instanceof WitherSkeleton && mob.isHolding(Items.BOW);
 		boolean brute = mob instanceof PiglinBrute;
 		NetherProfession profession = choose(
 			family,
-			rangedPiglin,
+			specialistWeapon,
 			brute,
 			difficulty.getDifficulty().getId(),
 			random.nextDouble()
 		);
 		set(mob, profession);
+		applySpawnLoadout(mob, profession);
 		return profession;
+	}
+
+	/**
+	 * 这两类实体在 {@link Mob#finalizeSpawn} 返回后才由子类生成武器，因此公共生命周期注入必须
+	 * 等到 Zombie/AbstractSkeleton 的真实出生尾部再分配，避免把尚未出现的矛或弓误判成近战职业。
+	 */
+	public static boolean requiresLateSpawnAssignment(final Mob mob) {
+		return mob instanceof ZombifiedPiglin || mob instanceof WitherSkeleton;
 	}
 
 	/** 纯分配函数：难度越高，精英职业占比越高。 */
 	static NetherProfession choose(
 		final NetherProfessionFamily family,
-		final boolean rangedPiglin,
+		final boolean specialistWeapon,
 		final boolean brute,
 		final int difficultyId,
 		final double roll
@@ -114,7 +137,7 @@ public final class NetherProfessionProfile {
 
 		return switch (family) {
 			case PIGLIN -> {
-				if (rangedPiglin && !brute) {
+				if (specialistWeapon && !brute) {
 					yield NetherProfession.PIGLIN_MARKSMAN;
 				}
 				yield boundedRoll < eliteChance
@@ -141,8 +164,37 @@ public final class NetherProfessionProfile {
 				: boundedRoll < specialistCutoff
 					? NetherProfession.MAGMA_AMBUSHER
 					: NetherProfession.MAGMA_HUNTER;
+			case ZOMBIFIED_PIGLIN -> {
+				if (specialistWeapon) {
+					yield NetherProfession.ZOMBIFIED_PIGLIN_LANCER;
+				}
+				yield boundedRoll < eliteChance
+					? NetherProfession.ZOMBIFIED_PIGLIN_WARCALLER
+					: NetherProfession.ZOMBIFIED_PIGLIN_BERSERKER;
+			}
+			case WITHER_SKELETON -> {
+				if (specialistWeapon) {
+					yield NetherProfession.WITHER_SKELETON_HEXER;
+				}
+				// 远程凋灵箭手是稀有精英：困难约 21%，不会让堡垒走廊被弓手淹没。
+				yield boundedRoll < eliteChance * 0.65
+					? NetherProfession.WITHER_SKELETON_HEXER
+					: boundedRoll < specialistCutoff
+						? NetherProfession.WITHER_SKELETON_DUELIST
+						: NetherProfession.WITHER_SKELETON_REAPER;
+			}
 			case NONE -> NetherProfession.NONE;
 		};
+	}
+
+	/** 只在新出生时按职业冻结武器；读旧存档绝不覆盖玩家或其他 Mod 已经修改过的装备。 */
+	private static void applySpawnLoadout(final Mob mob, final NetherProfession profession) {
+		// 僵尸猪灵直接按原版已生成的金剑/金矛分类，不需要覆写装备；这样也兼容其他 Mod 的动能武器。
+		if (mob instanceof WitherSkeleton
+			&& profession == NetherProfession.WITHER_SKELETON_HEXER
+			&& !mob.isHolding(Items.BOW)) {
+			mob.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+		}
 	}
 
 	public static void save(final Entity entity, final ValueOutput output) {
@@ -174,6 +226,13 @@ public final class NetherProfessionProfile {
 			case GHAST -> NetherProfession.GHAST_ARTILLERY;
 			case HOGLIN -> NetherProfession.HOGLIN_CHARGER;
 			case MAGMA_CUBE -> NetherProfession.MAGMA_HUNTER;
+			case ZOMBIFIED_PIGLIN -> entity instanceof Mob mob
+				&& mob.getMainHandItem().has(DataComponents.KINETIC_WEAPON)
+					? NetherProfession.ZOMBIFIED_PIGLIN_LANCER
+					: NetherProfession.ZOMBIFIED_PIGLIN_BERSERKER;
+			case WITHER_SKELETON -> entity instanceof Mob mob && mob.isHolding(Items.BOW)
+				? NetherProfession.WITHER_SKELETON_HEXER
+				: NetherProfession.WITHER_SKELETON_REAPER;
 			case NONE -> NetherProfession.NONE;
 		};
 	}

@@ -18,6 +18,16 @@ public final class NetherProfessionTextures {
 	private static final Map<NetherProfession, Identifier> HOGLIN = textures("hoglin", NetherProfessionFamily.HOGLIN, "");
 	private static final Map<NetherProfession, Identifier> ZOGLIN = textures("zoglin", NetherProfessionFamily.HOGLIN, "");
 	private static final Map<NetherProfession, Identifier> MAGMA_CUBE = textures("magma_cube", NetherProfessionFamily.MAGMA_CUBE, "");
+	private static final Map<NetherProfession, Identifier> ZOMBIFIED_PIGLIN = textures(
+		"zombified_piglin",
+		NetherProfessionFamily.ZOMBIFIED_PIGLIN,
+		""
+	);
+	private static final Map<NetherProfession, Identifier> WITHER_SKELETON = textures(
+		"wither_skeleton",
+		NetherProfessionFamily.WITHER_SKELETON,
+		""
+	);
 
 	private NetherProfessionTextures() {
 	}
@@ -40,6 +50,14 @@ public final class NetherProfessionTextures {
 
 	public static @Nullable Identifier magmaCube(final NetherProfession profession) {
 		return MAGMA_CUBE.get(profession);
+	}
+
+	public static @Nullable Identifier zombifiedPiglin(final NetherProfession profession) {
+		return ZOMBIFIED_PIGLIN.get(profession);
+	}
+
+	public static @Nullable Identifier witherSkeleton(final NetherProfession profession) {
+		return WITHER_SKELETON.get(profession);
 	}
 
 	private static Map<NetherProfession, Identifier> textures(

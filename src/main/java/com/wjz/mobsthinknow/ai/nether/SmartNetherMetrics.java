@@ -13,6 +13,10 @@ public final class SmartNetherMetrics {
 	private static final AtomicLong HOGLIN_CHARGES = new AtomicLong();
 	private static final AtomicLong HOGLIN_IMPACTS = new AtomicLong();
 	private static final AtomicLong MAGMA_POUNCES = new AtomicLong();
+	private static final AtomicLong NETHER_UNDEAD_FEINTS = new AtomicLong();
+	private static final AtomicLong NETHER_UNDEAD_LUNGES = new AtomicLong();
+	private static final AtomicLong NETHER_UNDEAD_STRIKES = new AtomicLong();
+	private static final AtomicLong NETHER_UNDEAD_PREDICTED_SHOTS = new AtomicLong();
 
 	private SmartNetherMetrics() {
 	}
@@ -53,6 +57,22 @@ public final class SmartNetherMetrics {
 		MAGMA_POUNCES.incrementAndGet();
 	}
 
+	public static void netherUndeadFeint() {
+		NETHER_UNDEAD_FEINTS.incrementAndGet();
+	}
+
+	public static void netherUndeadLunge() {
+		NETHER_UNDEAD_LUNGES.incrementAndGet();
+	}
+
+	public static void netherUndeadStrike() {
+		NETHER_UNDEAD_STRIKES.incrementAndGet();
+	}
+
+	public static void netherUndeadPredictedShot() {
+		NETHER_UNDEAD_PREDICTED_SHOTS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_CONTROLLERS.get(),
@@ -63,7 +83,11 @@ public final class SmartNetherMetrics {
 			GHAST_RELOCATIONS.get(),
 			HOGLIN_CHARGES.get(),
 			HOGLIN_IMPACTS.get(),
-			MAGMA_POUNCES.get()
+			MAGMA_POUNCES.get(),
+			NETHER_UNDEAD_FEINTS.get(),
+			NETHER_UNDEAD_LUNGES.get(),
+			NETHER_UNDEAD_STRIKES.get(),
+			NETHER_UNDEAD_PREDICTED_SHOTS.get()
 		);
 	}
 
@@ -76,7 +100,11 @@ public final class SmartNetherMetrics {
 		long ghastRelocations,
 		long hoglinCharges,
 		long hoglinImpacts,
-		long magmaPounces
+		long magmaPounces,
+		long netherUndeadFeints,
+		long netherUndeadLunges,
+		long netherUndeadStrikes,
+		long netherUndeadPredictedShots
 	) {
 	}
 }

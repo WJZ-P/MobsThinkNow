@@ -42,6 +42,9 @@ import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieProfile;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieSpawnAccess;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
+import com.wjz.mobsthinknow.ai.nether.NetherProfession;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionAccess;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionProfile;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
@@ -85,7 +88,8 @@ public abstract class ZombieMixin extends Monster implements
 	ZombieAirAssaultStatusAccess,
 	ZombieProfessionAccess,
 	ZombieBodyActionAccess,
-	GiantZombieSpawnAccess {
+	GiantZombieSpawnAccess,
+	NetherProfessionAccess {
 	@Unique
 	private static final String mobsthinknow$INTELLIGENCE_TAG = "MobsThinkNowIntelligence";
 	@Unique
@@ -97,6 +101,9 @@ public abstract class ZombieMixin extends Monster implements
 	@Unique
 	private static final EntityDataAccessor<Long> mobsthinknow$BODY_ACTION_STARTED_AT =
 		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.LONG);
+	@Unique
+	private static final EntityDataAccessor<Byte> mobsthinknow$NETHER_PROFESSION_ID =
+		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.BYTE);
 
 	/** 0 只表示“尚未生成”，对外可见的合法智力值始终是 1～10。 */
 	@Unique
@@ -136,6 +143,8 @@ public abstract class ZombieMixin extends Monster implements
 		builder.define(mobsthinknow$PROFESSION_ID, ZombieProfession.VANILLA.id());
 		builder.define(mobsthinknow$BODY_ACTION_ID, ZombieBodyAction.NONE.id());
 		builder.define(mobsthinknow$BODY_ACTION_STARTED_AT, 0L);
+		// 只有僵尸猪灵会使用该槽；其余僵尸保持 NONE，但共享父类只增加一个同步字节。
+		builder.define(mobsthinknow$NETHER_PROFESSION_ID, NetherProfession.NONE.id());
 	}
 
 	/** 只替换僵尸的节点分类器，导航、A* 与 MoveControl 仍沿用原版实现。 */
@@ -285,6 +294,11 @@ public abstract class ZombieMixin extends Monster implements
 		final CallbackInfoReturnable<SpawnGroupData> callbackInfo
 	) {
 		Zombie zombie = (Zombie)(Object)this;
+		if (zombie.getType() == EntityType.ZOMBIFIED_PIGLIN) {
+			// 僵尸猪灵的金剑/金矛直到 Zombie.finalizeSpawn 内才生成，必须在这里做一次晚分配。
+			NetherProfessionProfile.assignOnSpawn(zombie, difficulty, level.getRandom());
+			return;
+		}
 		if (OverworldUndeadFamilies.isZombieFamily(zombie)) {
 			ZombieIntelligenceName.apply(zombie, this.mobsthinknow$getIntelligence());
 			// 提前固化声线；首次环境音与后续小队叫声都会使用同一中心音高。
@@ -400,6 +414,19 @@ public abstract class ZombieMixin extends Monster implements
 		this.entityData.set(
 			mobsthinknow$PROFESSION_ID,
 			(profession == null ? ZombieProfession.VANILLA : profession).id()
+		);
+	}
+
+	@Override
+	public NetherProfession mobsthinknow$getNetherProfession() {
+		return NetherProfession.fromId(this.entityData.get(mobsthinknow$NETHER_PROFESSION_ID));
+	}
+
+	@Override
+	public void mobsthinknow$setNetherProfession(final NetherProfession profession) {
+		this.entityData.set(
+			mobsthinknow$NETHER_PROFESSION_ID,
+			(profession == null ? NetherProfession.NONE : profession).id()
 		);
 	}
 

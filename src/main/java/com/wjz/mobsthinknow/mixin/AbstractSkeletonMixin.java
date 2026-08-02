@@ -17,6 +17,11 @@ import com.wjz.mobsthinknow.ai.giant.GiantRiderBoardingGoal;
 import com.wjz.mobsthinknow.ai.skeleton.MountedSkeletonCombat;
 import com.wjz.mobsthinknow.ai.skeleton.MountedSkeletonTargetGoal;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
+import com.wjz.mobsthinknow.ai.nether.NetherProfession;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionAccess;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionProfile;
+import com.wjz.mobsthinknow.ai.nether.SmartNetherMetrics;
+import com.wjz.mobsthinknow.ai.nether.SmartNetherUndeadMeleeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
@@ -32,6 +37,10 @@ import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
@@ -52,9 +61,15 @@ import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
 /** 改造主世界骷髅家族；特殊箭与各变种原版射击节奏仍由对应实体保留。 */
 @Mixin(AbstractSkeleton.class)
-public abstract class AbstractSkeletonMixin extends Monster implements SkeletonIntelligenceAccess, SkeletonEscapeSpeedAccess {
+public abstract class AbstractSkeletonMixin extends Monster implements
+	SkeletonIntelligenceAccess,
+	SkeletonEscapeSpeedAccess,
+	NetherProfessionAccess {
 	@Unique
 	private static final String mobsthinknow$INTELLIGENCE_TAG = "MobsThinkNowIntelligence";
+	@Unique
+	private static final EntityDataAccessor<Byte> mobsthinknow$NETHER_PROFESSION_ID =
+		SynchedEntityData.defineId(AbstractSkeleton.class, EntityDataSerializers.BYTE);
 
 	@Shadow
 	@Final
@@ -74,12 +89,29 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	@Unique
 	private @Nullable SmartSkeletonCrossbowAttackGoal mobsthinknow$smartCrossbowGoal;
 	@Unique
+	private @Nullable SmartNetherUndeadMeleeGoal mobsthinknow$smartNetherMeleeGoal;
+	@Unique
 	private int mobsthinknow$skeletonIntelligence;
 	@Unique
 	private float mobsthinknow$skeletonEscapeSpeedFactor;
 
 	protected AbstractSkeletonMixin(final EntityType<? extends Monster> type, final Level level) {
 		super(type, level);
+	}
+
+	/** AbstractSkeleton 本身没有覆盖同步数据定义；Mixin 在这一固定版本上补一层轻量覆盖。 */
+	@Override
+	protected void defineSynchedData(final SynchedEntityData.Builder builder) {
+		super.defineSynchedData(builder);
+		// 只有凋灵骷髅会读取该槽；其他骷髅保持 NONE，避免额外客户端数据包或实体扫描。
+		builder.define(mobsthinknow$NETHER_PROFESSION_ID, NetherProfession.NONE.id());
+	}
+
+	@Inject(method = "<init>", at = @At("TAIL"))
+	private void mobsthinknow$countWitherSkeletonController(final CallbackInfo callbackInfo) {
+		if (((AbstractSkeleton)(Object)this).getType() == EntityType.WITHER_SKELETON) {
+			SmartNetherMetrics.controllerInstalled();
+		}
 	}
 
 	@Inject(method = "registerGoals", at = @At("TAIL"))
@@ -121,6 +153,20 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	@Inject(method = "reassessWeaponGoal", at = @At("TAIL"))
 	private void mobsthinknow$installSmartBowGoal(final CallbackInfo callbackInfo) {
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
+		if (skeleton instanceof WitherSkeleton) {
+			if (this.mobsthinknow$smartNetherMeleeGoal != null) {
+				this.goalSelector.removeGoal(this.mobsthinknow$smartNetherMeleeGoal);
+			}
+			if (!skeleton.isHolding(Items.BOW)) {
+				// 原版刚在同一方法中注册 meleeGoal；只替换这个精确实例，弓手继续使用原版远程状态机。
+				this.goalSelector.removeGoal(this.meleeGoal);
+				if (this.mobsthinknow$smartNetherMeleeGoal == null) {
+					this.mobsthinknow$smartNetherMeleeGoal = new SmartNetherUndeadMeleeGoal(skeleton);
+				}
+				this.goalSelector.addGoal(4, this.mobsthinknow$smartNetherMeleeGoal);
+			}
+			return;
+		}
 		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)) {
 			return;
 		}
@@ -205,6 +251,12 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 		final CallbackInfoReturnable<SpawnGroupData> callbackInfo
 	) {
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
+		if (skeleton instanceof WitherSkeleton) {
+			// 石剑由 WitherSkeleton.populateDefaultEquipmentSlots 生成后再判定职业，弓手会在这里换装。
+			NetherProfessionProfile.assignOnSpawn(skeleton, difficulty, level.getRandom());
+			skeleton.reassessWeaponGoal();
+			return;
+		}
 		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)) {
 			return;
 		}
@@ -286,10 +338,13 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 	) {
 		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
 		MobsThinkNowConfig config = ConfigManager.get();
-		if (!OverworldUndeadFamilies.isSkeletonFamily(skeleton)
-			|| !config.enabled
-			|| !config.skeletonAiEnabled
-			|| !config.skeletonPredictiveAim) {
+		boolean overworldArcher = OverworldUndeadFamilies.isSkeletonFamily(skeleton)
+			&& config.skeletonAiEnabled
+			&& config.skeletonPredictiveAim;
+		boolean witherHexer = skeleton instanceof WitherSkeleton
+			&& config.netherAiEnabled
+			&& NetherProfessionProfile.get(skeleton) == NetherProfession.WITHER_SKELETON_HEXER;
+		if (!config.enabled || (!overworldArcher && !witherHexer)) {
 			return;
 		}
 
@@ -298,13 +353,15 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 		double difficultyFactor = SkeletonCombatMath.difficultyPredictionFactor(
 			skeleton.level().getDifficulty().getId()
 		);
+		double predictionStrength = witherHexer
+			? config.netherPredictionStrength * 1.10
+			: config.skeletonAimPredictionStrength
+				* (0.55 + SkeletonIntelligence.get(skeleton) * 0.045);
 		SkeletonCombatMath.HorizontalLead lead = SkeletonCombatMath.horizontalLead(
 			target.getDeltaMovement().x,
 			target.getDeltaMovement().z,
 			Math.sqrt(originalX * originalX + originalZ * originalZ),
-			config.skeletonAimPredictionStrength
-				* difficultyFactor
-				* (0.55 + SkeletonIntelligence.get(skeleton) * 0.045)
+			predictionStrength * difficultyFactor
 		);
 		if (lead.x() == 0.0 && lead.z() == 0.0) {
 			return;
@@ -312,6 +369,23 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 
 		args.set(3, originalX + lead.x());
 		args.set(5, originalZ + lead.z());
-		SmartSkeletonMetrics.predictiveShot();
+		if (witherHexer) {
+			SmartNetherMetrics.netherUndeadPredictedShot();
+		} else {
+			SmartSkeletonMetrics.predictiveShot();
+		}
+	}
+
+	@Override
+	public NetherProfession mobsthinknow$getNetherProfession() {
+		return NetherProfession.fromId(this.entityData.get(mobsthinknow$NETHER_PROFESSION_ID));
+	}
+
+	@Override
+	public void mobsthinknow$setNetherProfession(final NetherProfession profession) {
+		this.entityData.set(
+			mobsthinknow$NETHER_PROFESSION_ID,
+			(profession == null ? NetherProfession.NONE : profession).id()
+		);
 	}
 }

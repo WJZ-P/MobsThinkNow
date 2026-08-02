@@ -97,4 +97,52 @@ public final class NetherProfessionTactics {
 			default -> 1.0;
 		};
 	}
+
+	/** 下界人形亡灵的寻路倍率；只是 Goal 的速度输入，不永久篡改实体属性。 */
+	public static double undeadMoveSpeed(final NetherProfession profession) {
+		return switch (profession) {
+			case ZOMBIFIED_PIGLIN_LANCER -> 1.08;
+			case ZOMBIFIED_PIGLIN_BERSERKER -> 1.18;
+			case ZOMBIFIED_PIGLIN_WARCALLER -> 1.03;
+			case WITHER_SKELETON_DUELIST -> 1.08;
+			case WITHER_SKELETON_REAPER -> 1.16;
+			case WITHER_SKELETON_HEXER -> 0.96;
+			default -> 1.0;
+		};
+	}
+
+	/** 命中后的真实攻击间隔；越激进的职业越短，但下界亡灵仍保留明确反击窗口。 */
+	public static int undeadAttackIntervalTicks(final NetherProfession profession) {
+		return switch (profession) {
+			case ZOMBIFIED_PIGLIN_BERSERKER -> 16;
+			case ZOMBIFIED_PIGLIN_WARCALLER -> 20;
+			case WITHER_SKELETON_REAPER -> 18;
+			case WITHER_SKELETON_DUELIST -> 22;
+			default -> 20;
+		};
+	}
+
+	/** 命中后保持面向目标并侧后撤的时间，决斗型职业会主动留出更大间隙。 */
+	public static int undeadRecoveryTicks(final NetherProfession profession) {
+		return switch (profession) {
+			case ZOMBIFIED_PIGLIN_BERSERKER -> 5;
+			case ZOMBIFIED_PIGLIN_WARCALLER -> 9;
+			case WITHER_SKELETON_REAPER -> 6;
+			case WITHER_SKELETON_DUELIST -> 11;
+			default -> 7;
+		};
+	}
+
+	public static boolean undeadUsesLunge(final NetherProfession profession) {
+		return profession == NetherProfession.ZOMBIFIED_PIGLIN_BERSERKER
+			|| profession == NetherProfession.WITHER_SKELETON_REAPER;
+	}
+
+	public static int undeadLungeWindupTicks(final NetherProfession profession) {
+		return profession == NetherProfession.ZOMBIFIED_PIGLIN_BERSERKER ? 6 : 8;
+	}
+
+	public static double undeadLungeImpulse(final NetherProfession profession) {
+		return profession == NetherProfession.ZOMBIFIED_PIGLIN_BERSERKER ? 0.52 : 0.46;
+	}
 }

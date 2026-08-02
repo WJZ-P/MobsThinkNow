@@ -19,12 +19,13 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.MagmaCube;
 import net.minecraft.world.entity.monster.hoglin.Hoglin;
 import net.minecraft.world.entity.monster.piglin.AbstractPiglin;
+import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
-/** 为下界智能 AI 提供可批量复现的二十种职业测试预设。 */
+/** 为下界智能 AI 提供可批量复现的二十六种职业测试预设。 */
 public final class NetherShowcaseSpawner {
 	public static final int MAX_BATCH_SIZE = 100;
 
@@ -137,6 +138,27 @@ public final class NetherShowcaseSpawner {
 			};
 			mob.setItemSlot(EquipmentSlot.MAINHAND, weapon);
 		}
+		if (mob.getType() == EntityType.ZOMBIFIED_PIGLIN) {
+			mob.setItemSlot(
+				EquipmentSlot.MAINHAND,
+				new ItemStack(
+					archetype.profession() == NetherProfession.ZOMBIFIED_PIGLIN_LANCER
+						? Items.GOLDEN_SPEAR
+						: Items.GOLDEN_SWORD
+				)
+			);
+		}
+		if (mob instanceof WitherSkeleton skeleton) {
+			mob.setItemSlot(
+				EquipmentSlot.MAINHAND,
+				new ItemStack(
+					archetype.profession() == NetherProfession.WITHER_SKELETON_HEXER
+						? Items.BOW
+						: Items.STONE_SWORD
+				)
+			);
+			skeleton.reassessWeaponGoal();
+		}
 		if (mob instanceof MagmaCube cube) {
 			int size = switch (archetype.profession()) {
 				case MAGMA_AMBUSHER -> 2;
@@ -164,6 +186,9 @@ public final class NetherShowcaseSpawner {
 		PIGLIN_COMMANDER("piglin_commander", "mobsthinknow.showcase.piglin_commander", "Piglin Commander", ChatFormatting.GOLD, EntityType.PIGLIN, NetherProfession.PIGLIN_COMMANDER, 0.0),
 		PIGLIN_BRUTE("piglin_brute", "mobsthinknow.showcase.piglin_brute", "Piglin Brute Vanguard", ChatFormatting.DARK_RED, EntityType.PIGLIN_BRUTE, NetherProfession.PIGLIN_VANGUARD, 0.0),
 		PIGLIN_BRUTE_COMMANDER("piglin_brute_commander", "mobsthinknow.showcase.piglin_brute_commander", "Piglin Brute Commander", ChatFormatting.DARK_PURPLE, EntityType.PIGLIN_BRUTE, NetherProfession.PIGLIN_COMMANDER, 0.0),
+		ZOMBIFIED_PIGLIN_LANCER("zombified_piglin_lancer", "mobsthinknow.showcase.zombified_piglin_lancer", "Zombified Piglin Lancer", ChatFormatting.AQUA, EntityType.ZOMBIFIED_PIGLIN, NetherProfession.ZOMBIFIED_PIGLIN_LANCER, 0.0),
+		ZOMBIFIED_PIGLIN_BERSERKER("zombified_piglin_berserker", "mobsthinknow.showcase.zombified_piglin_berserker", "Zombified Piglin Berserker", ChatFormatting.RED, EntityType.ZOMBIFIED_PIGLIN, NetherProfession.ZOMBIFIED_PIGLIN_BERSERKER, 0.0),
+		ZOMBIFIED_PIGLIN_WARCALLER("zombified_piglin_warcaller", "mobsthinknow.showcase.zombified_piglin_warcaller", "Zombified Piglin Warcaller", ChatFormatting.LIGHT_PURPLE, EntityType.ZOMBIFIED_PIGLIN, NetherProfession.ZOMBIFIED_PIGLIN_WARCALLER, 0.0),
 
 		HOGLIN_CHARGER("hoglin_charger", "mobsthinknow.showcase.hoglin_charger", "Hoglin Charger", ChatFormatting.RED, EntityType.HOGLIN, NetherProfession.HOGLIN_CHARGER, 0.0),
 		HOGLIN_BULWARK("hoglin_bulwark", "mobsthinknow.showcase.hoglin_bulwark", "Hoglin Bulwark", ChatFormatting.GOLD, EntityType.HOGLIN, NetherProfession.HOGLIN_BULWARK, 0.0),
@@ -182,7 +207,11 @@ public final class NetherShowcaseSpawner {
 
 		MAGMA_CUBE_HUNTER("magma_cube_hunter", "mobsthinknow.showcase.magma_cube_hunter", "Magma Cube Hunter", ChatFormatting.DARK_RED, EntityType.MAGMA_CUBE, NetherProfession.MAGMA_HUNTER, 0.0),
 		MAGMA_CUBE_AMBUSHER("magma_cube_ambusher", "mobsthinknow.showcase.magma_cube_ambusher", "Magma Cube Ambusher", ChatFormatting.LIGHT_PURPLE, EntityType.MAGMA_CUBE, NetherProfession.MAGMA_AMBUSHER, 0.0),
-		MAGMA_CUBE_TITAN("magma_cube_titan", "mobsthinknow.showcase.magma_cube_titan", "Magma Cube Titan", ChatFormatting.GOLD, EntityType.MAGMA_CUBE, NetherProfession.MAGMA_TITAN, 0.0);
+		MAGMA_CUBE_TITAN("magma_cube_titan", "mobsthinknow.showcase.magma_cube_titan", "Magma Cube Titan", ChatFormatting.GOLD, EntityType.MAGMA_CUBE, NetherProfession.MAGMA_TITAN, 0.0),
+
+		WITHER_SKELETON_DUELIST("wither_skeleton_duelist", "mobsthinknow.showcase.wither_skeleton_duelist", "Wither Skeleton Duelist", ChatFormatting.AQUA, EntityType.WITHER_SKELETON, NetherProfession.WITHER_SKELETON_DUELIST, 0.0),
+		WITHER_SKELETON_REAPER("wither_skeleton_reaper", "mobsthinknow.showcase.wither_skeleton_reaper", "Wither Skeleton Reaper", ChatFormatting.DARK_RED, EntityType.WITHER_SKELETON, NetherProfession.WITHER_SKELETON_REAPER, 0.0),
+		WITHER_SKELETON_HEXER("wither_skeleton_hexer", "mobsthinknow.showcase.wither_skeleton_hexer", "Wither Skeleton Hexer", ChatFormatting.DARK_PURPLE, EntityType.WITHER_SKELETON, NetherProfession.WITHER_SKELETON_HEXER, 0.0);
 
 		private final String commandId;
 		private final String translationKey;

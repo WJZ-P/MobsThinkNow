@@ -202,6 +202,8 @@ public final class MtnCommands {
 		command.then(netherAlias("blaze", NetherShowcaseSpawner.ShowcaseArchetype.BLAZE_SKIRMISHER));
 		command.then(netherAlias("ghast", NetherShowcaseSpawner.ShowcaseArchetype.GHAST_ARTILLERY));
 		command.then(netherAlias("magma_cube", NetherShowcaseSpawner.ShowcaseArchetype.MAGMA_CUBE_HUNTER));
+		command.then(netherAlias("zombified_piglin", NetherShowcaseSpawner.ShowcaseArchetype.ZOMBIFIED_PIGLIN_BERSERKER));
+		command.then(netherAlias("wither_skeleton", NetherShowcaseSpawner.ShowcaseArchetype.WITHER_SKELETON_REAPER));
 		for (ZombieShowcaseSpawner.ShowcaseArchetype archetype
 			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
 			command.then(
@@ -438,7 +440,7 @@ public final class MtnCommands {
 				giantMetrics.meleeInterrupts(),
 				giantMetrics.grappleReleaseRelocations()
 			);
-		message += ", netherAI=%s, netherControllers=%d, piglinFormationMoves=%d, blazeVolleys=%d, blazeFireballs=%d, ghastShots=%d, ghastRelocations=%d, hoglinCharges=%d, hoglinImpacts=%d, magmaPounces=%d"
+		message += ", netherAI=%s, netherControllers=%d, piglinFormationMoves=%d, blazeVolleys=%d, blazeFireballs=%d, ghastShots=%d, ghastRelocations=%d, hoglinCharges=%d, hoglinImpacts=%d, magmaPounces=%d, netherUndeadFeints=%d, netherUndeadLunges=%d, netherUndeadStrikes=%d, netherUndeadPredictedShots=%d"
 			.formatted(
 				config.netherAiEnabled,
 				netherMetrics.installedControllers(),
@@ -449,7 +451,11 @@ public final class MtnCommands {
 				netherMetrics.ghastRelocations(),
 				netherMetrics.hoglinCharges(),
 				netherMetrics.hoglinImpacts(),
-				netherMetrics.magmaPounces()
+				netherMetrics.magmaPounces(),
+				netherMetrics.netherUndeadFeints(),
+				netherMetrics.netherUndeadLunges(),
+				netherMetrics.netherUndeadStrikes(),
+				netherMetrics.netherUndeadPredictedShots()
 			);
 		String statusMessage = message;
 		context.getSource().sendSuccess(() -> Component.literal(statusMessage), false);
@@ -594,7 +600,7 @@ public final class MtnCommands {
 				.map(NetherShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
-		String types = "all, zombie, skeleton, creeper, spider, enderman, giant, piglin, hoglin, zoglin, blaze, ghast, magma_cube, zombies, skeletons, creepers, spiders, endermen, giants, nether, "
+		String types = "all, zombie, skeleton, creeper, spider, enderman, giant, piglin, hoglin, zoglin, blaze, ghast, magma_cube, zombified_piglin, wither_skeleton, zombies, skeletons, creepers, spiders, endermen, giants, nether, "
 			+ zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes + ", " + endermanTypes
 			+ ", " + giantTypes + ", " + netherTypes;
 		context.getSource().sendSuccess(

@@ -21,6 +21,7 @@
 		"SpiderMixin",
 		"SlimeProfessionMixin",
 		"ZombieMixin",
+		"ZombifiedPiglinMixin",
 		"ZoglinMixin"
 	],
 	"client": [
@@ -39,7 +40,9 @@
 		"client.MagmaCubeRendererMixin",
 		"client.PiglinRendererMixin",
 		"client.ZoglinRendererMixin",
-		"client.ZombieRenderStateMixin"
+		"client.ZombieRenderStateMixin",
+		"client.ZombifiedPiglinRendererMixin",
+		"client.WitherSkeletonRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

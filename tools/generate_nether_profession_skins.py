@@ -48,6 +48,12 @@ PALETTES: dict[str, RolePalette] = {
 	"hunter": RolePalette((30, 0, 0), (100, 16, 6), (217, 62, 8), (255, 177, 35), (80, 31, 19)),
 	"ambusher": RolePalette((15, 17, 25), (47, 42, 72), (128, 65, 123), (242, 78, 170), (64, 193, 203)),
 	"titan": RolePalette((22, 21, 19), (68, 51, 34), (171, 83, 24), (255, 214, 71), (116, 25, 20)),
+	"lancer": RolePalette((27, 31, 32), (58, 88, 83), (117, 151, 125), (239, 191, 54), (43, 188, 174)),
+	"berserker": RolePalette((51, 10, 13), (121, 29, 28), (202, 67, 42), (255, 132, 35), (77, 48, 38)),
+	"warcaller": RolePalette((30, 15, 43), (79, 39, 91), (153, 72, 128), (246, 189, 45), (128, 26, 39)),
+	"duelist": RolePalette((17, 24, 31), (45, 67, 78), (105, 135, 143), (81, 209, 218), (218, 177, 73)),
+	"reaper": RolePalette((16, 13, 17), (45, 29, 35), (91, 48, 51), (205, 42, 48), (116, 14, 24)),
+	"hexer": RolePalette((20, 13, 35), (52, 34, 78), (105, 64, 131), (70, 201, 221), (210, 75, 177)),
 }
 
 
@@ -60,6 +66,8 @@ BASE_PATHS = {
 	"hoglin": "assets/minecraft/textures/entity/hoglin/hoglin.png",
 	"zoglin": "assets/minecraft/textures/entity/hoglin/zoglin.png",
 	"magma_cube": "assets/minecraft/textures/entity/slime/magmacube.png",
+	"zombified_piglin": "assets/minecraft/textures/entity/piglin/zombified_piglin.png",
+	"wither_skeleton": "assets/minecraft/textures/entity/skeleton/wither_skeleton.png",
 }
 
 
@@ -223,6 +231,47 @@ def magma_texture(base: Image.Image, role: str) -> Image.Image:
 	return image
 
 
+def zombified_piglin_texture(base: Image.Image, role: str) -> Image.Image:
+	image = base.copy().convert("RGBA")
+	palette = PALETTES[role]
+
+	# 腐化皮肤和裸露骨肉维持原版色相，只改衣物、腰带与四肢外层，保留一眼可认的僵尸猪灵脸。
+	colourise(image, palette, 0.54, lambda _x, y, _pixel: y >= 16)
+	if role == "lancer":
+		paint_if_mapped(image, [(20 + i, 20 + i) for i in range(8)], palette.accent)
+		paint_if_mapped(image, [(27 - i, 20 + i) for i in range(8)], palette.secondary)
+		paint_if_mapped(image, [(10, 9), (13, 9), (11, 10), (12, 10)], palette.accent)
+	elif role == "berserker":
+		paint_if_mapped(image, [(20 + i, 22 + i // 2) for i in range(8)], palette.accent)
+		paint_if_mapped(image, [(27 - i, 22 + i // 2) for i in range(8)], palette.accent)
+		paint_if_mapped(image, [(8, 9), (9, 10), (14, 10), (15, 9)], palette.secondary)
+	else:
+		paint_if_mapped(image, [(21, y) for y in range(20, 32)] + [(26, y) for y in range(20, 32)], palette.accent)
+		paint_if_mapped(image, [(22, 21), (23, 20), (24, 20), (25, 21)], palette.secondary)
+		paint_if_mapped(image, [(10, 8), (11, 9), (12, 9), (13, 8)], palette.accent)
+	return image
+
+
+def wither_skeleton_texture(base: Image.Image, role: str) -> Image.Image:
+	image = base.copy().convert("RGBA")
+	palette = PALETTES[role]
+	# 黑色骨骼只做轻量层次提升，职业主要靠胸骨符号和额头刻痕识别。
+	colourise(image, palette, 0.38)
+	if role == "duelist":
+		paint_if_mapped(image, [(20 + i, 21 + i) for i in range(7)], palette.accent)
+		paint_if_mapped(image, [(26 - i, 21 + i) for i in range(7)], palette.secondary)
+		paint_if_mapped(image, [(10, 9), (13, 9), (11, 10), (12, 10)], palette.accent)
+	elif role == "reaper":
+		paint_if_mapped(image, [(20, y) for y in range(20, 31)] + [(27, y) for y in range(20, 31)], palette.secondary)
+		paint_if_mapped(image, [(21 + i, 22 + i) for i in range(6)], palette.accent)
+		paint_if_mapped(image, [(14 - i, 8 + i) for i in range(6)], palette.accent)
+	else:
+		paint_if_mapped(image, [(23, y) for y in range(20, 31)] + [(24, y) for y in range(20, 31)], palette.accent)
+		paint_if_mapped(image, [(21, 23), (22, 22), (25, 22), (26, 23), (22, 27), (25, 27)], palette.secondary)
+		paint_if_mapped(image, [(9, 9), (10, 8), (13, 8), (14, 9)], palette.accent)
+	return image
+
+
 def load_bases(jar_path: Path) -> dict[str, Image.Image]:
 	with zipfile.ZipFile(jar_path) as archive:
 		return {
@@ -248,6 +297,10 @@ def generate(jar_path: Path, output_root: Path) -> list[tuple[str, Image.Image]]
 		assets.append((f"zoglin/{role}.png", hoglin_texture(bases["zoglin"], role, True)))
 	for role in ("hunter", "ambusher", "titan"):
 		assets.append((f"magma_cube/{role}.png", magma_texture(bases["magma_cube"], role)))
+	for role in ("lancer", "berserker", "warcaller"):
+		assets.append((f"zombified_piglin/{role}.png", zombified_piglin_texture(bases["zombified_piglin"], role)))
+	for role in ("duelist", "reaper", "hexer"):
+		assets.append((f"wither_skeleton/{role}.png", wither_skeleton_texture(bases["wither_skeleton"], role)))
 
 	for relative_path, image in assets:
 		destination = output_root / relative_path

@@ -31,7 +31,8 @@ public abstract class NetherProfessionLifecycleMixin {
 		final CallbackInfoReturnable<SpawnGroupData> callbackInfo
 	) {
 		Mob mob = (Mob)(Object)this;
-		if (NetherProfessionProfile.supports(mob)) {
+		if (NetherProfessionProfile.supports(mob)
+			&& !NetherProfessionProfile.requiresLateSpawnAssignment(mob)) {
 			NetherProfessionProfile.assignOnSpawn(mob, difficulty, level.getRandom());
 		}
 	}

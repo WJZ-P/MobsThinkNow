@@ -29,7 +29,16 @@ public enum NetherProfession {
 
 	MAGMA_HUNTER(13, NetherProfessionFamily.MAGMA_CUBE, "hunter"),
 	MAGMA_AMBUSHER(14, NetherProfessionFamily.MAGMA_CUBE, "ambusher"),
-	MAGMA_TITAN(15, NetherProfessionFamily.MAGMA_CUBE, "titan");
+	MAGMA_TITAN(15, NetherProfessionFamily.MAGMA_CUBE, "titan"),
+
+	// 16～21 只允许追加：它们已经写入存档并通过实体数据同步到客户端。
+	ZOMBIFIED_PIGLIN_LANCER(16, NetherProfessionFamily.ZOMBIFIED_PIGLIN, "lancer"),
+	ZOMBIFIED_PIGLIN_BERSERKER(17, NetherProfessionFamily.ZOMBIFIED_PIGLIN, "berserker"),
+	ZOMBIFIED_PIGLIN_WARCALLER(18, NetherProfessionFamily.ZOMBIFIED_PIGLIN, "warcaller"),
+
+	WITHER_SKELETON_DUELIST(19, NetherProfessionFamily.WITHER_SKELETON, "duelist"),
+	WITHER_SKELETON_REAPER(20, NetherProfessionFamily.WITHER_SKELETON, "reaper"),
+	WITHER_SKELETON_HEXER(21, NetherProfessionFamily.WITHER_SKELETON, "hexer");
 
 	private static final NetherProfession[] VALUES = values();
 	private final byte id;
