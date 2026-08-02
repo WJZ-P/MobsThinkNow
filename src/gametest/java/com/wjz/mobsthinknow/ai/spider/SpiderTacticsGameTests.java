@@ -2,6 +2,9 @@ package com.wjz.mobsthinknow.ai.spider;
 
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.skeleton.MountedSkeletonTargetGoal;
+import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal;
+import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
@@ -19,18 +22,21 @@ import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
 /** 从真实实体、GoalSelector、骑乘关系和引信数据验证蜘蛛战术。 */
 public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
-	public void spiderMixinInstallsFiveGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
+	public void spiderMixinInstallsSixGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
 		long before = SmartSpiderMetrics.snapshot().installedGoals();
 		Spider spider = helper.spawn(EntityType.SPIDER, 2, 2, 2);
 
 		helper.assertTrue(
-			SmartSpiderMetrics.snapshot().installedGoals() == before + 5,
-			"Spider construction did not install preparation, personal combat, and both carrier goals."
+			SmartSpiderMetrics.snapshot().installedGoals() == before + 6,
+			"Spider construction did not install blast evacuation, preparation, personal combat, and both carrier goals."
 		);
 		int intelligence = SpiderIntelligence.get(spider);
 		helper.assertTrue(intelligence >= 1 && intelligence <= 10, "Spider intelligence escaped the 1-10 range.");
@@ -249,6 +255,56 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 			}
 			if (elapsed[0] >= 45) {
 				helper.assertTrue(false, "Squad spider did not complete the visible boarding sequence.");
+			}
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 100, padding = 4)
+	public void managedSpiderPassengerMirrorsTargetAndKeepsShooting(final GameTestHelper helper) {
+		Spider spider = helper.spawn(EntityType.SPIDER, 3, 2, 2);
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 3, 2, 3);
+		Villager target = helper.spawn(EntityType.VILLAGER, 13, 2, 2);
+		spider.setNoAi(true);
+		skeleton.setNoAi(true);
+		target.setNoAi(true);
+		SkeletonIntelligence.set(skeleton, 10);
+		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+		spider.setTarget(target);
+		skeleton.setTarget(null);
+		((SpiderSquadTransportAccess)spider).mobsthinknow$markSquadPassenger(skeleton.getId());
+		helper.assertTrue(skeleton.startRiding(spider, true, true), "Managed skeleton could not mount its squad spider.");
+
+		MountedSkeletonTargetGoal targetGoal = new MountedSkeletonTargetGoal(skeleton);
+		helper.assertTrue(targetGoal.canUse(), "Spider passenger did not discover the mount's live target.");
+		targetGoal.start();
+		helper.assertTrue(skeleton.getTarget() == target, "Spider passenger did not mirror the mount target.");
+		SmartSkeletonBowAttackGoal bowGoal = new SmartSkeletonBowAttackGoal(skeleton, 1.0, 40, 15.0F);
+		helper.assertTrue(bowGoal.canUse(), "Mounted bow goal did not start with the mirrored target.");
+		bowGoal.start();
+		long shotsBefore = SmartSkeletonMetrics.snapshot().shots();
+		int[] elapsed = {0};
+
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			targetGoal.tick();
+			skeleton.getSensing().tick();
+			bowGoal.tick();
+			if (SmartSkeletonMetrics.snapshot().shots() > shotsBefore) {
+				helper.assertTrue(
+					!helper.getEntities(EntityType.ARROW).isEmpty(),
+					"Mounted bow state recorded a shot without creating a real arrow."
+				);
+				helper.assertTrue(skeleton.getTarget() == target, "Passenger lost the spider's target while firing.");
+				bowGoal.stop();
+				targetGoal.stop();
+				helper.succeed();
+			}
+			if (elapsed[0] >= 90) {
+				helper.fail(
+					"Managed spider passenger never fired: target=" + skeleton.getTarget()
+						+ ",using=" + skeleton.isUsingItem()
+						+ ",los=" + skeleton.getSensing().hasLineOfSight(target)
+				);
 			}
 		});
 	}

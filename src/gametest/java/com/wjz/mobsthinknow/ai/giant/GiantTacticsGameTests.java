@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
@@ -90,6 +91,49 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 		);
 		helper.assertTrue(giant.getControllingPassenger() == null, "A tactical passenger incorrectly drove the Giant.");
 		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 120, padding = 4)
+	public void headRiderSharesGiantTargetBeyondSkeletonRangeAndFires(final GameTestHelper helper) {
+		Giant giant = helper.spawn(EntityType.GIANT, 4, 2, 4);
+		Skeleton rider = helper.spawn(EntityType.SKELETON, 5, 2, 4);
+		giant.setNoAi(true);
+		rider.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+		rider.reassessWeaponGoal();
+		SkeletonIntelligence.set(rider, 10);
+
+		Player target = helper.makeMockPlayer(GameType.SURVIVAL);
+		Vec3 targetFeet = helper.absoluteVec(new Vec3(22.5, 2.0, 4.5));
+		target.snapTo(targetFeet.x, targetFeet.y, targetFeet.z, 90.0F, 0.0F);
+		helper.assertTrue(helper.getLevel().addFreshEntity(target), "Head-rider target fixture was not added.");
+		helper.assertTrue(rider.startRiding(giant, true, true), "Skeleton could not occupy the Giant head seat.");
+		giant.positionRider(rider);
+		helper.assertTrue(
+			rider.distanceToSqr(target) > 16.0 * 16.0,
+			"Regression target did not exceed the Skeleton's original 16-block three-dimensional range."
+		);
+
+		giant.setTarget(target);
+		rider.setTarget(null);
+		long shotsBefore = SmartSkeletonMetrics.snapshot().shots();
+		boolean[] sharedTargetObserved = {false};
+		helper.onEachTick(() -> {
+			giant.positionRider(rider);
+			sharedTargetObserved[0] |= rider.getTarget() == target;
+			if (SmartSkeletonMetrics.snapshot().shots() <= shotsBefore) {
+				return;
+			}
+			helper.assertTrue(
+				sharedTargetObserved[0],
+				"Head rider fired without ever adopting the Giant's shared target."
+			);
+			helper.assertTrue(
+				!helper.getEntities(EntityType.ARROW).isEmpty(),
+				"Mounted bow state machine recorded a shot without spawning a real arrow."
+			);
+			target.discard();
+			helper.succeed();
+		});
 	}
 
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)

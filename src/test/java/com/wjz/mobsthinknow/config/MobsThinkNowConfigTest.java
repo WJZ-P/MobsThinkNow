@@ -25,6 +25,17 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.creeperAiEnabled);
 		assertEquals(true, config.creeperFlanking);
 		assertEquals(true, config.creeperMovingFuse);
+		assertEquals(true, config.creeperSquadEvacuation);
+		assertEquals(true, config.zombieProfessionSkins);
+		assertEquals(true, config.zombieBodyLanguage);
+		assertEquals(true, config.swordFeints);
+		assertEquals(7, config.swordFeintMinimumIntelligence);
+		assertEquals(0.35, config.swordFeintChance);
+		assertEquals(true, config.shieldBashes);
+		assertEquals(7, config.shieldBashMinimumIntelligence);
+		assertEquals(0.35, config.shieldBashChance);
+		assertEquals(2.0, config.shieldBashDamage);
+		assertEquals(1.25, config.shieldBashKnockback);
 		assertEquals(true, config.creeperWallBreaching);
 		assertEquals(4.0, config.creeperMaximumFuseStartDistance);
 		assertEquals(1.25, config.creeperFuseMovementSpeed);
@@ -47,6 +58,16 @@ class MobsThinkNowConfigTest {
 		assertEquals(0.16, config.giantZombieMovementSpeed);
 		assertEquals(true, config.giantZombiePayloadThrowing);
 		assertEquals(true, config.giantZombieMeleeActions);
+		assertEquals(true, config.netherAiEnabled);
+		assertEquals(true, config.piglinFormationTactics);
+		assertEquals(true, config.blazeCombatTactics);
+		assertEquals(10.0, config.blazePreferredRange);
+		assertEquals(0.70, config.netherPredictionStrength);
+		assertEquals(true, config.ghastArtilleryTactics);
+		assertEquals(true, config.hoglinChargeTactics);
+		assertEquals(1.15, config.hoglinChargeSpeed);
+		assertEquals(true, config.magmaCubePredictivePounce);
+		assertEquals(0.68, config.magmaCubePounceSpeed);
 	}
 
 	@Test
@@ -98,9 +119,19 @@ class MobsThinkNowConfigTest {
 
 		assertEquals(false, config.armedSquads);
 		assertEquals(true, config.weaponCombatTactics);
+		assertEquals(true, config.swordFeints);
+		assertEquals(7, config.swordFeintMinimumIntelligence);
+		assertEquals(0.35, config.swordFeintChance);
+		assertEquals(true, config.shieldBashes);
+		assertEquals(7, config.shieldBashMinimumIntelligence);
+		assertEquals(0.35, config.shieldBashChance);
+		assertEquals(2.0, config.shieldBashDamage);
+		assertEquals(1.25, config.shieldBashKnockback);
 		assertEquals(true, config.spearAirAssault);
 		assertEquals(0.50, config.spearRocketEfficiency);
 		assertEquals(true, config.squadVisualEffects);
+		assertEquals(true, config.zombieProfessionSkins);
+		assertEquals(true, config.zombieBodyLanguage);
 		assertEquals(true, config.squadRoleNameTags);
 		assertEquals(true, config.individualTraits);
 		assertEquals(true, config.squadIgnoreFriendlyFire);
@@ -186,6 +217,12 @@ class MobsThinkNowConfigTest {
 		config.armedShieldBreakSeconds = 99.0;
 		config.armedFlankSpeedBonus = 2.0;
 		config.spearRocketEfficiency = 4.0;
+		config.swordFeintMinimumIntelligence = -5;
+		config.swordFeintChance = 9.0;
+		config.shieldBashMinimumIntelligence = 99;
+		config.shieldBashChance = Double.NaN;
+		config.shieldBashDamage = 99.0;
+		config.shieldBashKnockback = -2.0;
 
 		config.validate();
 
@@ -196,6 +233,12 @@ class MobsThinkNowConfigTest {
 		assertEquals(10.0, config.armedShieldBreakSeconds);
 		assertEquals(0.35, config.armedFlankSpeedBonus);
 		assertEquals(1.0, config.spearRocketEfficiency);
+		assertEquals(1, config.swordFeintMinimumIntelligence);
+		assertEquals(1.0, config.swordFeintChance);
+		assertEquals(10, config.shieldBashMinimumIntelligence);
+		assertEquals(0.0, config.shieldBashChance);
+		assertEquals(8.0, config.shieldBashDamage);
+		assertEquals(0.0, config.shieldBashKnockback);
 
 		config.spearRocketEfficiency = -2.0;
 		config.validate();
@@ -292,5 +335,32 @@ class MobsThinkNowConfigTest {
 		assertEquals(400.0, config.giantZombieMaximumHealth);
 		assertEquals(4.0, config.giantZombieAttackDamage);
 		assertEquals(0.08, config.giantZombieMovementSpeed);
+	}
+
+	@Test
+	void clampsNetherCombatEnvelope() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.blazePreferredRange = 100.0;
+		config.netherPredictionStrength = 5.0;
+		config.hoglinChargeSpeed = 9.0;
+		config.magmaCubePounceSpeed = -1.0;
+
+		config.validate();
+
+		assertEquals(MobsThinkNowConfig.MAXIMUM_BLAZE_PREFERRED_RANGE, config.blazePreferredRange);
+		assertEquals(1.0, config.netherPredictionStrength);
+		assertEquals(MobsThinkNowConfig.MAXIMUM_HOGLIN_CHARGE_SPEED, config.hoglinChargeSpeed);
+		assertEquals(MobsThinkNowConfig.MINIMUM_MAGMA_CUBE_POUNCE_SPEED, config.magmaCubePounceSpeed);
+
+		config.blazePreferredRange = Double.NaN;
+		config.netherPredictionStrength = Double.NaN;
+		config.hoglinChargeSpeed = Double.NaN;
+		config.magmaCubePounceSpeed = Double.NaN;
+		config.validate();
+
+		assertEquals(MobsThinkNowConfig.MINIMUM_BLAZE_PREFERRED_RANGE, config.blazePreferredRange);
+		assertEquals(0.0, config.netherPredictionStrength);
+		assertEquals(MobsThinkNowConfig.MINIMUM_HOGLIN_CHARGE_SPEED, config.hoglinChargeSpeed);
+		assertEquals(MobsThinkNowConfig.MINIMUM_MAGMA_CUBE_POUNCE_SPEED, config.magmaCubePounceSpeed);
 	}
 }

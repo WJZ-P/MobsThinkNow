@@ -9,6 +9,7 @@
 			"com.wjz.mobsthinknow.gametest.MobsThinkNowGameTests",
 			"com.wjz.mobsthinknow.ai.skeleton.SkeletonRangedTacticsGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieShieldCombatGameTests",
+			"com.wjz.mobsthinknow.ai.zombie.ZombieWeaponCombatGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieFoodGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieFluidTacticsGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieTerrainTacticsGameTests",
@@ -16,6 +17,7 @@
 			"com.wjz.mobsthinknow.ai.zombie.ZombieAirAssaultGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieEnvironmentalTacticsGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieEngineerSkillGameTests",
+			"com.wjz.mobsthinknow.ai.zombie.squad.SquadCombatUrgencyGameTests",
 			"com.wjz.mobsthinknow.command.ZombieShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.command.SkeletonShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.ai.creeper.CreeperTacticsGameTests",
@@ -26,6 +28,8 @@
 			"com.wjz.mobsthinknow.command.EndermanShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.ai.giant.GiantTacticsGameTests",
 			"com.wjz.mobsthinknow.command.GiantShowcaseCommandGameTests",
+			"com.wjz.mobsthinknow.ai.nether.NetherTacticsGameTests",
+			"com.wjz.mobsthinknow.command.NetherShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.command.AllShowcaseCommandGameTests"
 		]
 	},

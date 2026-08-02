@@ -161,6 +161,51 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		});
 	}
 
+	@GameTest(maxTicks = 80)
+	public void squadmateBlocksArrowCorridorAndFireworkDangerZone(final GameTestHelper helper) {
+		Skeleton shooter = helper.spawn(EntityType.SKELETON, 2, 2, 2);
+		Zombie blocker = helper.spawn(EntityType.ZOMBIE, 7, 2, 2);
+		Zombie wing = helper.spawn(EntityType.ZOMBIE, 3, 2, 5);
+		IronGolem target = helper.spawn(EntityType.IRON_GOLEM, 12, 2, 2);
+		shooter.setNoAi(true);
+		blocker.setNoAi(true);
+		wing.setNoAi(true);
+		target.setNoAi(true);
+		SkeletonIntelligence.set(shooter, 10);
+		ZombieIntelligence.set(blocker, 8);
+		ZombieIntelligence.set(wing, 7);
+		shooter.setTarget(target);
+		blocker.setTarget(target);
+		wing.setTarget(target);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			coordinator.heartbeat(shooter, target, true, target.position(), now);
+			coordinator.heartbeat(blocker, target, true, target.position(), now);
+			coordinator.heartbeat(wing, target, true, target.position(), now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			if (!ZombieSquadCoordinator.areSquadmates(shooter, blocker)) {
+				return;
+			}
+
+			helper.assertTrue(
+				!SkeletonShotSafety.hasClearShot(shooter, target, false),
+				"A squadmate standing inside the arrow corridor did not hold the shot."
+			);
+			blocker.snapTo(target.getX(), target.getY(), target.getZ() + 3.0, 0.0F, 0.0F);
+			helper.assertTrue(
+				SkeletonShotSafety.hasClearShot(shooter, target, false),
+				"An off-axis squadmate incorrectly blocked a normal arrow."
+			);
+			helper.assertTrue(
+				!SkeletonShotSafety.hasClearShot(shooter, target, true),
+				"A squadmate inside the intended firework blast area did not hold the explosive shot."
+			);
+			helper.succeed();
+		});
+	}
+
 	@GameTest(
 		structure = "mobsthinknow-gametest:skeleton_cover_arena",
 		maxTicks = 100,

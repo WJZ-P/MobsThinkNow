@@ -2,6 +2,9 @@ package com.wjz.mobsthinknow.gametest;
 
 import com.wjz.mobsthinknow.ai.zombie.ReactiveRetreatGoal;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyActionAccess;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyLanguage;
 import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierState;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
@@ -27,6 +30,45 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
 public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
+	@GameTest
+	public void zombieBodyActionsSyncByTransitionAndRemainEphemeral(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 1, 2, 1);
+		ZombieBodyActionAccess access = (ZombieBodyActionAccess)zombie;
+		helper.assertTrue(
+			access.mobsthinknow$getBodyAction() == ZombieBodyAction.NONE,
+			"A new zombie did not start with an empty body-action state."
+		);
+
+		ZombieBodyLanguage.play(zombie, ZombieBodyAction.COMMAND);
+		helper.assertTrue(
+			access.mobsthinknow$getBodyAction() == ZombieBodyAction.COMMAND
+				&& access.mobsthinknow$getBodyActionStartedAt() == helper.getLevel().getGameTime(),
+			"The command gesture did not publish one synchronized transition."
+		);
+
+		ZombieBodyLanguage.startPersistent(zombie, ZombieBodyAction.RETREAT);
+		ZombieBodyLanguage.play(zombie, ZombieBodyAction.ACKNOWLEDGE);
+		ZombieBodyLanguage.startPersistent(zombie, ZombieBodyAction.ENGINEER_WORK);
+		helper.assertTrue(
+			access.mobsthinknow$getBodyAction() == ZombieBodyAction.RETREAT,
+			"A low-priority acknowledgement interrupted the retreat posture."
+		);
+
+		Zombie restored = EntityType.ZOMBIE.create(helper.getLevel(), EntitySpawnReason.STRUCTURE);
+		restored.restoreFrom(zombie);
+		helper.assertTrue(
+			((ZombieBodyActionAccess)restored).mobsthinknow$getBodyAction() == ZombieBodyAction.NONE,
+			"A temporary body action leaked into the entity save/load path."
+		);
+
+		ZombieBodyLanguage.stopPersistent(zombie, ZombieBodyAction.RETREAT);
+		helper.assertTrue(
+			access.mobsthinknow$getBodyAction() == ZombieBodyAction.NONE,
+			"Stopping retreat did not release the synchronized body posture."
+		);
+		helper.succeed();
+	}
+
 	@GameTest
 	public void vanillaZombieReceivesSmartAttackGoal(final GameTestHelper helper) {
 		long installedBefore = SmartZombieMetrics.snapshot().installedGoals();
@@ -258,6 +300,9 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 		Villager target = helper.spawn(EntityType.VILLAGER, 5, 0, 2);
 		AtomicBoolean sawAirborneLeap = new AtomicBoolean();
 		AtomicBoolean sawDescendingLeap = new AtomicBoolean();
+		AtomicBoolean sawWindup = new AtomicBoolean();
+		AtomicBoolean sawLeapPose = new AtomicBoolean();
+		long axeWindupsBefore = SmartZombieMetrics.snapshot().axeWindups();
 		float[] targetHealthBeforeAttack = {100.0F};
 
 		target.setNoAi(true);
@@ -275,6 +320,13 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 			zombie.clearFire();
 			zombie.setTarget(target);
 			target.invulnerableTime = 0;
+			ZombieBodyAction action = ((ZombieBodyActionAccess)zombie).mobsthinknow$getBodyAction();
+			if (action == ZombieBodyAction.AXE_WINDUP) {
+				sawWindup.set(true);
+			}
+			if (action == ZombieBodyAction.AXE_LEAP) {
+				sawLeapPose.set(true);
+			}
 			if (!zombie.onGround()) {
 				sawAirborneLeap.set(true);
 				if (zombie.getDeltaMovement().y < -0.02) {
@@ -287,6 +339,12 @@ public final class MobsThinkNowGameTests implements CustomTestMethodInvoker {
 				float normalWeaponDamage = (float)zombie.getAttributeValue(Attributes.ATTACK_DAMAGE);
 				helper.assertTrue(sawAirborneLeap.get(), "The axe zombie hit without visibly leaving the ground.");
 				helper.assertTrue(sawDescendingLeap.get(), "The axe zombie did not wait for the falling phase.");
+				helper.assertTrue(sawWindup.get(), "The axe zombie jumped without the eight-tick overhead windup.");
+				helper.assertTrue(
+					SmartZombieMetrics.snapshot().axeWindups() > axeWindupsBefore,
+					"The axe windup was absent from /mtn status diagnostics."
+				);
+				helper.assertTrue(sawLeapPose.get(), "The airborne axe phase never published its synchronized pose.");
 				helper.assertTrue(
 					damage >= normalWeaponDamage * 1.45F,
 					"The axe leap did not apply the expected 1.5x critical damage."

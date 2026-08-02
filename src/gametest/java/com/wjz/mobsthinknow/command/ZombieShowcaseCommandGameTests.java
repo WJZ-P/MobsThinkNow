@@ -4,12 +4,15 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieAirAssault;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.ZombieProfession;
+import com.wjz.mobsthinknow.ai.zombie.ZombieProfessionProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
@@ -26,6 +29,25 @@ import net.minecraft.world.phys.Vec3;
 
 /** 通过真实 Brigadier 命令入口验证九种样本，而不是绕过命令直接调用生成器。 */
 public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInvoker {
+	@GameTest(maxTicks = 20)
+	public void statusCommandFormatsEveryZombieCombatMetric(final GameTestHelper helper) {
+		AtomicBoolean callbackRan = new AtomicBoolean();
+		AtomicBoolean succeeded = new AtomicBoolean();
+		var source = helper.getLevel()
+			.getServer()
+			.createCommandSourceStack()
+			.withSuppressedOutput()
+			.withCallback((success, result) -> {
+				callbackRan.set(true);
+				succeeded.set(success && result == 1);
+			});
+
+		helper.getLevel().getServer().getCommands().performPrefixedCommand(source, "mtn status");
+		helper.assertTrue(callbackRan.get(), "The /mtn status command did not publish a Brigadier result.");
+		helper.assertTrue(succeeded.get(), "Formatting the expanded /mtn status metrics failed.");
+		helper.succeed();
+	}
+
 	@GameTest(
 		structure = "mobsthinknow-gametest:air_assault_arena",
 		maxTicks = 20,
@@ -143,6 +165,17 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 		);
 		helper.assertTrue(zombies.size() == 9, "The command no longer creates exactly nine ordinary tactical zombies.");
 		helper.assertTrue(
+			zombies.stream().map(ZombieProfessionProfile::get).distinct().count() == 9,
+			"The nine ordinary tactical zombies did not receive nine distinct synchronized profession skins."
+		);
+		helper.assertTrue(
+			zombies.stream().noneMatch(zombie -> ZombieProfessionProfile.get(zombie) == ZombieProfession.VANILLA)
+				&& family.stream()
+					.filter(zombie -> zombie.getType() != EntityType.ZOMBIE)
+					.allMatch(zombie -> ZombieProfessionProfile.get(zombie) == ZombieProfession.VANILLA),
+			"A tactical ordinary zombie lost its profession or a vanilla zombie variant had its native skin replaced."
+		);
+		helper.assertTrue(
 			family.stream().allMatch(zombie -> zombie.isPersistenceRequired() && zombie.isCustomNameVisible()),
 			"A showcase zombie was not persistent or did not expose its archetype name."
 		);
@@ -212,7 +245,7 @@ public final class ZombieShowcaseCommandGameTests implements CustomTestMethodInv
 			Collectors.counting()
 		));
 		helper.assertTrue(
-			intelligenceCounts.equals(Map.of(3, 1L, 6, 1L, 7, 2L, 8, 2L, 9, 1L, 10, 2L)),
+			intelligenceCounts.equals(Map.of(3, 1L, 7, 2L, 8, 3L, 9, 1L, 10, 2L)),
 			"Showcase intelligence values no longer match the abilities each archetype needs: " + intelligenceCounts
 		);
 		helper.succeed();

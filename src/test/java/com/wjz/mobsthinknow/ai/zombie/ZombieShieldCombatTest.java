@@ -43,4 +43,12 @@ class ZombieShieldCombatTest {
 		assertFalse(ZombieShieldCombat.isFreshAttackSignal(121L, 100L));
 		assertFalse(ZombieShieldCombat.isFreshAttackSignal(99L, 100L));
 	}
+
+	@Test
+	void shieldBashRequiresFeatureIntelligenceAndOneSuccessfulRoll() {
+		assertTrue(ZombieShieldCombat.shouldScheduleBash(true, 8, 7, 0.34, 0.35));
+		assertFalse(ZombieShieldCombat.shouldScheduleBash(false, 8, 7, 0.0, 1.0));
+		assertFalse(ZombieShieldCombat.shouldScheduleBash(true, 6, 7, 0.0, 1.0));
+		assertFalse(ZombieShieldCombat.shouldScheduleBash(true, 8, 7, 0.35, 0.35));
+	}
 }

@@ -62,6 +62,13 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"spider",
 			"enderman",
 			"giant",
+			"nether",
+			"piglin",
+			"hoglin",
+			"zoglin",
+			"blaze",
+			"ghast",
+			"magma_cube",
 			"zombies",
 			"skeletons",
 			"creepers",
@@ -86,6 +93,9 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			.forEach(expected::add);
 		Arrays.stream(GiantShowcaseSpawner.ShowcaseArchetype.values())
 			.map(GiantShowcaseSpawner.ShowcaseArchetype::commandId)
+			.forEach(expected::add);
+		Arrays.stream(NetherShowcaseSpawner.ShowcaseArchetype.values())
+			.map(NetherShowcaseSpawner.ShowcaseArchetype::commandId)
 			.forEach(expected::add);
 
 		Set<String> actual = new HashSet<>();
@@ -114,6 +124,12 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		assertBaseAlias(helper, source, sourceBlock, "spider", EntityType.SPIDER);
 		assertBaseAlias(helper, source, sourceBlock, "enderman", EntityType.ENDERMAN);
 		assertBaseAlias(helper, source, sourceBlock, "giant", EntityType.GIANT);
+		assertBaseAlias(helper, source, sourceBlock, "piglin", EntityType.PIGLIN);
+		assertBaseAlias(helper, source, sourceBlock, "hoglin", EntityType.HOGLIN);
+		assertBaseAlias(helper, source, sourceBlock, "zoglin", EntityType.ZOGLIN);
+		assertBaseAlias(helper, source, sourceBlock, "blaze", EntityType.BLAZE);
+		assertBaseAlias(helper, source, sourceBlock, "ghast", EntityType.GHAST);
+		assertBaseAlias(helper, source, sourceBlock, "magma_cube", EntityType.MAGMA_CUBE);
 		helper.succeed();
 	}
 
@@ -125,8 +141,8 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			source,
 			command
 		);
-		// 29 根实体占据前方紧凑阵型；竖直范围覆盖 12 格高巨人与其头顶射手。
-		AABB searchBox = new AABB(sourceBlock).move(0.0, 0.0, 8.0).inflate(12.0, 16.0, 12.0);
+		// 根实体覆盖七个家族；竖直范围同时容纳巨人头顶射手与抬高生成的恶魂炮兵。
+		AABB searchBox = new AABB(sourceBlock).move(0.0, 4.0, 10.0).inflate(22.0, 24.0, 22.0);
 		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
 			Zombie.class,
 			searchBox,
@@ -156,6 +172,14 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			Giant.class,
 			searchBox,
 			giant -> giant.getType() == EntityType.GIANT && isShowcase(giant)
+		);
+		Set<EntityType<?>> netherTypes = Arrays.stream(NetherShowcaseSpawner.ShowcaseArchetype.values())
+			.map(NetherShowcaseSpawner.ShowcaseArchetype::entityType)
+			.collect(java.util.stream.Collectors.toSet());
+		List<Mob> netherMobs = helper.getLevel().getEntitiesOfClass(
+			Mob.class,
+			searchBox,
+			mob -> netherTypes.contains(mob.getType()) && isShowcase(mob)
 		);
 
 		helper.assertTrue(
@@ -196,6 +220,11 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		);
 		helper.assertTrue(giants.size() == 1, "Global spawnall did not create exactly one Giant root.");
 		helper.assertTrue(
+			netherMobs.size() == NetherShowcaseSpawner.ShowcaseArchetype.values().length
+				&& netherMobs.stream().map(Mob::getType).collect(java.util.stream.Collectors.toSet()).equals(netherTypes),
+			"Global spawnall did not create exactly one of each Nether showcase archetype."
+		);
+		helper.assertTrue(
 			zombies.stream().filter(zombie -> zombie.getVehicle() instanceof Giant).count() == 1,
 			"The global formation did not retain exactly one Giant-held zombie payload."
 		);
@@ -212,13 +241,15 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 		spiders.forEach(entity -> rootPositions.add(entity.blockPosition()));
 		endermen.forEach(entity -> rootPositions.add(entity.blockPosition()));
 		giants.forEach(entity -> rootPositions.add(entity.blockPosition()));
+		netherMobs.forEach(entity -> rootPositions.add(entity.blockPosition()));
 		helper.assertTrue(
 			rootPositions.size() == AllShowcaseSpawner.ARCHETYPE_COUNT,
 			"At least two global showcase roots occupied the same feet position."
 		);
 		helper.assertTrue(
-			zombies.size() + skeletons.size() + creepers.size() + spiders.size() + endermen.size() + giants.size() == 34,
-			"Global spawnall did not create exactly 34 entities including all variants, riders, and payloads."
+			zombies.size() + skeletons.size() + creepers.size() + spiders.size() + endermen.size()
+				+ giants.size() + netherMobs.size() == AllShowcaseSpawner.ARCHETYPE_COUNT + 5,
+			"Global spawnall did not create every root plus the five mounted riders and payloads."
 		);
 		helper.succeed();
 	}

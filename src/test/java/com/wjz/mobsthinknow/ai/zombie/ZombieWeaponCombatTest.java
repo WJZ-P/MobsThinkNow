@@ -34,4 +34,14 @@ class ZombieWeaponCombatTest {
 		assertTrue(clockwise.z > 0.0);
 		assertTrue(counterClockwise.z < 0.0);
 	}
+
+	@Test
+	void swordFeintRequiresOneEligibleBlockingCycleAndUsesStrictProbabilityBoundary() {
+		assertTrue(ZombieWeaponCombat.shouldStartSwordFeint(true, 8, 7, true, 4.0, 0.34, 0.35));
+		assertTrue(!ZombieWeaponCombat.shouldStartSwordFeint(false, 8, 7, true, 4.0, 0.0, 1.0));
+		assertTrue(!ZombieWeaponCombat.shouldStartSwordFeint(true, 6, 7, true, 4.0, 0.0, 1.0));
+		assertTrue(!ZombieWeaponCombat.shouldStartSwordFeint(true, 8, 7, false, 4.0, 0.0, 1.0));
+		assertTrue(!ZombieWeaponCombat.shouldStartSwordFeint(true, 8, 7, true, 100.0, 0.0, 1.0));
+		assertTrue(!ZombieWeaponCombat.shouldStartSwordFeint(true, 8, 7, true, 4.0, 0.35, 0.35));
+	}
 }

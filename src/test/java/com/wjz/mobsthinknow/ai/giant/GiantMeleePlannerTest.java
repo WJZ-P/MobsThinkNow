@@ -133,4 +133,44 @@ class GiantMeleePlannerTest {
 
 		assertEquals(GiantMeleeAction.Family.SLAP, action.family());
 	}
+
+	@Test
+	void highIntelligenceGiantMayGrabItsPrimaryTargetWithOneNearbyInterferer() {
+		GiantMeleeAction action = GiantMeleePlanner.choose(
+			new GiantMeleePlanner.Context(
+				3.0,
+				2,
+				true,
+				false,
+				10,
+				false,
+				true,
+				GiantMeleeAction.NONE
+			),
+			0.0,
+			0.25
+		);
+
+		assertEquals(GiantMeleeAction.GRAB_RIGHT, action);
+	}
+
+	@Test
+	void twoFreeHandsStillPreferCrowdSmashOverGrabAgainstTwoTargets() {
+		GiantMeleeAction action = GiantMeleePlanner.choose(
+			new GiantMeleePlanner.Context(
+				3.0,
+				2,
+				true,
+				true,
+				10,
+				false,
+				true,
+				GiantMeleeAction.NONE
+			),
+			0.0,
+			0.25
+		);
+
+		assertEquals(GiantMeleeAction.GROUND_SMASH, action);
+	}
 }

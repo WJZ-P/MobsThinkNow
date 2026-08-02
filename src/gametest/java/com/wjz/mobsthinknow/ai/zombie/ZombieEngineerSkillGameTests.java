@@ -44,12 +44,17 @@ public final class ZombieEngineerSkillGameTests implements CustomTestMethodInvok
 			"The engineer did not find a legal TNT site near an isolated target: " + diagnostic(engineer, target)
 		);
 		goal.start();
+		boolean[] sawWorkPose = {false};
 
 		helper.onEachTick(() -> {
 			engineer.clearFire();
 			engineer.setTarget(target);
 			if (goal.canContinueToUse()) {
 				goal.tick();
+			}
+			if (((ZombieBodyActionAccess)engineer).mobsthinknow$getBodyAction()
+				== ZombieBodyAction.ENGINEER_WORK) {
+				sawWorkPose[0] = true;
 			}
 			List<PrimedTnt> charges = helper.getLevel().getEntitiesOfClass(
 				PrimedTnt.class,
@@ -66,6 +71,11 @@ public final class ZombieEngineerSkillGameTests implements CustomTestMethodInvok
 
 			PrimedTnt charge = charges.getFirst();
 			helper.assertTrue(charge.getOwner() == engineer, "PrimedTnt did not retain the engineer as its owner.");
+			helper.assertTrue(sawWorkPose[0], "TNT placement never entered the synchronized kneeling work pose.");
+			helper.assertTrue(
+				((ZombieBodyActionAccess)engineer).mobsthinknow$getBodyAction() == ZombieBodyAction.NONE,
+				"The engineer kept kneeling after the charge was primed and retreat began."
+			);
 			helper.assertTrue(charge.getFuse() > 0 && charge.getFuse() <= 80, "The charge has an invalid vanilla fuse.");
 			helper.assertTrue(
 				!helper.getLevel().getBlockState(charge.blockPosition()).is(Blocks.TNT),

@@ -13,13 +13,13 @@ import net.minecraft.world.level.block.Blocks;
 /** 从真实实体、感知与地面导航验证苦力怕接敌和引信状态机。 */
 public final class CreeperTacticsGameTests implements CustomTestMethodInvoker {
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
-	public void creeperMixinInstallsTwoGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
+	public void creeperMixinInstallsThreeGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
 		long before = SmartCreeperMetrics.snapshot().installedGoals();
 		Creeper creeper = helper.spawn(EntityType.CREEPER, 2, 2, 2);
 
 		helper.assertTrue(
-			SmartCreeperMetrics.snapshot().installedGoals() == before + 2,
-			"Creeper construction did not replace the vanilla approach and swell goals."
+			SmartCreeperMetrics.snapshot().installedGoals() == before + 3,
+			"Creeper construction did not install evacuation plus smart approach and swell goals."
 		);
 		int intelligence = CreeperIntelligence.get(creeper);
 		helper.assertTrue(intelligence >= 1 && intelligence <= 10, "Creeper intelligence escaped the 1-10 range.");
