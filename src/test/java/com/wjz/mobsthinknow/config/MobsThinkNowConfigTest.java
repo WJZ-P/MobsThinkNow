@@ -59,6 +59,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.giantZombiePayloadThrowing);
 		assertEquals(true, config.giantZombieMeleeActions);
 		assertEquals(true, config.netherAiEnabled);
+		assertEquals(true, config.netherProfessionSkins);
 		assertEquals(true, config.piglinFormationTactics);
 		assertEquals(true, config.blazeCombatTactics);
 		assertEquals(10.0, config.blazePreferredRange);

@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.command;
 
+import com.wjz.mobsthinknow.ai.nether.NetherProfession;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionProfile;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
@@ -18,7 +20,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
-/** 从真实 Brigadier 入口验证七种下界预设、批量参数和三种整组快捷入口。 */
+/** 从真实 Brigadier 入口验证全部下界职业预设、批量参数和三种整组快捷入口。 */
 public final class NetherShowcaseCommandGameTests implements CustomTestMethodInvoker {
 	private static final Set<EntityType<?>> NETHER_TYPES = Arrays.stream(NetherShowcaseSpawner.ShowcaseArchetype.values())
 		.map(NetherShowcaseSpawner.ShowcaseArchetype::entityType)
@@ -79,25 +81,40 @@ public final class NetherShowcaseCommandGameTests implements CustomTestMethodInv
 
 	private static void assertCompleteFormation(final GameTestHelper helper, final BlockPos sourceBlock) {
 		List<Mob> mobs = netherMobsNear(helper, sourceBlock);
-		helper.assertTrue(mobs.size() == 7, "Nether group command did not create all seven presets.");
+		helper.assertTrue(
+			mobs.size() == NetherShowcaseSpawner.ShowcaseArchetype.values().length,
+			"Nether group command did not create every profession preset."
+		);
 		helper.assertTrue(
 			mobs.stream().map(Mob::getType).collect(Collectors.toSet()).equals(NETHER_TYPES),
-			"Nether group command did not create exactly one of every configured type."
+			"Nether group command did not cover every configured entity type."
 		);
 		helper.assertTrue(
 			mobs.stream().allMatch(mob -> mob.isPersistenceRequired() && mob.isCustomNameVisible()),
 			"At least one Nether showcase entity lost persistence or its visible preset name."
 		);
-		helper.assertTrue(
-			mobs.stream().filter(mob -> mob.getType() == EntityType.PIGLIN)
-				.allMatch(mob -> mob.getMainHandItem().is(Items.CROSSBOW)),
-			"The Piglin battle-line preset did not force its crossbow."
+		for (NetherShowcaseSpawner.ShowcaseArchetype archetype
+			: NetherShowcaseSpawner.ShowcaseArchetype.values()) {
+			boolean present = mobs.stream().anyMatch(mob -> mob.getType() == archetype.entityType()
+				&& mob.getCustomName() != null
+				&& mob.getCustomName().getString().equals(archetype.displayName().getString())
+				&& NetherProfessionProfile.get(mob) == archetype.profession());
+			helper.assertTrue(present, "Missing or mismatched profession preset " + archetype.commandId());
+		}
+		helper.assertTrue(mobs.stream()
+			.filter(mob -> NetherProfessionProfile.get(mob) == NetherProfession.PIGLIN_MARKSMAN)
+			.allMatch(mob -> mob.getMainHandItem().is(Items.CROSSBOW)),
+			"The Piglin marksman did not retain its crossbow."
 		);
-		helper.assertTrue(
-			mobs.stream().filter(mob -> mob instanceof MagmaCube)
-				.map(mob -> (MagmaCube)mob).allMatch(cube -> cube.getSize() == 3),
-			"The Magma Cube hunter did not retain its readable showcase size."
-		);
+		helper.assertTrue(mobs.stream().filter(mob -> mob instanceof MagmaCube).allMatch(mob -> {
+			MagmaCube cube = (MagmaCube)mob;
+			return switch (NetherProfessionProfile.get(cube)) {
+				case MAGMA_AMBUSHER -> cube.getSize() == 2;
+				case MAGMA_TITAN -> cube.getSize() == 4;
+				case MAGMA_HUNTER -> cube.getSize() == 3;
+				default -> false;
+			};
+		}), "A Magma Cube profession lost its configured showcase size.");
 		helper.succeed();
 	}
 

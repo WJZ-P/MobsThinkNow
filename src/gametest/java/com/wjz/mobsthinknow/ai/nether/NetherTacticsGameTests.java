@@ -4,8 +4,11 @@ import java.lang.reflect.Method;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Ghast;
@@ -23,6 +26,40 @@ import net.minecraft.world.phys.Vec3;
 
 /** 使用真实实体 tick、GoalSelector、Brain 与 Mixin 验证第一批下界战术。 */
 public final class NetherTacticsGameTests implements CustomTestMethodInvoker {
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void naturalFinalizationAssignsOneCompatibleSyncedProfessionPerFamily(final GameTestHelper helper) {
+		EntityType<?>[] types = {
+			EntityType.PIGLIN,
+			EntityType.PIGLIN_BRUTE,
+			EntityType.BLAZE,
+			EntityType.GHAST,
+			EntityType.HOGLIN,
+			EntityType.ZOGLIN,
+			EntityType.MAGMA_CUBE
+		};
+		BlockPos feet = helper.absolutePos(new BlockPos(4, 2, 4));
+		for (EntityType<?> type : types) {
+			Mob mob = (Mob)type.create(helper.getLevel(), EntitySpawnReason.NATURAL);
+			helper.assertTrue(mob != null, "Could not create profession fixture for " + type);
+			mob.snapTo(feet.getX() + 0.5, feet.getY(), feet.getZ() + 0.5, 0.0F, 0.0F);
+			mob.finalizeSpawn(
+				helper.getLevel(),
+				helper.getLevel().getCurrentDifficultyAt(feet),
+				EntitySpawnReason.NATURAL,
+				null
+			);
+			NetherProfession profession = NetherProfessionProfile.get(mob);
+			helper.assertTrue(mob instanceof NetherProfessionAccess, type + " has no synced profession slot.");
+			helper.assertTrue(
+				profession != NetherProfession.NONE
+					&& profession.belongsTo(NetherProfessionProfile.familyOf(mob)),
+				type + " received incompatible profession " + profession
+			);
+			mob.discard();
+		}
+		helper.succeed();
+	}
+
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
 	public void everyNetherEntityInstallsItsExpectedRuntimeBridge(final GameTestHelper helper) {
 		long before = SmartNetherMetrics.snapshot().installedControllers();
