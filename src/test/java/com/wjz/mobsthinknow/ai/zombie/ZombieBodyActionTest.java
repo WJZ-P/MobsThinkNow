@@ -14,6 +14,13 @@ class ZombieBodyActionTest {
 		for (ZombieBodyAction action : ZombieBodyAction.values()) {
 			assertEquals(action, ZombieBodyAction.fromId(action.id()));
 		}
+		assertEquals(18, ZombieBodyAction.SHIELD_TAP.id());
+		assertEquals(19, ZombieBodyAction.SWORD_INSPECT.id());
+		assertEquals(20, ZombieBodyAction.AXE_SHOULDER.id());
+		assertEquals(21, ZombieBodyAction.ENGINEER_CHECK.id());
+		assertEquals(22, ZombieBodyAction.CONFUSED_TILT.id());
+		assertEquals(23, ZombieBodyAction.SUCCESSION_LOOK_AROUND.id());
+		assertEquals(24, ZombieBodyAction.SUCCESSION_SALUTE.id());
 	}
 
 	@Test
@@ -29,6 +36,9 @@ class ZombieBodyActionTest {
 		assertFalse(ZombieBodyAction.CALL_TO_MEETING.isActiveAt(24.0F));
 		assertFalse(ZombieBodyAction.SHAKE_HEAD.isActiveAt(16.0F));
 		assertFalse(ZombieBodyAction.ADVANCE_ORDER.isActiveAt(18.0F));
+		assertFalse(ZombieBodyAction.SHIELD_TAP.isActiveAt(20.0F));
+		assertFalse(ZombieBodyAction.SWORD_INSPECT.isActiveAt(24.0F));
+		assertFalse(ZombieBodyAction.SUCCESSION_SALUTE.isActiveAt(24.0F));
 		assertFalse(ZombieBodyAction.NONE.isActiveAt(0.0F));
 	}
 
@@ -48,5 +58,8 @@ class ZombieBodyActionTest {
 		assertEquals(ZombieBodyAction.COMMAND_RIGHT.priority(), ZombieBodyAction.SURVEY_MEMBERS.priority());
 		assertEquals(ZombieBodyAction.NOD.priority(), ZombieBodyAction.SHAKE_HEAD.priority());
 		assertTrue(ZombieBodyAction.NOD.priority() > ZombieBodyAction.CONFER.priority());
+		assertTrue(ZombieBodyAction.SUCCESSION_SALUTE.priority() > ZombieBodyAction.ADVANCE_ORDER.priority());
+		assertTrue(ZombieBodyAction.SUCCESSION_LOOK_AROUND.priority() > ZombieBodyAction.NOD.priority());
+		assertEquals(ZombieBodyAction.SHIELD_TAP.priority(), ZombieBodyAction.CONFUSED_TILT.priority());
 	}
 }

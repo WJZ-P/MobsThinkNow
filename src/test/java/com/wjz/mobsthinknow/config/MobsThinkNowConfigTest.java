@@ -73,7 +73,11 @@ class MobsThinkNowConfigTest {
 
 	@Test
 	void defaultsToTwentyCoordinatedZombies() {
-		assertEquals(20, new MobsThinkNowConfig().maximumCoordinatedZombies);
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+
+		assertEquals(20, config.maximumCoordinatedZombies);
+		assertEquals(64, config.briefingTicks);
+		assertEquals(48, config.regroupTicks);
 	}
 
 	@Test
@@ -85,6 +89,7 @@ class MobsThinkNowConfigTest {
 		config.minimumSquadSize = 1000;
 		config.squadFormationIntervalTicks = 1;
 		config.briefingTicks = 1;
+		config.regroupTicks = 1;
 		config.rallyQuorum = 9.0;
 		config.coordinationRadius = Double.POSITIVE_INFINITY;
 		config.formationRadius = 0.5;
@@ -97,7 +102,8 @@ class MobsThinkNowConfigTest {
 		assertEquals(100, config.maximumCoordinatedZombies);
 		assertEquals(100, config.minimumSquadSize);
 		assertEquals(4, config.squadFormationIntervalTicks);
-		assertEquals(8, config.briefingTicks);
+		assertEquals(60, config.briefingTicks);
+		assertEquals(40, config.regroupTicks);
 		assertEquals(1.0, config.rallyQuorum);
 		assertEquals(4.0, config.coordinationRadius);
 		assertEquals(2.0, config.formationRadius);

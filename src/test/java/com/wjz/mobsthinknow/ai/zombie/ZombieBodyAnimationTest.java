@@ -254,4 +254,91 @@ class ZombieBodyAnimationTest {
 		assertTrue(engineer.body().xRot() > 0.45F);
 		assertTrue(engineer.rightLeg().xRot() > 1.0F);
 	}
+
+	@Test
+	void meetingGesturesUseTheOnlyFreeHand() {
+		ZombieBodyAnimation.BodyPose freeLeft = ZombieBodyAnimation.sample(
+			ZombieBodyAction.CALL_TO_MEETING,
+			8.0F,
+			8.0F,
+			false,
+			true,
+			false
+		);
+		ZombieBodyAnimation.BodyPose freeRight = ZombieBodyAnimation.sample(
+			ZombieBodyAction.CALL_TO_MEETING,
+			8.0F,
+			8.0F,
+			true,
+			false,
+			true
+		);
+
+		assertTrue(freeLeft.leftArm().weight() > 0.9F);
+		assertTrue(freeRight.rightArm().weight() > 0.9F);
+		assertEquals(freeRight.rightArm().xRot(), freeLeft.leftArm().xRot(), EPSILON);
+		assertEquals(-freeRight.rightArm().yRot(), freeLeft.leftArm().yRot(), EPSILON);
+	}
+
+	@Test
+	void armedSocialActionsPreserveTheOtherEquippedHand() {
+		ZombieBodyAnimation.BodyPose call = ZombieBodyAnimation.sample(
+			ZombieBodyAction.CALL_TO_MEETING,
+			8.0F,
+			8.0F,
+			true,
+			true,
+			true
+		);
+		ZombieBodyAnimation.BodyPose nod = ZombieBodyAnimation.sample(
+			ZombieBodyAction.NOD,
+			3.0F,
+			3.0F,
+			true,
+			true,
+			true
+		);
+
+		assertTrue(call.rightArm().weight() > 0.8F);
+		assertEquals(0.0F, call.leftArm().weight(), EPSILON);
+		assertEquals(0.0F, nod.rightArm().weight(), EPSILON);
+		assertEquals(0.0F, nod.leftArm().weight(), EPSILON);
+		assertTrue(nod.head().weight() > 0.9F);
+	}
+
+	@Test
+	void professionIdlesHaveDistinctReadableSilhouettes() {
+		ZombieBodyAnimation.BodyPose shield = ZombieBodyAnimation.sample(ZombieBodyAction.SHIELD_TAP, 10.0F, 10.0F);
+		ZombieBodyAnimation.BodyPose sword = ZombieBodyAnimation.sample(ZombieBodyAction.SWORD_INSPECT, 12.0F, 12.0F);
+		ZombieBodyAnimation.BodyPose axe = ZombieBodyAnimation.sample(ZombieBodyAction.AXE_SHOULDER, 12.0F, 12.0F);
+		ZombieBodyAnimation.BodyPose engineer = ZombieBodyAnimation.sample(ZombieBodyAction.ENGINEER_CHECK, 12.0F, 12.0F);
+		ZombieBodyAnimation.BodyPose confused = ZombieBodyAnimation.sample(ZombieBodyAction.CONFUSED_TILT, 10.0F, 10.0F);
+
+		assertTrue(shield.leftArm().weight() > 0.6F);
+		assertTrue(sword.rightArm().xRot() > axe.rightArm().xRot());
+		assertTrue(engineer.body().xRot() > sword.body().xRot());
+		assertTrue(Math.abs(confused.head().zRot()) > 0.20F);
+	}
+
+	@Test
+	void successionUsesSearchThenAHighSalute() {
+		ZombieBodyAnimation.BodyPose search = ZombieBodyAnimation.sample(
+			ZombieBodyAction.SUCCESSION_LOOK_AROUND,
+			5.0F,
+			5.0F
+		);
+		ZombieBodyAnimation.BodyPose salute = ZombieBodyAnimation.sample(
+			ZombieBodyAction.SUCCESSION_SALUTE,
+			12.0F,
+			12.0F,
+			true,
+			true,
+			true
+		);
+
+		assertTrue(Math.abs(search.head().yRot()) > 0.6F);
+		assertTrue(salute.rightArm().xRot() < -2.0F);
+		assertEquals(0.0F, salute.leftArm().weight(), EPSILON);
+		assertTrue(salute.head().xRot() < -0.15F);
+	}
 }
