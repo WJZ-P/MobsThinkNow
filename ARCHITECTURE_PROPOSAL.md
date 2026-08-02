@@ -8,7 +8,7 @@
 - 僵尸家族白名单为 `minecraft:zombie`、`minecraft:husk`、`minecraft:drowned`、
   `minecraft:zombie_villager`；骷髅家族白名单为 `minecraft:skeleton`、`minecraft:stray`、
   `minecraft:bogged`、`minecraft:parched`；同时改造普通苦力怕、普通蜘蛛、普通末影人与原版巨人；
-- 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案和持盾、进食、举矛、举弩、末影人抱实体、巨人托举实体等姿态；
+- 战术决策保持服务端权威；客户端资源仅负责盾牌像素图案、末影人职业皮肤/手持装备层和持盾、进食、举矛、举弩、末影人抱实体、巨人托举实体等姿态；
 - 不提高生成量；个体速度、最大生命、伤害与追踪距离围绕随难度变化的均值随机浮动；
 - 复用原版视线、GoalSelector、导航、近战距离和命中判定；
 - 世界对象只在服务器主线程访问，不把实体和导航器交给工作线程；
@@ -88,9 +88,16 @@ flowchart TD
     FoodGoal --> FoodUse["单份拾取 + 原版 useItem"]
     FoodUse --> FoodPose["client Mixin: 抬手咀嚼"]
 
-    EndermanSpawn["普通末影人创建"] --> EndermanMixin["EnderManMixin"]
+    EndermanSpawn["普通末影人 finalizeSpawn"] --> EndermanProfile["难度 + IQ + 末地主场职业分配"]
+    EndermanProfile --> ProfessionData["同步 byte + 实体存档 + 真实装备"]
+    ProfessionData --> EndermanMixin["EnderManMixin"]
     EndermanMixin --> EndermanIQ["持久智力 1～10"]
-    EndermanMixin --> DeliveryGoal["EndermanCreeperDeliveryGoal / priority 1"]
+    EndermanMixin --> DeliveryGoal["苦力怕使者投送 / priority 1"]
+    EndermanMixin --> LancerGoal["原版 SpearUseGoal / priority 2"]
+    EndermanMixin --> ProfessionCombat["猎手/盾卫近战状态机 / priority 2"]
+    ProfessionCombat --> CombatTeleport["固定候选上限的侧后换位/闪退"]
+    ProfessionCombat --> ShieldLoop["举盾 → 格挡 → 放盾 → 反击"]
+    ProfessionData --> ProfessionRender["四张皮肤 + ItemInHandLayer + 姿态"]
     VanillaAggro["原版凝视/受击/愤怒目标"] --> DeliveryGoal
     DeliveryGoal --> CarrierLease["与蜘蛛共享苦力怕 UUID 租约"]
     DeliveryGoal --> RealPassenger["真实 passenger + 胸前挂点"]
@@ -146,8 +153,14 @@ com.wjz.mobsthinknow
 │  └─ SpiderSquadCarrierGoal           小队骷髅/僵尸的跳跃登乘与加速换位
 ├─ ai/enderman
 │  ├─ EndermanIntelligence             难度化出生区间、持久智力与名称标记
+│  ├─ EndermanProfession               只追加编号的四职业同步身份
+│  ├─ EndermanProfessionProfile        难度/IQ/维度分配、装备冻结与存档
+│  ├─ EndermanCombatTeleport           有界候选、碰撞/流体/视线校验与回滚
+│  ├─ EndermanProfessionCombatGoal     裂隙猎手换位近战与盾卫格挡反击
+│  ├─ EndermanVoidLancerGoal           复用原版 SpearUseGoal 的动能突刺
+│  ├─ EndermanShieldDesign             原版旗帜图层组成的真实虚空盾牌
 │  ├─ EndermanCreeperDeliveryGoal      预约、抱取、传送投放、点燃和撤离状态机
-│  └─ SmartEndermanMetrics             搜索、抱取、投送与点燃诊断指标
+│  └─ SmartEndermanMetrics             职业战斗、搜索、抱取、投送与点燃指标
 ├─ ai/giant
 │  ├─ GiantZombieSpawnConversion       EntityLoad 排队与维度 tick 末事务替换
 │  ├─ GiantZombieProfile               难度化出生率与重型属性边界
@@ -217,7 +230,7 @@ com.wjz.mobsthinknow
 ├─ command/SkeletonShowcaseSpawner      三种远程装备、三种家族变种与批量生成事务
 ├─ command/CreeperShowcaseSpawner       猎手/绕后/破墙/带电预设与批量生成事务
 ├─ command/SpiderShowcaseSpawner        猎手/伏击/首领/苦力怕投送组生成事务
-├─ command/EndermanShowcaseSpawner      猎手/预装真实苦力怕投送组生成事务
+├─ command/EndermanShowcaseSpawner      猎手/盾卫/枪骑/预装苦力怕使者生成事务
 ├─ command/GiantShowcaseSpawner         头顶射手/双手载荷攻城平台生成事务
 ├─ command/ShowcaseSpawnPlacement       跨物种共用的碰撞、地基与阵型预检
 ├─ config                               JSON 配置、校验和热重载
@@ -225,9 +238,10 @@ com.wjz.mobsthinknow
 ├─ mixin/AbstractSkeletonMixin          骷髅家族 Goal、智力、负载与混编心跳注入
 ├─ mixin/CreeperMixin                   苦力怕 Goal 替换、智力存档与带电测试访问
 ├─ mixin/SpiderMixin                    蜘蛛 Goal、智力存档与载荷非驾驶者语义
-├─ mixin/EnderManMixin                  末影人 Goal、智力存档、胸前乘客挂点与载荷非驾驶者语义
+├─ mixin/EnderManMixin                  职业同步/Goal/盾牌回调、智力存档、胸前挂点与非驾驶语义
+├─ mixin/EndermanProfessionLifecycleMixin 原版 finalizeSpawn 完成后的职业分配
 ├─ mixin/GiantMixin                     原版空 Goal Giant 的战斗、小队、三挂点与智力存档
-└─ mixin/client                         盾牌/进食/举矛、骷髅双手弩、末影人环抱与巨人双手托举姿态仲裁
+└─ mixin/client                         装备层、职业贴图、盾牌/长矛、末影人环抱与巨人双手托举姿态仲裁
 ```
 
 ## 2.0 僵尸家族复用边界
@@ -304,7 +318,29 @@ com.wjz.mobsthinknow
   `getControllingPassenger` 对三类载荷返回空控制者，乘员不会夺走蜘蛛的 MOVE/LOOK。已有独立速度曲线的
   载具蜘蛛不再叠加小队通用移速，未获乘员的蜘蛛仍使用个人侧袭和跳扑。
 
-## 2.4 末影人实体投送与模型边界
+## 2.4 末影人职业、装备、投送与模型边界
+
+- `EndermanProfessionLifecycleMixin` 在原版 `Mob.finalizeSpawn` 返回后只处理真实 `EnderMan`。职业基础精英
+  概率按简单/普通/困难取 `38%/54%/72%`，智力每偏离 5 一点移动 `1.5%`，末地主场再加 `12%`，
+  最终钳制在 `28%～88%`；未进入精英池的个体成为裂隙猎手。已有动能武器、盾或剑时优先由装备
+  推断职业，不覆盖其他模组装备；职业 byte 使用 `SynchedEntityData` 同步并写入
+  `MobsThinkNowEndermanProfession`；
+- `EnderManMixin` 精确移除原版 `MeleeAttackGoal`，以投送 priority 1、长矛 priority 2、职业近战
+  priority 2 接管 MOVE/LOOK。所有 Goal 都只读取原版已经建立的目标，不注册新 TargetGoal，因此凝视、
+  南瓜、受击与持续愤怒边界不变；苦力怕投送仅允许 `CREEPER_HERALD`，武器职业不会抢占抱持语义；
+- 裂隙猎手在 5～18 格、有视线且冷却结束时调用 `EndermanCombatTeleport`。单次最多检查 6 个侧后候选，
+  每个候选都验证世界边界、方块碰撞、液体和落点到目标的视线，失败会回滚原坐标；IQ ≥ 7 的命中后
+  以 42% 概率再检查最多 5 个撤离点；
+- 虚空盾卫使用石剑和真实原版盾牌组件。12 格内举盾，近战位等待 14～30 tick 后主动放盾；真实
+  `blockUsingItem` 回调把状态推进到 2～4 tick 保持、2 tick 放盾前摇和至多 20 tick 反击追击。
+  同一时刻只能防御或攻击，斧类通过原版盾牌禁用组件生效；盾面由黑底、紫色渐变、品红菱形、黑纹与
+  青边五层旗帜图案构成；
+- 虚空枪骑直接继承原版 `SpearUseGoal<EnderMan>`，保留动能武器蓄力/冲锋/命中规则；只在每轮开始前
+  对 6～24 格目标尝试一次最多 6 候选的 8.5 格侧后换位。这样武器数据包或原版长矛平衡变更仍由
+  `KINETIC_WEAPON` 组件和原版 Goal 解释；
+- 客户端把职业 byte 复制到 `EndermanRenderState`，按职业选择四张原版尺寸 `64×32` 皮肤，并通过
+  `LivingEntityRenderer.addLayer` Invoker 给原版渲染器追加 `ItemInHandLayer`。模型只覆写盾卫举盾和
+  枪骑举矛的长臂角度；若原版手持方块存在则清空本帧手部装备状态，避免三套几何互穿；
 
 - `EndermanCreeperDeliveryGoal` 不注册目标选择器，也不主动制造仇恨；它只读取普通末影人已经存在的
   `Player` 目标，并再次排除创造、旁观、死亡与重新直视末影人的玩家。手持原版方块、已有其他乘客或
@@ -596,7 +632,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 13. 蜘蛛配对按实体随机错峰每 10～20 tick 查询一次局部索引，搜索半径默认 8、硬上限 16；即使
    局部返回更多实体，决策层单轮最多检查 32 只苦力怕。每个候选只有一个 UUID 租约，不发生蜘蛛间
     的全量两两比较；运输和个人战斗寻路均按 IQ 每 3～8 tick 重建一次。
-14. 末影人投送同样使用错峰局部查询，配置半径默认 16、硬上限 32，单轮最多检查 24 个苦力怕；
+14. 末影人职业近战只读取自身目标；每次职业换位最多检查 5～8 个候选，不扫描任何同伴。投送同样
+    使用错峰局部查询，配置半径默认 16、硬上限 32，单轮最多检查 24 个苦力怕；
     与蜘蛛共用单目标 UUID 租约。抱取后的每 tick 只读取当前玩家和载荷，安全投放最多检查 13 个
      固定落点，既不扫描末影人同伴，也不形成新的 N² 配对。
 15. 巨人运输逻辑不执行范围实体搜索。协调器重建职位时只对单队至多 K 名成员排序一次，并通过三阶段
@@ -1046,11 +1083,11 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   下界另覆盖生产 Mixin/控制器安装、职业自然分配与同步槽、猪灵在真实平地 Brain 中写入可达战线、烈焰人充能后发射
   受限弹幕、恶魂预测炮击后换位、疣猪兽经历蓄力再产生真实位移、岩浆怪保留原版垂直速度的跳扑，
   以及僵尸猪灵/凋灵骷髅同步槽、装备晚分配、可读突进和二十六种职业预设、三种整组快捷入口与
-  基础/战术批量参数；全局 `spawnall` 另验证一次事务式生成 55 个战术/变种根、60 个总实体与五个
-  额外乘员；阵型间距按本批最大真实碰撞宽度自适应，末影人另覆盖生产 Mixin Goal
-   安装、持久智力名称、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
+  基础/战术批量参数；全局 `spawnall` 另验证一次事务式生成 57 个战术/变种根、62 个总实体与五个
+  额外乘员；阵型间距按本批最大真实碰撞宽度自适应，末影人另覆盖生产 Mixin Goal/职业分配
+   安装、持久智力名称、四职业同步与装备、真实盾牌格挡反击、原版长矛突进、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
    随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、十二个基础生物名、
-   六个复数分类、`nether` 分类与五十五个战术/变种 literal 全量注册，并真实批量生成十四类基础实体；当前共 139 项
+   六个复数分类、`nether` 分类与五十七个战术/变种 literal 全量注册，并真实批量生成十四类基础实体；当前共 141 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
