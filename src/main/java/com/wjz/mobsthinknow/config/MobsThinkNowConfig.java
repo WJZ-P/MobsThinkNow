@@ -270,9 +270,11 @@ public final class MobsThinkNowConfig {
 	public int squadFormationIntervalTicks = 10;
 	public int squadFormationTicks = 12;
 	public int rallyTimeoutTicks = 60;
-	public int briefingTicks = 24;
+	/** 完整会议默认 3.2 秒；必须给巡视、路线汇报和两侧命令留下可读间隔。 */
+	public int briefingTicks = 64;
 	public int deploymentTimeoutTicks = 80;
-	public int regroupTicks = 15;
+	/** 换届仪式默认 2.4 秒，包含环顾、继任怒吼和成员确认。 */
+	public int regroupTicks = 48;
 	public int memberHeartbeatTimeoutTicks = 40;
 	public double rallyRadius = 1.8;
 	public double emergencyEngageDistance = 5.0;
@@ -297,9 +299,9 @@ public final class MobsThinkNowConfig {
 		this.squadFormationIntervalTicks = clamp(this.squadFormationIntervalTicks, 4, 40);
 		this.squadFormationTicks = clamp(this.squadFormationTicks, 4, 60);
 		this.rallyTimeoutTicks = clamp(this.rallyTimeoutTicks, 20, 200);
-		this.briefingTicks = clamp(this.briefingTicks, 8, 80);
+		this.briefingTicks = clamp(this.briefingTicks, 60, 100);
 		this.deploymentTimeoutTicks = clamp(this.deploymentTimeoutTicks, 20, 200);
-		this.regroupTicks = clamp(this.regroupTicks, 5, 60);
+		this.regroupTicks = clamp(this.regroupTicks, 40, 80);
 		this.memberHeartbeatTimeoutTicks = clamp(this.memberHeartbeatTimeoutTicks, 20, 100);
 		this.rallyRadius = clamp(this.rallyRadius, 1.0, 4.0);
 		this.emergencyEngageDistance = clamp(this.emergencyEngageDistance, 2.0, 12.0);

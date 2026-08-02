@@ -489,6 +489,26 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.maximum_coordinated_zombies.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.maximumCoordinatedZombies = value))
 			.build());
+		squadCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.briefing_ticks"),
+			config.briefingTicks,
+			60,
+			100
+		)
+			.setDefaultValue(64)
+			.setTooltip(Component.translatable("mobsthinknow.config.briefing_ticks.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.briefingTicks = value))
+			.build());
+		squadCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.regroup_ticks"),
+			config.regroupTicks,
+			40,
+			80
+		)
+			.setDefaultValue(48)
+			.setTooltip(Component.translatable("mobsthinknow.config.regroup_ticks.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.regroupTicks = value))
+			.build());
 		squadCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.squad_visual_effects"),
 			config.squadVisualEffects

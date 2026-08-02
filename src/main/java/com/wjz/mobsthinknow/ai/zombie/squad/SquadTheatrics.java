@@ -1,8 +1,11 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
+import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBodyLanguage;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
+import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
@@ -54,6 +57,30 @@ public final class SquadTheatrics {
 		final MobsThinkNowConfig config,
 		final long now
 	) {
+		long phase = Math.max(0L, now - stateStartedAt);
+		List<RoleMember> followers = followersOf(members, leader);
+		SquadSocialChoreography.Scene scene = SquadSocialChoreography.sceneAt(
+			state,
+			squadId,
+			phase,
+			participantsOf(followers),
+			new SquadSocialChoreography.Timing(config.briefingTicks, config.regroupTicks)
+		);
+		this.tickSquad(level, squadId, state, leader, members, config, now, phase, scene);
+	}
+
+	/** 协调器已经计算过场景时复用同一快照，动作、声音与注视不会重复分配列表。 */
+	void tickSquad(
+		final ServerLevel level,
+		final long squadId,
+		final SquadState state,
+		final @Nullable Mob leader,
+		final List<RoleMember> members,
+		final MobsThinkNowConfig config,
+		final long now,
+		final long phase,
+		final SquadSocialChoreography.Scene scene
+	) {
 		for (RoleMember member : members) {
 			if (config.squadRoleNameTags) {
 				this.applyRoleTag(member.mob(), member.role());
@@ -62,9 +89,8 @@ public final class SquadTheatrics {
 			}
 		}
 
-		long phase = Math.max(0L, now - stateStartedAt);
 		if (config.zombieBodyLanguage) {
-			emitBodyLanguage(state, squadId, leader, members, phase);
+			emitBodyLanguage(state, leader, members, phase, scene);
 		}
 		if (!config.squadVisualEffects) {
 			return;
@@ -73,7 +99,7 @@ public final class SquadTheatrics {
 		if (leader != null) {
 			emitLeaderAura(level, leader, now);
 		}
-		emitSocialConversation(level, state, squadId, leader, members, phase);
+		emitSocialConversation(level, squadId, leader, members, scene);
 
 		switch (state) {
 			case FORMING, BRIEFING, REORGANIZING -> {
@@ -210,19 +236,14 @@ public final class SquadTheatrics {
 	 */
 	private static void emitBodyLanguage(
 		final SquadState state,
-		final long squadId,
 		final @Nullable Mob leader,
 		final List<RoleMember> members,
-		final long phase
+		final long phase,
+		final SquadSocialChoreography.Scene scene
 	) {
 		List<RoleMember> zombieFollowers = zombieFollowersOf(members, leader);
-		for (SquadSocialChoreography.Cue cue : SquadSocialChoreography.cuesAt(
-			state,
-			squadId,
-			phase,
-			rolesOf(zombieFollowers)
-		)) {
-			Mob actor = resolveCueActor(cue, leader, zombieFollowers);
+		for (SquadSocialChoreography.Cue cue : scene.cues()) {
+			Mob actor = resolveCueActor(cue, leader, members);
 			if (actor != null && playBodyAction(actor, cue.action())) {
 				if (cue.leader()) {
 					SmartZombieMetrics.leaderSocialGesture();
@@ -260,20 +281,13 @@ public final class SquadTheatrics {
 	/** 用与身体动作完全相同的节拍补充声音和粒子，关闭身体语言后仍保留可读的会议对话。 */
 	private static void emitSocialConversation(
 		final ServerLevel level,
-		final SquadState state,
 		final long squadId,
 		final @Nullable Mob leader,
 		final List<RoleMember> members,
-		final long phase
+		final SquadSocialChoreography.Scene scene
 	) {
-		List<RoleMember> followers = followersOf(members, leader);
-		for (SquadSocialChoreography.Cue cue : SquadSocialChoreography.cuesAt(
-			state,
-			squadId,
-			phase,
-			rolesOf(followers)
-		)) {
-			Mob actor = resolveCueActor(cue, leader, followers);
+		for (SquadSocialChoreography.Cue cue : scene.cues()) {
+			Mob actor = resolveCueActor(cue, leader, members);
 			if (actor != null) {
 				emitSocialCue(level, squadId, actor, cue.action());
 			}
@@ -306,6 +320,28 @@ public final class SquadTheatrics {
 				emitCueParticles(level, actor, ParticleTypes.SMOKE, 1, 0.10);
 			}
 			case CONFER -> emitCueParticles(level, actor, ParticleTypes.NOTE, 1, 0.08);
+			case SHIELD_TAP -> level.playSound(
+				null,
+				actor.getX(), actor.getY(), actor.getZ(),
+				SoundEvents.SHIELD_BLOCK.value(),
+				SoundSource.HOSTILE,
+				0.24F,
+				1.35F
+			);
+			case SWORD_INSPECT, AXE_SHOULDER -> emitCueParticles(
+				level,
+				actor,
+				ParticleTypes.SMOKE,
+				1,
+				0.04
+			);
+			case ENGINEER_CHECK -> emitCueParticles(level, actor, ParticleTypes.NOTE, 1, 0.05);
+			case CONFUSED_TILT -> playVoice(level, actor, 0.34F, 1.12F);
+			case SUCCESSION_LOOK_AROUND -> emitCueParticles(level, actor, ParticleTypes.SMOKE, 1, 0.08);
+			case SUCCESSION_SALUTE -> {
+				playVoice(level, actor, 1.25F, 0.56F);
+				emitCueParticles(level, actor, ParticleTypes.ANGRY_VILLAGER, 3, 0.26);
+			}
 			default -> {
 				// 战斗动作和持续动作由各自 Goal 的声音管线负责。
 			}
@@ -391,25 +427,63 @@ public final class SquadTheatrics {
 		return followers;
 	}
 
-	private static List<SquadRole> rolesOf(final List<RoleMember> members) {
-		List<SquadRole> roles = new ArrayList<>(members.size());
+	static List<SquadSocialChoreography.Participant> participantsOf(final List<RoleMember> members) {
+		List<SquadSocialChoreography.Participant> participants = new ArrayList<>(members.size());
 		for (RoleMember member : members) {
-			roles.add(member.role());
+			participants.add(new SquadSocialChoreography.Participant(
+				member.mob().getId(),
+				member.briefingRole(),
+				member.intelligence(),
+				stableKey(member.mob()),
+				member.routeOutcome(),
+				member.idleStyle()
+			));
 		}
-		return roles;
+		return List.copyOf(participants);
 	}
 
 	private static @Nullable Mob resolveCueActor(
 		final SquadSocialChoreography.Cue cue,
 		final @Nullable Mob leader,
-		final List<RoleMember> followers
+		final List<RoleMember> members
 	) {
 		if (cue.leader()) {
 			return leader;
 		}
-		return cue.followerIndex() >= 0 && cue.followerIndex() < followers.size()
-			? followers.get(cue.followerIndex()).mob()
-			: null;
+		for (RoleMember member : members) {
+			if (member.mob().getId() == cue.actorEntityId()) {
+				return member.mob();
+			}
+		}
+		return null;
+	}
+
+	private static long stableKey(final Mob mob) {
+		return mob.getUUID().getMostSignificantBits()
+			^ Long.rotateLeft(mob.getUUID().getLeastSignificantBits(), 17);
+	}
+
+	private static int defaultIntelligence(final Mob mob) {
+		return mob instanceof Zombie zombie ? ZombieIntelligence.get(zombie) : 5;
+	}
+
+	private static SquadSocialChoreography.IdleStyle defaultIdleStyle(final Mob mob, final int intelligence) {
+		if (!(mob instanceof Zombie zombie)) {
+			return SquadSocialChoreography.IdleStyle.NONE;
+		}
+		if (ZombieEngineerProfile.isEngineer(zombie)) {
+			return SquadSocialChoreography.IdleStyle.ENGINEER;
+		}
+		if (ZombieArmory.hasShield(zombie)) {
+			return SquadSocialChoreography.IdleStyle.SHIELD;
+		}
+		return switch (ZombieArmory.weaponClassOf(zombie.getMainHandItem())) {
+			case SWORD -> SquadSocialChoreography.IdleStyle.SWORD;
+			case AXE -> SquadSocialChoreography.IdleStyle.AXE;
+			default -> intelligence <= 4
+				? SquadSocialChoreography.IdleStyle.CONFUSED
+				: SquadSocialChoreography.IdleStyle.NONE;
+		};
 	}
 
 	private static boolean playBodyAction(final Mob mob, final ZombieBodyAction action) {
@@ -469,8 +543,25 @@ public final class SquadTheatrics {
 		);
 	}
 
-	/** 协调器传入的成员及其当前职位快照。 */
-	record RoleMember(Mob mob, SquadRole role) {
+	/** 协调器传入的成员、当前职位、原会议职位与真实路线报告快照。 */
+	record RoleMember(
+		Mob mob,
+		SquadRole role,
+		SquadRole briefingRole,
+		SquadRouteOutcome routeOutcome,
+		int intelligence,
+		SquadSocialChoreography.IdleStyle idleStyle
+	) {
+		RoleMember(final Mob mob, final SquadRole role) {
+			this(
+				mob,
+				role,
+				role,
+				SquadRouteOutcome.UNASSESSED,
+				defaultIntelligence(mob),
+				defaultIdleStyle(mob, defaultIntelligence(mob))
+			);
+		}
 	}
 
 	private record StoredName(@Nullable Component name, boolean visible, SquadRole appliedRole, Component applied) {

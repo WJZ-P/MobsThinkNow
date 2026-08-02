@@ -15,7 +15,7 @@ public final class ZombieBodyAnimation {
 		final float elapsedTicks,
 		final float ageInTicks
 	) {
-		return sample(action, elapsedTicks, ageInTicks, true);
+		return sample(action, elapsedTicks, ageInTicks, true, false, false);
 	}
 
 	/**
@@ -27,18 +27,69 @@ public final class ZombieBodyAnimation {
 		final float ageInTicks,
 		final boolean actionArmRight
 	) {
+		return sample(action, elapsedTicks, ageInTicks, actionArmRight, false, false);
+	}
+
+	/**
+	 * @param actionArmRight 动作臂；客户端优先选择空闲手，双手占用时选择主手
+	 * @param rightHandOccupied 右手是否持有物品
+	 * @param leftHandOccupied 左手是否持有物品
+	 */
+	public static BodyPose sample(
+		final ZombieBodyAction action,
+		final float elapsedTicks,
+		final float ageInTicks,
+		final boolean actionArmRight,
+		final boolean rightHandOccupied,
+		final boolean leftHandOccupied
+	) {
+		boolean bothHandsOccupied = rightHandOccupied && leftHandOccupied;
 		return switch (action) {
 			case NONE -> BodyPose.NONE;
-			case ACKNOWLEDGE -> acknowledge(progress(action, elapsedTicks));
-			case COMMAND -> command(progress(action, elapsedTicks));
-			case CALL_TO_MEETING -> callToMeeting(progress(action, elapsedTicks));
-			case SURVEY_MEMBERS -> surveyMembers(progress(action, elapsedTicks));
-			case COMMAND_LEFT -> commandSide(progress(action, elapsedTicks), false);
-			case COMMAND_RIGHT -> commandSide(progress(action, elapsedTicks), true);
-			case NOD -> nod(progress(action, elapsedTicks));
-			case SHAKE_HEAD -> shakeHead(progress(action, elapsedTicks));
-			case CONFER -> actionHanded(confer(progress(action, elapsedTicks)), actionArmRight);
-			case ADVANCE_ORDER -> actionHanded(advanceOrder(progress(action, elapsedTicks)), actionArmRight);
+			case ACKNOWLEDGE -> preserveOccupiedHands(
+				actionHanded(acknowledge(progress(action, elapsedTicks)), actionArmRight),
+				rightHandOccupied,
+				leftHandOccupied
+			);
+			case COMMAND -> actionHanded(
+				bothHandsOccupied ? armedCommand(progress(action, elapsedTicks)) : command(progress(action, elapsedTicks)),
+				actionArmRight
+			);
+			case CALL_TO_MEETING -> actionHanded(
+				bothHandsOccupied ? armedCallToMeeting(progress(action, elapsedTicks)) : callToMeeting(progress(action, elapsedTicks)),
+				actionArmRight
+			);
+			case SURVEY_MEMBERS -> preserveOccupiedHands(
+				surveyMembers(progress(action, elapsedTicks)),
+				rightHandOccupied,
+				leftHandOccupied
+			);
+			case COMMAND_LEFT -> preserveNonPointingHand(
+				commandSide(progress(action, elapsedTicks), false),
+				false,
+				rightHandOccupied,
+				leftHandOccupied
+			);
+			case COMMAND_RIGHT -> preserveNonPointingHand(
+				commandSide(progress(action, elapsedTicks), true),
+				true,
+				rightHandOccupied,
+				leftHandOccupied
+			);
+			case NOD -> preserveOccupiedHands(nod(progress(action, elapsedTicks)), rightHandOccupied, leftHandOccupied);
+			case SHAKE_HEAD -> preserveOccupiedHands(
+				shakeHead(progress(action, elapsedTicks)),
+				rightHandOccupied,
+				leftHandOccupied
+			);
+			case CONFER -> actionHanded(
+				bothHandsOccupied ? armedConfer(progress(action, elapsedTicks)) : confer(progress(action, elapsedTicks)),
+				actionArmRight
+			);
+			case ADVANCE_ORDER -> actionHanded(
+				bothHandsOccupied ? armedAdvanceOrder(progress(action, elapsedTicks)) : advanceOrder(progress(action, elapsedTicks)),
+				actionArmRight
+			);
 			case WAR_CRY -> warCry(progress(action, elapsedTicks));
 			case RETREAT -> retreat(elapsedTicks, ageInTicks);
 			case SWORD_FEINT -> actionHanded(swordFeint(elapsedTicks), actionArmRight);
@@ -46,6 +97,24 @@ public final class ZombieBodyAnimation {
 			case AXE_LEAP -> actionHanded(axeLeap(elapsedTicks), actionArmRight);
 			case SHIELD_BASH -> actionHanded(shieldBash(progress(action, elapsedTicks)), actionArmRight);
 			case ENGINEER_WORK -> actionHanded(engineerWork(elapsedTicks, ageInTicks), actionArmRight);
+			case SHIELD_TAP -> actionHanded(shieldTap(progress(action, elapsedTicks)), actionArmRight);
+			case SWORD_INSPECT -> actionHanded(swordInspect(progress(action, elapsedTicks)), actionArmRight);
+			case AXE_SHOULDER -> actionHanded(axeShoulder(progress(action, elapsedTicks)), actionArmRight);
+			case ENGINEER_CHECK -> actionHanded(engineerCheck(progress(action, elapsedTicks)), actionArmRight);
+			case CONFUSED_TILT -> preserveOccupiedHands(
+				confusedTilt(progress(action, elapsedTicks)),
+				rightHandOccupied,
+				leftHandOccupied
+			);
+			case SUCCESSION_LOOK_AROUND -> preserveOccupiedHands(
+				successionLookAround(progress(action, elapsedTicks)),
+				rightHandOccupied,
+				leftHandOccupied
+			);
+			case SUCCESSION_SALUTE -> actionHanded(
+				bothHandsOccupied ? armedSuccessionSalute(progress(action, elapsedTicks)) : successionSalute(progress(action, elapsedTicks)),
+				actionArmRight
+			);
 		};
 	}
 
@@ -83,6 +152,15 @@ public final class ZombieBodyAnimation {
 		return new BodyPose(rightArm, leftArm, body, PartPose.NONE, PartPose.NONE, head);
 	}
 
+	/** 双手都有装备时不强压副手姿势，只用主手武器做短促指令。 */
+	private static BodyPose armedCommand(final float progress) {
+		float weight = envelope(progress, 0.22F, 0.78F);
+		PartPose weaponArm = new PartPose(-1.10F, -0.34F, 0.10F, weight * 0.84F);
+		PartPose body = new PartPose(-0.04F, -0.14F, 0.0F, weight * 0.70F);
+		PartPose head = new PartPose(-0.04F, 0.10F, 0.0F, weight * 0.62F);
+		return new BodyPose(weaponArm, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
 	private static BodyPose acknowledge(final float progress) {
 		float weight = envelope(progress, 0.22F, 0.72F);
 		float nod = (float)Math.sin(progress * Math.PI * 2.0) * 0.18F;
@@ -101,6 +179,16 @@ public final class ZombieBodyAnimation {
 		PartPose body = new PartPose(-0.08F, -0.14F, 0.0F, weight * 0.72F);
 		PartPose head = new PartPose(-0.10F, 0.12F, -wave * 0.04F, weight * 0.74F);
 		return new BodyPose(rightArm, leftArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	/** 武器与盾牌同时占手时改成高举武器两次示意，避免盾臂穿过胸口。 */
+	private static BodyPose armedCallToMeeting(final float progress) {
+		float weight = envelope(progress, 0.16F, 0.86F);
+		float beat = (1.0F - (float)Math.cos(progress * Math.PI * 4.0)) * 0.12F;
+		PartPose weaponArm = new PartPose(-1.84F - beat, -0.20F, 0.18F, weight);
+		PartPose body = new PartPose(-0.06F, -0.12F, 0.0F, weight * 0.68F);
+		PartPose head = new PartPose(-0.12F, 0.10F, 0.0F, weight * 0.72F);
+		return new BodyPose(weaponArm, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
 	}
 
 	/** 头和肩膀先扫向一侧再扫向另一侧，LookControl 的基础朝向仍会保留。 */
@@ -165,6 +253,16 @@ public final class ZombieBodyAnimation {
 		return new BodyPose(actionArm, otherArm, body, PartPose.NONE, PartPose.NONE, head);
 	}
 
+	/** 双持成员只用武器手做很小的侧摆，另一只装备手完全保留原版姿势。 */
+	private static BodyPose armedConfer(final float progress) {
+		float weight = envelope(progress, 0.16F, 0.84F);
+		float gesture = (float)Math.sin(progress * Math.PI * 3.0) * 0.10F;
+		PartPose weaponArm = new PartPose(-0.76F + gesture, -0.24F, 0.10F, weight * 0.62F);
+		PartPose body = new PartPose(0.03F, -0.16F, 0.0F, weight * 0.62F);
+		PartPose head = new PartPose(0.02F, -0.34F, 0.04F, weight * 0.86F);
+		return new BodyPose(weaponArm, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
 	/** 首领先把手举过肩，再沿目标方向挥下；中段形成清晰的“全队出发”定格。 */
 	private static BodyPose advanceOrder(final float progress) {
 		float weight = envelope(progress, 0.14F, 0.88F);
@@ -176,6 +274,18 @@ public final class ZombieBodyAnimation {
 		PartPose otherLeg = new PartPose(0.18F, 0.0F, 0.0F, weight * 0.40F);
 		PartPose head = new PartPose(-0.08F, 0.12F, 0.0F, weight * 0.58F);
 		return new BodyPose(actionArm, otherArm, body, actionLeg, otherLeg, head);
+	}
+
+	/** 双持首领以主手武器完成举起—前压，盾牌或副手装备继续保持自然位置。 */
+	private static BodyPose armedAdvanceOrder(final float progress) {
+		float weight = envelope(progress, 0.14F, 0.88F);
+		float strike = smooth((progress - 0.24F) / 0.28F);
+		PartPose weaponArm = new PartPose(-2.10F + strike * 0.92F, -0.18F, 0.18F, weight);
+		PartPose body = new PartPose(0.09F, -0.16F, 0.0F, weight * 0.76F);
+		PartPose actionLeg = new PartPose(-0.22F, 0.0F, 0.0F, weight * 0.44F);
+		PartPose otherLeg = new PartPose(0.16F, 0.0F, 0.0F, weight * 0.38F);
+		PartPose head = new PartPose(-0.08F, 0.10F, 0.0F, weight * 0.58F);
+		return new BodyPose(weaponArm, PartPose.NONE, body, actionLeg, otherLeg, head);
 	}
 
 	private static BodyPose warCry(final float progress) {
@@ -261,6 +371,109 @@ public final class ZombieBodyAnimation {
 		PartPose bracedLeg = new PartPose(0.32F, 0.0F, 0.0F, weight * 0.76F);
 		PartPose head = new PartPose(0.34F, 0.08F, 0.0F, weight * 0.68F);
 		return new BodyPose(toolArm, otherArm, body, kneelingLeg, bracedLeg, head);
+	}
+
+	/** 动作臂轻敲另一侧盾面两次；调用层把动作臂选为非盾牌手。 */
+	private static BodyPose shieldTap(final float progress) {
+		float weight = envelope(progress, 0.14F, 0.86F);
+		float tap = (1.0F - (float)Math.cos(progress * Math.PI * 4.0)) * 0.12F;
+		PartPose tappingArm = new PartPose(-0.88F - tap, -0.56F, 0.12F, weight * 0.86F);
+		PartPose shieldArm = new PartPose(-1.12F, 0.18F, -0.08F, weight * 0.74F);
+		PartPose body = new PartPose(0.02F, -0.12F, 0.0F, weight * 0.52F);
+		PartPose head = new PartPose(0.10F, -0.16F, 0.0F, weight * 0.60F);
+		return new BodyPose(tappingArm, shieldArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	private static BodyPose swordInspect(final float progress) {
+		float weight = envelope(progress, 0.18F, 0.84F);
+		float inspect = smooth(progress / 0.34F);
+		PartPose swordArm = new PartPose(-1.02F - inspect * 0.24F, -0.42F, 0.16F, weight * 0.92F);
+		PartPose body = new PartPose(0.03F, -0.12F, 0.0F, weight * 0.56F);
+		PartPose head = new PartPose(0.18F, -0.24F, 0.0F, weight * 0.84F);
+		return new BodyPose(swordArm, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	private static BodyPose axeShoulder(final float progress) {
+		float weight = envelope(progress, 0.18F, 0.84F);
+		PartPose axeArm = new PartPose(-1.84F, 0.30F, 0.24F, weight * 0.94F);
+		PartPose body = new PartPose(0.02F, 0.12F, 0.0F, weight * 0.54F);
+		PartPose head = new PartPose(-0.04F, 0.18F, 0.0F, weight * 0.58F);
+		return new BodyPose(axeArm, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	private static BodyPose engineerCheck(final float progress) {
+		float weight = envelope(progress, 0.16F, 0.86F);
+		float check = (float)Math.sin(progress * Math.PI * 2.0) * 0.10F;
+		PartPose toolArm = new PartPose(-0.92F + check, -0.30F, 0.12F, weight * 0.78F);
+		PartPose body = new PartPose(0.28F, -0.08F, 0.0F, weight * 0.74F);
+		PartPose head = new PartPose(0.30F, -0.10F, 0.0F, weight * 0.88F);
+		return new BodyPose(toolArm, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	private static BodyPose confusedTilt(final float progress) {
+		float weight = envelope(progress, 0.14F, 0.86F);
+		float side = (float)Math.sin(progress * Math.PI) * 0.22F;
+		PartPose rightArm = new PartPose(-0.34F, -0.08F, 0.06F, weight * 0.28F);
+		PartPose leftArm = mirror(rightArm);
+		PartPose body = new PartPose(0.02F, -side * 0.22F, side * 0.18F, weight * 0.48F);
+		PartPose head = new PartPose(-0.04F, side * 0.22F, side, weight);
+		return new BodyPose(rightArm, leftArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	private static BodyPose successionLookAround(final float progress) {
+		float weight = envelope(progress, 0.12F, 0.88F);
+		float scan = (float)Math.sin(progress * Math.PI * 2.0);
+		PartPose body = new PartPose(0.02F, scan * 0.18F, 0.0F, weight * 0.58F);
+		PartPose head = new PartPose(-0.02F, scan * 0.72F, 0.0F, weight);
+		return new BodyPose(PartPose.NONE, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	private static BodyPose successionSalute(final float progress) {
+		float weight = envelope(progress, 0.16F, 0.88F);
+		PartPose actionArm = new PartPose(-2.34F, -0.22F, 0.24F, weight);
+		PartPose otherArm = new PartPose(-1.18F, 0.22F, -0.14F, weight * 0.78F);
+		PartPose body = new PartPose(-0.14F, -0.10F, 0.0F, weight * 0.82F);
+		PartPose head = new PartPose(-0.22F, 0.04F, 0.0F, weight * 0.92F);
+		return new BodyPose(actionArm, otherArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	private static BodyPose armedSuccessionSalute(final float progress) {
+		float weight = envelope(progress, 0.16F, 0.88F);
+		PartPose weaponArm = new PartPose(-2.18F, -0.16F, 0.22F, weight);
+		PartPose body = new PartPose(-0.12F, -0.10F, 0.0F, weight * 0.80F);
+		PartPose head = new PartPose(-0.22F, 0.04F, 0.0F, weight * 0.92F);
+		return new BodyPose(weaponArm, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	private static BodyPose preserveOccupiedHands(
+		final BodyPose pose,
+		final boolean rightHandOccupied,
+		final boolean leftHandOccupied
+	) {
+		return new BodyPose(
+			rightHandOccupied ? PartPose.NONE : pose.rightArm(),
+			leftHandOccupied ? PartPose.NONE : pose.leftArm(),
+			pose.body(),
+			pose.rightLeg(),
+			pose.leftLeg(),
+			pose.head()
+		);
+	}
+
+	private static BodyPose preserveNonPointingHand(
+		final BodyPose pose,
+		final boolean pointingRight,
+		final boolean rightHandOccupied,
+		final boolean leftHandOccupied
+	) {
+		return new BodyPose(
+			!pointingRight && rightHandOccupied ? PartPose.NONE : pose.rightArm(),
+			pointingRight && leftHandOccupied ? PartPose.NONE : pose.leftArm(),
+			pose.body(),
+			pose.rightLeg(),
+			pose.leftLeg(),
+			pose.head()
+		);
 	}
 
 	/** 采样器统一以“动作臂在右侧”建模，左手实体只需做一次完整左右镜像。 */

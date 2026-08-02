@@ -85,7 +85,9 @@ public abstract class AbstractZombieModelMixin {
 					action,
 					actionState.mobsthinknow$getBodyActionElapsedTicks(),
 					state.ageInTicks,
-					mobsthinknow$actionArmIsRight(state, action)
+					mobsthinknow$actionArmIsRight(state, action),
+					!state.rightHandItemStack.isEmpty(),
+					!state.leftHandItemStack.isEmpty()
 				)
 			);
 			return;
@@ -115,14 +117,38 @@ public abstract class AbstractZombieModelMixin {
 			// 盾牌由副手持有，因此动作臂和主手相反。
 			return state.mainArm != HumanoidArm.RIGHT;
 		}
-		if (action == ZombieBodyAction.ENGINEER_WORK) {
+		if (action == ZombieBodyAction.SHIELD_TAP) {
+			boolean rightShield = state.rightHandItemStack.is(Items.SHIELD);
+			boolean leftShield = state.leftHandItemStack.is(Items.SHIELD);
+			if (rightShield != leftShield) {
+				return !rightShield;
+			}
+		}
+		if (action == ZombieBodyAction.ENGINEER_WORK || action == ZombieBodyAction.ENGINEER_CHECK) {
 			boolean rightTool = mobsthinknow$isEngineerTool(state.rightHandItemStack);
 			boolean leftTool = mobsthinknow$isEngineerTool(state.leftHandItemStack);
 			if (rightTool != leftTool) {
 				return rightTool;
 			}
 		}
+		if (mobsthinknow$prefersFreeGestureHand(action)) {
+			boolean rightEmpty = state.rightHandItemStack.isEmpty();
+			boolean leftEmpty = state.leftHandItemStack.isEmpty();
+			if (rightEmpty != leftEmpty) {
+				return rightEmpty;
+			}
+		}
 		return state.mainArm == HumanoidArm.RIGHT;
+	}
+
+	@Unique
+	private static boolean mobsthinknow$prefersFreeGestureHand(final ZombieBodyAction action) {
+		return action == ZombieBodyAction.ACKNOWLEDGE
+			|| action == ZombieBodyAction.COMMAND
+			|| action == ZombieBodyAction.CALL_TO_MEETING
+			|| action == ZombieBodyAction.CONFER
+			|| action == ZombieBodyAction.ADVANCE_ORDER
+			|| action == ZombieBodyAction.SUCCESSION_SALUTE;
 	}
 
 	@Unique

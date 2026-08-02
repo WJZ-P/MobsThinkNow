@@ -10,6 +10,7 @@ import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
@@ -36,6 +38,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
@@ -287,7 +290,7 @@ public final class ZombieSquadCoordinator {
 			}
 		}
 		MemberRecord leader = this.members.get(squad.leaderId);
-		Vec3 focusPosition = leader == null ? squad.rallyPoint : leader.mob.position().add(0.0, 1.0, 0.0);
+		Vec3 focusPosition = this.socialFocusPosition(squad, member, leader);
 		long now = mob.level().getGameTime();
 		boolean sharedMemoryIsFresh = isMemoryFresh(
 			squad.sharedLastSeenPosition,
@@ -307,6 +310,66 @@ public final class ZombieSquadCoordinator {
 			focusPosition,
 			sharedMemoryIsFresh
 		);
+	}
+
+	private Vec3 socialFocusPosition(
+		final ZombieSquad squad,
+		final MemberRecord member,
+		final @Nullable MemberRecord leader
+	) {
+		SquadSocialChoreography.Focus focus = member.mob.getId() == squad.leaderId
+			? squad.socialAttention.leaderFocus()
+			: squad.socialAttention.audienceFocus();
+		Vec3 resolved = this.resolveSocialFocus(squad, focus);
+		if (resolved.distanceToSqr(member.mob.position()) > 0.25) {
+			return resolved;
+		}
+		if (member.mob.getId() != squad.leaderId && leader != null) {
+			return eyePosition(leader.mob);
+		}
+		return eyePosition(squad.target);
+	}
+
+	private Vec3 resolveSocialFocus(
+		final ZombieSquad squad,
+		final SquadSocialChoreography.Focus focus
+	) {
+		return switch (focus.kind()) {
+			case TARGET -> eyePosition(squad.target);
+			case ACTOR -> {
+				int actorId = focus.actorEntityId() == SquadSocialChoreography.LEADER_ACTOR_ID
+					? squad.leaderId
+					: focus.actorEntityId();
+				MemberRecord actor = this.members.get(actorId);
+				yield actor == null ? eyePosition(squad.target) : eyePosition(actor.mob);
+			}
+			case ROLE_DESTINATION -> this.briefingDestinationForRole(squad, focus.role());
+		};
+	}
+
+	private Vec3 briefingDestinationForRole(final ZombieSquad squad, final @Nullable SquadRole role) {
+		if (role != null) {
+			for (Map.Entry<Integer, SquadBriefingRoutePlanner.Result> entry : squad.briefingReports.entrySet()) {
+				SquadBriefingRoutePlanner.Result report = entry.getValue();
+				if (report.requestedRole() != role) {
+					continue;
+				}
+				Vec3 resolved = report.resolvedDestination();
+				if (resolved != null) {
+					return resolved.add(0.0, 1.0, 0.0);
+				}
+				Vec3 requested = report.requestedDestination();
+				if (requested != null) {
+					return requested.add(0.0, 1.0, 0.0);
+				}
+			}
+		}
+		Vec3 target = squad.sharedLastSeenPosition == null ? squad.target.position() : squad.sharedLastSeenPosition;
+		return target.add(0.0, 1.0, 0.0);
+	}
+
+	private static Vec3 eyePosition(final LivingEntity entity) {
+		return new Vec3(entity.getX(), entity.getEyeY(), entity.getZ());
 	}
 
 	/** 测试和诊断使用的只读小队摘要。 */
@@ -690,6 +753,7 @@ public final class ZombieSquadCoordinator {
 			}
 			case RALLYING -> {
 				if (this.hasReachedQuorum(squad, config.rallyQuorum) || now >= squad.stateDeadline) {
+					this.prepareBriefingRoutes(squad, config);
 					this.enterState(squad, SquadState.BRIEFING, now, now + config.briefingTicks, config, "rally complete");
 				}
 			}
@@ -744,6 +808,7 @@ public final class ZombieSquadCoordinator {
 		MemberRecord leader = this.members.get(squad.leaderId);
 		squad.rallyPoint = leader == null ? squad.rallyPoint : leader.mob.position();
 		this.assignRallyOrders(squad, squad.rallyPoint, config);
+		this.prepareBriefingRoutes(squad, config);
 		this.enterState(squad, SquadState.REORGANIZING, now, now + config.regroupTicks, config, "leader re-elected");
 		SmartZombieMetrics.leaderElection(true);
 		return true;
@@ -958,21 +1023,174 @@ public final class ZombieSquadCoordinator {
 	private void assignRallyOrders(final ZombieSquad squad, final Vec3 center, final MobsThinkNowConfig config) {
 		squad.planEpoch++;
 		squad.orders.clear();
+		squad.briefingReports.clear();
+		squad.briefingDestinations.clear();
 		List<Integer> ordered = this.orderedMemberIds(squad);
-		int outerIndex = 0;
-		int outerCount = Math.max(1, ordered.size() - 1);
-		for (int memberId : ordered) {
-			SquadRole role = squad.roles.getOrDefault(memberId, SquadRole.PRESSURER);
-			Vec3 destination;
-			if (memberId == squad.leaderId) {
-				destination = center;
-			} else {
-				double angle = Math.PI * 2.0 * outerIndex / outerCount;
-				destination = center.add(Math.cos(angle) * config.rallyRadius, 0.0, Math.sin(angle) * config.rallyRadius);
-				outerIndex++;
-			}
-			squad.orders.put(memberId, new SquadOrder(role, destination));
+		List<Integer> followers = ordered.stream().filter(memberId -> memberId != squad.leaderId).toList();
+		List<SquadRole> followerRoles = followers.stream()
+			.map(memberId -> squad.roles.getOrDefault(memberId, SquadRole.PRESSURER))
+			.toList();
+		double widestFollower = followers.stream()
+			.map(this.members::get)
+			.filter(java.util.Objects::nonNull)
+			.mapToDouble(member -> member.mob.getBbWidth())
+			.max()
+			.orElse(0.6);
+		double effectiveRadius = Math.max(config.rallyRadius, Math.min(5.5, widestFollower * 1.15 + 0.9));
+		Vec3 targetPosition = squad.sharedLastSeenPosition == null ? squad.target.position() : squad.sharedLastSeenPosition;
+		List<Vec3> meetingPositions = SquadMeetingFormation.arrange(
+			center,
+			targetPosition.subtract(center),
+			followerRoles,
+			effectiveRadius
+		);
+
+		SquadRole leaderRole = squad.roles.getOrDefault(squad.leaderId, SquadRole.LEADER);
+		squad.orders.put(squad.leaderId, new SquadOrder(leaderRole, center));
+		for (int index = 0; index < followers.size(); index++) {
+			int memberId = followers.get(index);
+			squad.orders.put(memberId, new SquadOrder(followerRoles.get(index), meetingPositions.get(index)));
 		}
+	}
+
+	/**
+	 * 会议开始前只为左右翼各做一次有界真实寻路评估。原路线失败时依次尝试缩短侧翼、截断位和
+	 * 正面施压位；结果会同时驱动点头/摇头表现与下一版部署命令，而不是只演一段固定动画。
+	 */
+	private void prepareBriefingRoutes(final ZombieSquad squad, final MobsThinkNowConfig config) {
+		squad.briefingReports.clear();
+		squad.briefingDestinations.clear();
+		Vec3 targetPosition = squad.sharedLastSeenPosition;
+		if (targetPosition == null) {
+			return;
+		}
+		Vec3 fallback = targetPosition.subtract(this.memberCentroid(squad));
+		Vec3 forward = horizontalUnit(squad.sharedTargetFacing, fallback);
+		Vec3 lateral = new Vec3(-forward.z, 0.0, forward.x);
+		boolean changed = false;
+
+		for (SquadRole requestedRole : List.of(SquadRole.FLANK_LEFT, SquadRole.FLANK_RIGHT)) {
+			int memberId = this.firstMemberWithRole(squad, requestedRole);
+			MemberRecord member = this.members.get(memberId);
+			if (member == null) {
+				continue;
+			}
+			Vec3 requested = this.combatDestination(
+				squad,
+				member,
+				requestedRole,
+				targetPosition,
+				forward,
+				lateral,
+				config,
+				false,
+				0,
+				0
+			);
+			List<SquadBriefingRoutePlanner.Candidate> alternatives = this.briefingFallbacks(
+				squad,
+				member,
+				requestedRole,
+				requested,
+				targetPosition,
+				forward,
+				lateral,
+				config
+			);
+			SquadBriefingRoutePlanner.Result report = SquadBriefingRoutePlanner.resolve(
+				requestedRole,
+				requested,
+				alternatives,
+				destination -> this.canReachBriefingDestination(member.mob, destination)
+			);
+			SmartZombieMetrics.briefingRouteChecks(report.pathChecks());
+			squad.briefingReports.put(memberId, report);
+			if (report.resolvedDestination() != null) {
+				squad.briefingDestinations.put(memberId, report.resolvedDestination());
+			}
+			if (!report.outcome().isObjection()) {
+				continue;
+			}
+
+			SmartZombieMetrics.briefingRouteObjection();
+			changed = true;
+			squad.roles.put(memberId, report.assignedRole());
+			SquadOrder meetingOrder = squad.orders.get(memberId);
+			if (meetingOrder != null) {
+				squad.orders.put(memberId, new SquadOrder(report.assignedRole(), meetingOrder.destination));
+			}
+		}
+		if (changed) {
+			squad.planEpoch++;
+			SmartZombieMetrics.briefingReplan();
+		}
+	}
+
+	private List<SquadBriefingRoutePlanner.Candidate> briefingFallbacks(
+		final ZombieSquad squad,
+		final MemberRecord member,
+		final SquadRole requestedRole,
+		final @Nullable Vec3 requested,
+		final Vec3 targetPosition,
+		final Vec3 forward,
+		final Vec3 lateral,
+		final MobsThinkNowConfig config
+	) {
+		List<SquadBriefingRoutePlanner.Candidate> candidates = new ArrayList<>(3);
+		Vec3 pressure = this.combatDestination(
+			squad,
+			member,
+			SquadRole.PRESSURER,
+			targetPosition,
+			forward,
+			lateral,
+			config,
+			false,
+			0,
+			0
+		);
+		if (requested != null && pressure != null) {
+			candidates.add(new SquadBriefingRoutePlanner.Candidate(
+				requestedRole,
+				requested.scale(0.55).add(pressure.scale(0.45))
+			));
+		}
+		Vec3 cutoff = this.combatDestination(
+			squad,
+			member,
+			SquadRole.CUTOFF,
+			targetPosition,
+			forward,
+			lateral,
+			config,
+			false,
+			0,
+			0
+		);
+		if (cutoff != null) {
+			candidates.add(new SquadBriefingRoutePlanner.Candidate(SquadRole.CUTOFF, cutoff));
+		}
+		if (pressure != null) {
+			candidates.add(new SquadBriefingRoutePlanner.Candidate(SquadRole.PRESSURER, pressure));
+		}
+		return List.copyOf(candidates);
+	}
+
+	private boolean canReachBriefingDestination(final Mob mob, final Vec3 destination) {
+		if (mob.position().distanceToSqr(destination) <= ORDER_REACHED_DISTANCE_SQUARED) {
+			return true;
+		}
+		Path path = mob.getNavigation().createPath(BlockPos.containing(destination), 0);
+		return path != null && path.canReach();
+	}
+
+	private int firstMemberWithRole(final ZombieSquad squad, final SquadRole role) {
+		for (int memberId : this.orderedMemberIds(squad)) {
+			if (squad.roles.get(memberId) == role) {
+				return memberId;
+			}
+		}
+		return 0;
 	}
 
 	private void enterDeploying(final ZombieSquad squad, final MobsThinkNowConfig config, final long now) {
@@ -1026,7 +1244,9 @@ public final class ZombieSquadCoordinator {
 			// 部署阶段让蜘蛛乘员原地等载具靠近，避免乘员和载具同时追逐造成“永远差一格”的会合。
 			Vec3 destination = !engaging && member != null && this.assignedSpiderCarrierId(squad, memberId) != null
 				? member.mob.position()
-				: this.combatDestination(
+				: !engaging && squad.briefingDestinations.containsKey(memberId)
+					? squad.briefingDestinations.get(memberId)
+					: this.combatDestination(
 					squad,
 					member,
 					role,
@@ -1037,7 +1257,7 @@ public final class ZombieSquadCoordinator {
 					engaging,
 					pressureIndex,
 					rangedIndex
-				);
+					);
 			if (isRangedMember(member == null ? null : member.mob)) {
 				rangedIndex++;
 			}
@@ -1282,6 +1502,8 @@ public final class ZombieSquadCoordinator {
 			squad.primedCreeperIds.remove(member.mob.getId());
 			squad.roles.remove(member.mob.getId());
 			squad.orders.remove(member.mob.getId());
+			squad.briefingReports.remove(member.mob.getId());
+			squad.briefingDestinations.remove(member.mob.getId());
 			boolean removedCarrier = squad.transportPartners.remove(member.mob.getId()) != null;
 			boolean removedPassenger = squad.transportPartners.values()
 				.removeIf(passengerId -> passengerId == member.mob.getId());
@@ -1391,9 +1613,52 @@ public final class ZombieSquadCoordinator {
 					|| ZombieSpecialEquipment.utilityClassOf(zombie) == UtilityClass.NONE)) {
 				presentedRole = SquadRole.PRESSURER;
 			}
-			roleMembers.add(new SquadTheatrics.RoleMember(member.mob, presentedRole));
+			SquadBriefingRoutePlanner.Result report = squad.briefingReports.get(memberId);
+			SquadRole briefingRole = report == null ? presentedRole : report.requestedRole();
+			SquadRouteOutcome outcome = report == null ? SquadRouteOutcome.UNASSESSED : report.outcome();
+			int intelligence = intelligenceOf(member.mob);
+			roleMembers.add(new SquadTheatrics.RoleMember(
+				member.mob,
+				presentedRole,
+				briefingRole,
+				outcome,
+				intelligence,
+				socialIdleStyle(member.mob, intelligence)
+			));
 		}
-		this.theatrics.tickSquad(level, squad.id, squad.state, squad.stateStartedAt, leader, roleMembers, config, now);
+		Mob resolvedLeader = leader;
+		long phase = Math.max(0L, now - squad.stateStartedAt);
+		List<SquadTheatrics.RoleMember> followers = roleMembers.stream()
+			.filter(member -> member.mob() != resolvedLeader)
+			.toList();
+		SquadSocialChoreography.Scene scene = SquadSocialChoreography.sceneAt(
+			squad.state,
+			squad.id,
+			phase,
+			SquadTheatrics.participantsOf(followers),
+			new SquadSocialChoreography.Timing(config.briefingTicks, config.regroupTicks)
+		);
+		squad.socialAttention = scene.attention();
+		this.theatrics.tickSquad(level, squad.id, squad.state, resolvedLeader, roleMembers, config, now, phase, scene);
+	}
+
+	private static SquadSocialChoreography.IdleStyle socialIdleStyle(final Mob mob, final int intelligence) {
+		if (!(mob instanceof Zombie zombie)) {
+			return SquadSocialChoreography.IdleStyle.NONE;
+		}
+		if (ZombieEngineerProfile.isEngineer(zombie)) {
+			return SquadSocialChoreography.IdleStyle.ENGINEER;
+		}
+		if (ZombieArmory.hasShield(zombie)) {
+			return SquadSocialChoreography.IdleStyle.SHIELD;
+		}
+		return switch (ZombieArmory.weaponClassOf(zombie.getMainHandItem())) {
+			case SWORD -> SquadSocialChoreography.IdleStyle.SWORD;
+			case AXE -> SquadSocialChoreography.IdleStyle.AXE;
+			default -> intelligence <= 4
+				? SquadSocialChoreography.IdleStyle.CONFUSED
+				: SquadSocialChoreography.IdleStyle.NONE;
+		};
 	}
 
 	private void debug(final MobsThinkNowConfig config, final ZombieSquad squad, final String reason) {
@@ -1547,6 +1812,8 @@ public final class ZombieSquadCoordinator {
 		private final Set<Integer> primedCreeperIds = new LinkedHashSet<>();
 		private final Map<Integer, SquadRole> roles = new HashMap<>();
 		private final Map<Integer, SquadOrder> orders = new HashMap<>();
+		private final Map<Integer, SquadBriefingRoutePlanner.Result> briefingReports = new HashMap<>();
+		private final Map<Integer, Vec3> briefingDestinations = new HashMap<>();
 		private final Map<Integer, Integer> transportPartners = new HashMap<>();
 		private final Map<Integer, Integer> giantHeadRiders = new HashMap<>();
 		private final Map<Integer, List<Integer>> giantHandPayloads = new HashMap<>();
@@ -1558,6 +1825,7 @@ public final class ZombieSquadCoordinator {
 		private long stateStartedAt;
 		private long stateDeadline;
 		private long nextPlanRefreshAt;
+		private SquadSocialChoreography.Attention socialAttention = SquadSocialChoreography.Attention.FOLLOW_LEADER;
 		private Vec3 rallyPoint = Vec3.ZERO;
 		private @Nullable Vec3 sharedLastSeenPosition;
 		private @Nullable Vec3 sharedTargetFacing;

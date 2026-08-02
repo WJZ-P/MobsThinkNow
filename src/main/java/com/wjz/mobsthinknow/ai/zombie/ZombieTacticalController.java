@@ -9,6 +9,7 @@ import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.level.pathfinder.Path;
@@ -214,14 +215,30 @@ final class ZombieTacticalController {
 			this.destination = target.position();
 		}
 
-		if (directive.isMeetingPhase() && directive.focusPosition() != null && directive.role() != SquadRole.LEADER) {
-			// 非首领在会议阶段面向首领，让玩家能从动作上读懂“它们正在交流”。
+		if (directive.isMeetingPhase() && directive.focusPosition() != null) {
+			// 首领依次看成员和真实部署点，听众看当前发言者；注视对象由每队一次的社交场景统一计算。
 			this.zombie.getLookControl().setLookAt(directive.focusPosition());
+			if (this.destination == null
+				|| this.zombie.position().distanceToSqr(this.destination) <= DESTINATION_REACHED_DISTANCE_SQUARED) {
+				this.faceBodyToward(directive.focusPosition());
+			}
 		} else if (this.hasLineOfSight) {
 			this.zombie.getLookControl().setLookAt(target, 30.0F, 30.0F);
 		}
 
 		this.executeDestination(target, config, now);
+	}
+
+	private void faceBodyToward(final Vec3 focus) {
+		double dx = focus.x - this.zombie.getX();
+		double dz = focus.z - this.zombie.getZ();
+		if (dx * dx + dz * dz < MIN_HORIZONTAL_VECTOR_LENGTH_SQUARED) {
+			return;
+		}
+		float wantedYaw = (float)(Mth.atan2(dz, dx) * Mth.RAD_TO_DEG) - 90.0F;
+		float bodyYaw = Mth.approachDegrees(this.zombie.yBodyRot, wantedYaw, 10.0F);
+		this.zombie.setYBodyRot(bodyYaw);
+		this.zombie.setYRot(Mth.approachDegrees(this.zombie.getYRot(), wantedYaw, 10.0F));
 	}
 
 	private void executeDestination(final LivingEntity target, final MobsThinkNowConfig config, final long now) {

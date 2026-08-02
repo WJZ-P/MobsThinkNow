@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import java.util.EnumSet;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -54,9 +55,11 @@ public final class SquadPreparationGoal extends Goal {
 			return;
 		}
 		Vec3 destination = current.destination();
+		boolean holdingMeetingPosition = destination == null;
 		if (destination != null) {
 			if (this.mob.position().distanceToSqr(destination) <= ORDER_REACHED_DISTANCE_SQUARED) {
 				this.mob.getNavigation().stop();
+				holdingMeetingPosition = true;
 			} else if (this.mob.getNavigation().isDone() || Math.floorMod(this.mob.tickCount, 8) == 0) {
 				this.mob.getNavigation().moveTo(destination.x, destination.y, destination.z, this.speedModifier);
 			}
@@ -64,9 +67,24 @@ public final class SquadPreparationGoal extends Goal {
 		Vec3 focus = current.focusPosition();
 		if (focus != null && focus.distanceToSqr(this.mob.position()) > 0.25) {
 			this.mob.getLookControl().setLookAt(focus.x, focus.y, focus.z, 35.0F, 35.0F);
+			if (current.isMeetingPhase() && holdingMeetingPosition) {
+				this.faceBodyToward(focus);
+			}
 		} else {
 			this.mob.getLookControl().setLookAt(target, 35.0F, 35.0F);
 		}
+	}
+
+	private void faceBodyToward(final Vec3 focus) {
+		double dx = focus.x - this.mob.getX();
+		double dz = focus.z - this.mob.getZ();
+		if (dx * dx + dz * dz < 1.0E-4) {
+			return;
+		}
+		float wantedYaw = (float)(Mth.atan2(dz, dx) * Mth.RAD_TO_DEG) - 90.0F;
+		float bodyYaw = Mth.approachDegrees(this.mob.yBodyRot, wantedYaw, 10.0F);
+		this.mob.setYBodyRot(bodyYaw);
+		this.mob.setYRot(Mth.approachDegrees(this.mob.getYRot(), wantedYaw, 10.0F));
 	}
 
 	@Override

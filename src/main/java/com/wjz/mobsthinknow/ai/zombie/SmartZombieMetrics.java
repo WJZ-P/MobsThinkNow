@@ -38,6 +38,9 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong SHIELD_BASH_HITS = new AtomicLong();
 	private static final AtomicLong LEADER_SOCIAL_GESTURES = new AtomicLong();
 	private static final AtomicLong MEMBER_SOCIAL_GESTURES = new AtomicLong();
+	private static final AtomicLong BRIEFING_ROUTE_CHECKS = new AtomicLong();
+	private static final AtomicLong BRIEFING_ROUTE_OBJECTIONS = new AtomicLong();
+	private static final AtomicLong BRIEFING_REPLANS = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -167,6 +170,18 @@ public final class SmartZombieMetrics {
 		MEMBER_SOCIAL_GESTURES.incrementAndGet();
 	}
 
+	public static void briefingRouteChecks(final int checks) {
+		BRIEFING_ROUTE_CHECKS.addAndGet(Math.max(0, checks));
+	}
+
+	public static void briefingRouteObjection() {
+		BRIEFING_ROUTE_OBJECTIONS.incrementAndGet();
+	}
+
+	public static void briefingReplan() {
+		BRIEFING_REPLANS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -201,7 +216,10 @@ public final class SmartZombieMetrics {
 			SHIELD_BASHES.get(),
 			SHIELD_BASH_HITS.get(),
 			LEADER_SOCIAL_GESTURES.get(),
-			MEMBER_SOCIAL_GESTURES.get()
+			MEMBER_SOCIAL_GESTURES.get(),
+			BRIEFING_ROUTE_CHECKS.get(),
+			BRIEFING_ROUTE_OBJECTIONS.get(),
+			BRIEFING_REPLANS.get()
 		);
 	}
 
@@ -238,7 +256,10 @@ public final class SmartZombieMetrics {
 		long shieldBashes,
 		long shieldBashHits,
 		long leaderSocialGestures,
-		long memberSocialGestures
+		long memberSocialGestures,
+		long briefingRouteChecks,
+		long briefingRouteObjections,
+		long briefingReplans
 	) {
 	}
 }

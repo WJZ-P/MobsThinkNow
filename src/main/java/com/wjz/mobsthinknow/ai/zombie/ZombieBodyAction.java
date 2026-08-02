@@ -37,7 +37,21 @@ public enum ZombieBodyAction {
 	/** 成员侧身做一次短促手势，像在与身旁同伴交换意见。 */
 	CONFER(16, 18, 9),
 	/** 部署开始时，首领先举臂蓄势，再向目标方向猛然挥下。 */
-	ADVANCE_ORDER(17, 18, 22);
+	ADVANCE_ORDER(17, 18, 22),
+	/** 盾卫等待集结时用武器或拳头轻敲盾面。 */
+	SHIELD_TAP(18, 20, 8),
+	/** 剑手短暂抬剑检查刃口，随后恢复警戒。 */
+	SWORD_INSPECT(19, 24, 8),
+	/** 斧手把斧头搭到肩上调整握法。 */
+	AXE_SHOULDER(20, 24, 8),
+	/** 工程兵低头检查腰间工具与当前装备。 */
+	ENGINEER_CHECK(21, 24, 8),
+	/** 低智力空手成员歪头迟疑，表现出更慢的理解速度。 */
+	CONFUSED_TILT(22, 20, 8),
+	/** 首领更替初期，成员放低双手并快速环顾旧首领的位置。 */
+	SUCCESSION_LOOK_AROUND(23, 20, 18),
+	/** 新首领高举空闲手或武器，以怒吼正式接管指挥。 */
+	SUCCESSION_SALUTE(24, 24, 26);
 
 	private final byte id;
 	private final int durationTicks;
