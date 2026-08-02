@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
+import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBodyLanguage;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
@@ -35,7 +36,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class SquadTheatrics {
 	private static final String ROLE_KEY_PREFIX = "mobsthinknow.role.";
-	private static final int BRIEFING_SENTENCE_TICKS = 14;
 	private static final int MARCH_GRUNT_TICKS = 22;
 	private static final int WAR_CRY_MAX_VOICES = 20;
 	private static final DustParticleOptions LEADER_AURA_DUST = new DustParticleOptions(0xFFC933, 1.0F);
@@ -64,7 +64,7 @@ public final class SquadTheatrics {
 
 		long phase = Math.max(0L, now - stateStartedAt);
 		if (config.zombieBodyLanguage) {
-			emitBodyLanguage(state, leader, members, phase);
+			emitBodyLanguage(state, squadId, leader, members, phase);
 		}
 		if (!config.squadVisualEffects) {
 			return;
@@ -73,10 +73,13 @@ public final class SquadTheatrics {
 		if (leader != null) {
 			emitLeaderAura(level, leader, now);
 		}
+		emitSocialConversation(level, state, squadId, leader, members, phase);
 
 		switch (state) {
-			case FORMING, RALLYING -> emitMarchGrunts(level, members, phase);
-			case BRIEFING, REORGANIZING -> emitBriefingConversation(level, squadId, leader, members, phase);
+			case FORMING, BRIEFING, REORGANIZING -> {
+				// 社交音画已由上面的同一份编排节拍输出。
+			}
+			case RALLYING -> emitMarchGrunts(level, members, phase);
 			case DEPLOYING -> emitRoleTrails(level, members, phase);
 			case ENGAGING -> emitWarCryRipple(level, leader, members, phase);
 		}
@@ -207,23 +210,26 @@ public final class SquadTheatrics {
 	 */
 	private static void emitBodyLanguage(
 		final SquadState state,
+		final long squadId,
 		final @Nullable Mob leader,
 		final List<RoleMember> members,
 		final long phase
 	) {
-		if (state == SquadState.BRIEFING || state == SquadState.REORGANIZING) {
-			if (leader != null && phase % BRIEFING_SENTENCE_TICKS == 0L) {
-				playBodyAction(leader, ZombieBodyAction.COMMAND);
-				return;
-			}
-			if (phase % BRIEFING_SENTENCE_TICKS == BRIEFING_SENTENCE_TICKS / 2) {
-				List<RoleMember> followers = followersOf(members, leader);
-				if (!followers.isEmpty()) {
-					Mob speaker = followers.get((int)((phase / BRIEFING_SENTENCE_TICKS) % followers.size())).mob();
-					playBodyAction(speaker, ZombieBodyAction.ACKNOWLEDGE);
+		List<RoleMember> zombieFollowers = zombieFollowersOf(members, leader);
+		for (SquadSocialChoreography.Cue cue : SquadSocialChoreography.cuesAt(
+			state,
+			squadId,
+			phase,
+			rolesOf(zombieFollowers)
+		)) {
+			Mob actor = resolveCueActor(cue, leader, zombieFollowers);
+			if (actor != null && playBodyAction(actor, cue.action())) {
+				if (cue.leader()) {
+					SmartZombieMetrics.leaderSocialGesture();
+				} else {
+					SmartZombieMetrics.memberSocialGesture();
 				}
 			}
-			return;
 		}
 		if (state != SquadState.ENGAGING) {
 			return;
@@ -235,7 +241,7 @@ public final class SquadTheatrics {
 		if (phase < 2L || phase % 2L != 0L) {
 			return;
 		}
-		List<RoleMember> followers = followersOf(members, leader);
+		List<RoleMember> followers = zombieFollowers;
 		int index = (int)((phase - 2L) / 2L);
 		if (index < Math.min(followers.size(), WAR_CRY_MAX_VOICES)) {
 			playBodyAction(followers.get(index).mob(), ZombieBodyAction.WAR_CRY);
@@ -251,46 +257,72 @@ public final class SquadTheatrics {
 		playVoice(level, speaker, 0.5F, 0.98F);
 	}
 
-	/**
-	 * 会议对话：首领每一句低沉长吼配头顶怒气云（像在训话布置任务），
-	 * 句间由成员轮流短促应声并冒出音符，形成一来一回的交流感。
-	 */
-	private static void emitBriefingConversation(
+	/** 用与身体动作完全相同的节拍补充声音和粒子，关闭身体语言后仍保留可读的会议对话。 */
+	private static void emitSocialConversation(
 		final ServerLevel level,
+		final SquadState state,
 		final long squadId,
 		final @Nullable Mob leader,
 		final List<RoleMember> members,
 		final long phase
 	) {
-		if (leader != null && phase % BRIEFING_SENTENCE_TICKS == 0L) {
-			// 不同小队的首领音高略有差异，多队同屏时不会像一个声音在循环。
-			playVoice(level, leader, 1.1F, 0.62F + (squadId % 3L) * 0.03F);
-			level.sendParticles(
-				ParticleTypes.ANGRY_VILLAGER,
-				leader.getX(), leader.getEyeY() + 0.6, leader.getZ(),
-				2, 0.25, 0.1, 0.25, 0.0
-			);
-			return;
-		}
-
-		if (phase % BRIEFING_SENTENCE_TICKS != BRIEFING_SENTENCE_TICKS / 2) {
-			return;
-		}
-		List<RoleMember> followers = new ArrayList<>(members.size());
-		for (RoleMember member : members) {
-			if (member.role() != SquadRole.LEADER) {
-				followers.add(member);
+		List<RoleMember> followers = followersOf(members, leader);
+		for (SquadSocialChoreography.Cue cue : SquadSocialChoreography.cuesAt(
+			state,
+			squadId,
+			phase,
+			rolesOf(followers)
+		)) {
+			Mob actor = resolveCueActor(cue, leader, followers);
+			if (actor != null) {
+				emitSocialCue(level, squadId, actor, cue.action());
 			}
 		}
-		if (followers.isEmpty()) {
-			return;
+	}
+
+	private static void emitSocialCue(
+		final ServerLevel level,
+		final long squadId,
+		final Mob actor,
+		final ZombieBodyAction action
+	) {
+		switch (action) {
+			case CALL_TO_MEETING -> {
+				playVoice(level, actor, 1.15F, 0.66F + Math.floorMod(squadId, 3L) * 0.03F);
+				emitCueParticles(level, actor, ParticleTypes.ANGRY_VILLAGER, 2, 0.24);
+			}
+			case SURVEY_MEMBERS -> emitCueParticles(level, actor, ParticleTypes.NOTE, 1, 0.05);
+			case COMMAND, COMMAND_LEFT, COMMAND_RIGHT, ADVANCE_ORDER -> {
+				playVoice(level, actor, 1.08F, 0.61F + Math.floorMod(squadId, 4L) * 0.025F);
+				emitCueParticles(level, actor, ParticleTypes.ANGRY_VILLAGER, 2, 0.22);
+			}
+			case NOD -> emitCueParticles(level, actor, ParticleTypes.HAPPY_VILLAGER, 1, 0.12);
+			case ACKNOWLEDGE -> {
+				playVoice(level, actor, 0.58F, 1.08F);
+				emitCueParticles(level, actor, ParticleTypes.HAPPY_VILLAGER, 1, 0.12);
+			}
+			case SHAKE_HEAD -> {
+				playVoice(level, actor, 0.44F, 0.90F);
+				emitCueParticles(level, actor, ParticleTypes.SMOKE, 1, 0.10);
+			}
+			case CONFER -> emitCueParticles(level, actor, ParticleTypes.NOTE, 1, 0.08);
+			default -> {
+				// 战斗动作和持续动作由各自 Goal 的声音管线负责。
+			}
 		}
-		Mob speaker = followers.get((int)((phase / BRIEFING_SENTENCE_TICKS) % followers.size())).mob();
-		playVoice(level, speaker, 0.65F, 1.08F);
+	}
+
+	private static void emitCueParticles(
+		final ServerLevel level,
+		final Mob actor,
+		final net.minecraft.core.particles.ParticleOptions particle,
+		final int count,
+		final double spread
+	) {
 		level.sendParticles(
-			ParticleTypes.NOTE,
-			speaker.getX(), speaker.getEyeY() + 0.5, speaker.getZ(),
-			1, 0.1, 0.1, 0.1, 0.0
+			particle,
+			actor.getX(), actor.getEyeY() + 0.48, actor.getZ(),
+			count, spread, 0.10, spread, 0.0
 		);
 	}
 
@@ -346,10 +378,45 @@ public final class SquadTheatrics {
 		return followers;
 	}
 
-	private static void playBodyAction(final Mob mob, final ZombieBodyAction action) {
-		if (mob instanceof Zombie zombie) {
-			ZombieBodyLanguage.play(zombie, action);
+	private static List<RoleMember> zombieFollowersOf(
+		final List<RoleMember> members,
+		final @Nullable Mob leader
+	) {
+		List<RoleMember> followers = new ArrayList<>(members.size());
+		for (RoleMember member : members) {
+			if (member.mob() != leader && member.mob() instanceof Zombie) {
+				followers.add(member);
+			}
 		}
+		return followers;
+	}
+
+	private static List<SquadRole> rolesOf(final List<RoleMember> members) {
+		List<SquadRole> roles = new ArrayList<>(members.size());
+		for (RoleMember member : members) {
+			roles.add(member.role());
+		}
+		return roles;
+	}
+
+	private static @Nullable Mob resolveCueActor(
+		final SquadSocialChoreography.Cue cue,
+		final @Nullable Mob leader,
+		final List<RoleMember> followers
+	) {
+		if (cue.leader()) {
+			return leader;
+		}
+		return cue.followerIndex() >= 0 && cue.followerIndex() < followers.size()
+			? followers.get(cue.followerIndex()).mob()
+			: null;
+	}
+
+	private static boolean playBodyAction(final Mob mob, final ZombieBodyAction action) {
+		if (mob instanceof Zombie zombie) {
+			return ZombieBodyLanguage.play(zombie, action);
+		}
+		return false;
 	}
 
 	private static void playVoice(final ServerLevel level, final Mob mob, final float volume, final float expression) {

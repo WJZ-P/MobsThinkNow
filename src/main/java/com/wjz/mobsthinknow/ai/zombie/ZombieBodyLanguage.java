@@ -7,16 +7,21 @@ public final class ZombieBodyLanguage {
 	private ZombieBodyLanguage() {
 	}
 
-	/** 播放会自行结束的动作；低优先级动作不会打断正在逃生或怒吼的僵尸。 */
-	public static void play(final Zombie zombie, final ZombieBodyAction action) {
+	/**
+	 * 播放会自行结束的动作；低优先级动作不会打断正在逃生或怒吼的僵尸。
+	 *
+	 * @return 动作是否真正发布；表现层据此只统计玩家实际能看到的动作
+	 */
+	public static boolean play(final Zombie zombie, final ZombieBodyAction action) {
 		if (!action.isTransient()) {
 			throw new IllegalArgumentException("Expected a transient zombie body action: " + action);
 		}
 		Snapshot current = snapshot(zombie, 0.0F);
 		if (current.action().priority() > action.priority()) {
-			return;
+			return false;
 		}
 		set(zombie, action);
+		return true;
 	}
 
 	/** 启动由 Goal 生命周期控制的持续动作，例如撤退冲刺。 */

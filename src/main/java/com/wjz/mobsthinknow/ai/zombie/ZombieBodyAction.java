@@ -21,7 +21,23 @@ public enum ZombieBodyAction {
 	/** 盾卫放下防御后，用副手盾牌向前撞击。 */
 	SHIELD_BASH(8, 14, 38),
 	/** 工程兵放置并点燃 TNT 时，由技能状态机显式持有的蹲姿。 */
-	ENGINEER_WORK(9, -1, 32);
+	ENGINEER_WORK(9, -1, 32),
+	/** 首领抬高手臂反复招手，把散开的成员召向集结点。 */
+	CALL_TO_MEETING(10, 24, 20),
+	/** 首领在开会前依次巡视左右成员，确认队伍已经到齐。 */
+	SURVEY_MEMBERS(11, 12, 20),
+	/** 首领明确指向左翼阵位。 */
+	COMMAND_LEFT(12, 18, 20),
+	/** 首领明确指向右翼阵位。 */
+	COMMAND_RIGHT(13, 18, 20),
+	/** 成员连续点头，表示理解当前命令。 */
+	NOD(14, 12, 10),
+	/** 成员左右摇头，像是在报告路线或位置存在问题。 */
+	SHAKE_HEAD(15, 16, 10),
+	/** 成员侧身做一次短促手势，像在与身旁同伴交换意见。 */
+	CONFER(16, 18, 9),
+	/** 部署开始时，首领先举臂蓄势，再向目标方向猛然挥下。 */
+	ADVANCE_ORDER(17, 18, 22);
 
 	private final byte id;
 	private final int durationTicks;

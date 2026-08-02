@@ -31,6 +31,14 @@ public final class ZombieBodyAnimation {
 			case NONE -> BodyPose.NONE;
 			case ACKNOWLEDGE -> acknowledge(progress(action, elapsedTicks));
 			case COMMAND -> command(progress(action, elapsedTicks));
+			case CALL_TO_MEETING -> callToMeeting(progress(action, elapsedTicks));
+			case SURVEY_MEMBERS -> surveyMembers(progress(action, elapsedTicks));
+			case COMMAND_LEFT -> commandSide(progress(action, elapsedTicks), false);
+			case COMMAND_RIGHT -> commandSide(progress(action, elapsedTicks), true);
+			case NOD -> nod(progress(action, elapsedTicks));
+			case SHAKE_HEAD -> shakeHead(progress(action, elapsedTicks));
+			case CONFER -> actionHanded(confer(progress(action, elapsedTicks)), actionArmRight);
+			case ADVANCE_ORDER -> actionHanded(advanceOrder(progress(action, elapsedTicks)), actionArmRight);
 			case WAR_CRY -> warCry(progress(action, elapsedTicks));
 			case RETREAT -> retreat(elapsedTicks, ageInTicks);
 			case SWORD_FEINT -> actionHanded(swordFeint(elapsedTicks), actionArmRight);
@@ -82,6 +90,92 @@ public final class ZombieBodyAnimation {
 		PartPose body = new PartPose(0.05F, 0.08F, 0.0F, weight * 0.45F);
 		PartPose head = new PartPose(nod, -0.05F, 0.0F, weight);
 		return new BodyPose(chestTap, PartPose.NONE, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	/** 单臂高举并左右招手；另一只手压低，避免与原版双臂前伸轮廓混淆。 */
+	private static BodyPose callToMeeting(final float progress) {
+		float weight = envelope(progress, 0.16F, 0.86F);
+		float wave = (float)Math.sin(progress * Math.PI * 4.0);
+		PartPose rightArm = new PartPose(-2.22F, -0.52F, 0.24F + wave * 0.30F, weight);
+		PartPose leftArm = new PartPose(-0.62F, 0.22F, -0.10F, weight * 0.62F);
+		PartPose body = new PartPose(-0.08F, -0.14F, 0.0F, weight * 0.72F);
+		PartPose head = new PartPose(-0.10F, 0.12F, -wave * 0.04F, weight * 0.74F);
+		return new BodyPose(rightArm, leftArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	/** 头和肩膀先扫向一侧再扫向另一侧，LookControl 的基础朝向仍会保留。 */
+	private static BodyPose surveyMembers(final float progress) {
+		float weight = envelope(progress, 0.12F, 0.90F);
+		float scan = (float)Math.sin(progress * Math.PI * 2.0);
+		PartPose rightArm = new PartPose(-0.48F, -0.18F, 0.08F, weight * 0.52F);
+		PartPose leftArm = mirror(rightArm);
+		PartPose body = new PartPose(-0.02F, scan * 0.20F, 0.0F, weight * 0.68F);
+		PartPose head = new PartPose(-0.04F, scan * 0.62F, 0.0F, weight);
+		return new BodyPose(rightArm, leftArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	/** 以右侧指令为母版，左侧指令做全身镜像，确保两个方向的轮廓严格对称。 */
+	private static BodyPose commandSide(final float progress, final boolean right) {
+		float weight = envelope(progress, 0.18F, 0.82F);
+		PartPose pointingArm = new PartPose(-1.26F, -0.94F, 0.16F, weight);
+		PartPose otherArm = new PartPose(-0.58F, 0.24F, -0.10F, weight * 0.56F);
+		PartPose body = new PartPose(-0.04F, -0.34F, 0.0F, weight * 0.82F);
+		PartPose head = new PartPose(-0.06F, -0.42F, 0.0F, weight * 0.88F);
+		BodyPose rightOrder = new BodyPose(
+			pointingArm,
+			otherArm,
+			body,
+			PartPose.NONE,
+			PartPose.NONE,
+			head
+		);
+		return right ? rightOrder : mirrorBody(rightOrder);
+	}
+
+	/** 两次明确的低头—复位，而不是只做一次很难察觉的细小摆动。 */
+	private static BodyPose nod(final float progress) {
+		float weight = envelope(progress, 0.10F, 0.90F);
+		float nod = (1.0F - (float)Math.cos(progress * Math.PI * 4.0)) * 0.18F;
+		PartPose rightArm = new PartPose(-0.36F, -0.08F, 0.04F, weight * 0.34F);
+		PartPose leftArm = mirror(rightArm);
+		PartPose body = new PartPose(nod * 0.16F, 0.0F, 0.0F, weight * 0.38F);
+		PartPose head = new PartPose(nod, 0.0F, 0.0F, weight);
+		return new BodyPose(rightArm, leftArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	/** 头部左右摆动两次，胸口做小幅反向补偿，保持重心稳定。 */
+	private static BodyPose shakeHead(final float progress) {
+		float weight = envelope(progress, 0.10F, 0.90F);
+		float shake = (float)Math.sin(progress * Math.PI * 4.0);
+		PartPose rightArm = new PartPose(-0.42F, -0.12F, 0.06F, weight * 0.38F);
+		PartPose leftArm = mirror(rightArm);
+		PartPose body = new PartPose(0.0F, -shake * 0.10F, 0.0F, weight * 0.52F);
+		PartPose head = new PartPose(0.0F, shake * 0.42F, shake * 0.025F, weight);
+		return new BodyPose(rightArm, leftArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	/** 向惯用手一侧侧身、抬手做短促讨论动作；左撇子由调用层镜像。 */
+	private static BodyPose confer(final float progress) {
+		float weight = envelope(progress, 0.16F, 0.84F);
+		float gesture = (float)Math.sin(progress * Math.PI * 3.0) * 0.14F;
+		PartPose actionArm = new PartPose(-0.92F + gesture, -0.46F, 0.16F, weight * 0.82F);
+		PartPose otherArm = new PartPose(-0.48F, 0.14F, -0.06F, weight * 0.42F);
+		PartPose body = new PartPose(0.04F, -0.18F, 0.0F, weight * 0.66F);
+		PartPose head = new PartPose(0.02F, -0.36F, 0.04F, weight * 0.86F);
+		return new BodyPose(actionArm, otherArm, body, PartPose.NONE, PartPose.NONE, head);
+	}
+
+	/** 首领先把手举过肩，再沿目标方向挥下；中段形成清晰的“全队出发”定格。 */
+	private static BodyPose advanceOrder(final float progress) {
+		float weight = envelope(progress, 0.14F, 0.88F);
+		float strike = smooth((progress - 0.24F) / 0.28F);
+		PartPose actionArm = new PartPose(-2.42F + strike * 1.18F, -0.28F, 0.20F, weight);
+		PartPose otherArm = new PartPose(-0.72F, 0.22F, -0.10F, weight * 0.62F);
+		PartPose body = new PartPose(0.10F, -0.18F, 0.0F, weight * 0.78F);
+		PartPose actionLeg = new PartPose(-0.24F, 0.0F, 0.0F, weight * 0.46F);
+		PartPose otherLeg = new PartPose(0.18F, 0.0F, 0.0F, weight * 0.40F);
+		PartPose head = new PartPose(-0.08F, 0.12F, 0.0F, weight * 0.58F);
+		return new BodyPose(actionArm, otherArm, body, actionLeg, otherLeg, head);
 	}
 
 	private static BodyPose warCry(final float progress) {
@@ -174,6 +268,10 @@ public final class ZombieBodyAnimation {
 		if (actionArmRight) {
 			return pose;
 		}
+		return mirrorBody(pose);
+	}
+
+	private static BodyPose mirrorBody(final BodyPose pose) {
 		return new BodyPose(
 			mirror(pose.leftArm()),
 			mirror(pose.rightArm()),
