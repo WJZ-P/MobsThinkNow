@@ -301,6 +301,7 @@ public final class ZombieSquadCoordinator {
 			squad.term,
 			squad.planEpoch,
 			squad.state,
+			squad.assaultPlan,
 			role,
 			destination,
 			focusPosition,
@@ -315,7 +316,15 @@ public final class ZombieSquadCoordinator {
 		if (squad == null) {
 			return null;
 		}
-		return new SquadView(squad.id, squad.state, squad.leaderId, squad.term, squad.planEpoch, squad.memberIds.size());
+		return new SquadView(
+			squad.id,
+			squad.state,
+			squad.assaultPlan,
+			squad.leaderId,
+			squad.term,
+			squad.planEpoch,
+			squad.memberIds.size()
+		);
 	}
 
 	/**
@@ -387,6 +396,51 @@ public final class ZombieSquadCoordinator {
 		return squad != null && squad.state == SquadState.ENGAGING
 			? this.assignedTransportPartnerFor(spider)
 			: null;
+	}
+
+	/**
+	 * 正式交战后给已装载蜘蛛计算实时 staging point。这里只做 O(1) Map 读取和向量数学：
+	 * 苦力怕从侧后方提交爆破，骷髅则停在交叉射界，不让远程乘员被载具送去贴脸。
+	 */
+	public @Nullable Vec3 carrierStagingPointFor(final Spider spider) {
+		MemberRecord carrier = this.members.get(spider.getId());
+		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
+		if (squad == null || squad.state != SquadState.ENGAGING || !squad.target.isAlive()) {
+			return null;
+		}
+		Integer passengerId = squad.transportPartners.get(spider.getId());
+		MemberRecord passenger = passengerId == null ? null : this.members.get(passengerId);
+		if (passenger == null || passenger.squadId != squad.id || !passenger.mob.isAlive()) {
+			return null;
+		}
+
+		Vec3 targetPosition = squad.target.position();
+		Vec3 targetFacing = squad.target.getLookAngle();
+		Vec3 fallback = targetPosition.subtract(spider.position());
+		int sideSeed = spider.getId() ^ Long.hashCode(squad.id);
+		if (passenger.mob instanceof Creeper && squad.assaultPlan.usesMountedBreach()) {
+			return SquadAssaultGeometry.mountedBreachStaging(
+				targetPosition,
+				targetFacing,
+				fallback,
+				sideSeed
+			);
+		}
+		if (passenger.mob instanceof AbstractSkeleton skeleton
+			&& squad.assaultPlan != SquadAssaultPlan.SWARM) {
+			double range = SkeletonCombatMath.intelligenceAdjustedPreferredRange(
+				ConfigManager.get().skeletonPreferredRange,
+				SkeletonIntelligence.get(skeleton)
+			);
+			return SquadAssaultGeometry.mobileFireSupportStaging(
+				targetPosition,
+				targetFacing,
+				fallback,
+				range,
+				sideSeed
+			);
+		}
+		return null;
 	}
 
 	/** 返回分给巨人头顶火力位的射手；集结阶段同样保留预约关系。 */
@@ -731,6 +785,50 @@ public final class ZombieSquadCoordinator {
 			}
 		}
 		this.rebuildTransportAssignments(squad, ordered);
+		SquadAssaultPlan previousPlan = squad.assaultPlan;
+		squad.assaultPlan = SquadAssaultPlanner.choose(this.compositionOf(ordered), intelligence);
+		if (squad.assaultPlan != previousPlan || squad.planEpoch == 0) {
+			SmartZombieMetrics.assaultPlanChosen(squad.assaultPlan);
+		}
+	}
+
+	/** 提取阵容时只遍历本队 K 名成员；仅在组建、换届或成员变化时执行。 */
+	private SquadComposition compositionOf(final List<Integer> ordered) {
+		int meleeMembers = 0;
+		int rangedMembers = 0;
+		int creepers = 0;
+		int spiders = 0;
+		int shieldFrontliners = 0;
+		int supportMembers = 0;
+		for (int memberId : ordered) {
+			MemberRecord member = this.members.get(memberId);
+			if (member == null) {
+				continue;
+			}
+			if (OverworldUndeadFamilies.isZombieFamily(member.mob) && member.mob instanceof Zombie zombie) {
+				meleeMembers++;
+				if (ZombieArmory.hasShield(zombie)) {
+					shieldFrontliners++;
+				}
+				if (ZombieSpecialEquipment.utilityClassOf(zombie) != UtilityClass.NONE) {
+					supportMembers++;
+				}
+			} else if (isRangedMember(member.mob)) {
+				rangedMembers++;
+			} else if (isCreeperMember(member.mob)) {
+				creepers++;
+			} else if (isSpiderMember(member.mob)) {
+				spiders++;
+			}
+		}
+		return new SquadComposition(
+			meleeMembers,
+			rangedMembers,
+			creepers,
+			spiders,
+			shieldFrontliners,
+			supportMembers
+		);
 	}
 
 	/**
@@ -921,19 +1019,28 @@ public final class ZombieSquadCoordinator {
 		List<Integer> ordered = this.orderedMemberIds(squad);
 		squad.orders.clear();
 		int pressureIndex = 0;
+		int rangedIndex = 0;
 		for (int memberId : ordered) {
 			MemberRecord member = this.members.get(memberId);
 			SquadRole role = squad.roles.getOrDefault(memberId, member == null ? SquadRole.PRESSURER : defaultRole(member.mob));
-			Vec3 destination = this.combatDestination(
-				member,
-				role,
-				targetPosition,
-				forward,
-				lateral,
-				config,
-				engaging,
-				pressureIndex
-			);
+			// 部署阶段让蜘蛛乘员原地等载具靠近，避免乘员和载具同时追逐造成“永远差一格”的会合。
+			Vec3 destination = !engaging && member != null && this.assignedSpiderCarrierId(squad, memberId) != null
+				? member.mob.position()
+				: this.combatDestination(
+					squad,
+					member,
+					role,
+					targetPosition,
+					forward,
+					lateral,
+					config,
+					engaging,
+					pressureIndex,
+					rangedIndex
+				);
+			if (isRangedMember(member == null ? null : member.mob)) {
+				rangedIndex++;
+			}
 			if (!isRangedMember(member == null ? null : member.mob)
 				&& (role == SquadRole.LEADER || role == SquadRole.PRESSURER)) {
 				pressureIndex++;
@@ -943,6 +1050,7 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private @Nullable Vec3 combatDestination(
+		final ZombieSquad squad,
 		final @Nullable MemberRecord member,
 		final SquadRole role,
 		final Vec3 targetPosition,
@@ -950,15 +1058,31 @@ public final class ZombieSquadCoordinator {
 		final Vec3 lateral,
 		final MobsThinkNowConfig config,
 		final boolean engaging,
-		final int pressureIndex
+		final int pressureIndex,
+		final int rangedIndex
 	) {
 		if (member != null && isRangedMember(member.mob)) {
-			Vec3 outward = horizontalUnit(member.mob.position().subtract(targetPosition), forward.scale(-1.0));
-			Vec3 rangedLateral = new Vec3(-outward.z, 0.0, outward.x);
 			double range = SkeletonCombatMath.intelligenceAdjustedPreferredRange(
 				config.skeletonPreferredRange,
 				intelligenceOf(member.mob)
 			);
+			if (squad.assaultPlan.usesCrossfire()) {
+				return SquadAssaultGeometry.crossfirePosition(
+					targetPosition,
+					forward,
+					member.mob.position().subtract(targetPosition),
+					range,
+					rangedIndex
+				);
+			}
+			if (squad.assaultPlan == SquadAssaultPlan.PIN_AND_FLANK
+				|| squad.assaultPlan == SquadAssaultPlan.SHIELD_WEDGE
+				|| squad.assaultPlan == SquadAssaultPlan.MOUNTED_BREACH) {
+				double side = (rangedIndex & 1) == 0 ? 1.75 : -1.75;
+				return targetPosition.add(forward.scale(range)).add(lateral.scale(side));
+			}
+			Vec3 outward = horizontalUnit(member.mob.position().subtract(targetPosition), forward.scale(-1.0));
+			Vec3 rangedLateral = new Vec3(-outward.z, 0.0, outward.x);
 			double side = (member.mob.getId() & 1) == 0 ? 1.5 : -1.5;
 			return targetPosition.add(outward.scale(range)).add(rangedLateral.scale(side));
 		}
@@ -967,8 +1091,14 @@ public final class ZombieSquadCoordinator {
 				if (engaging) {
 					yield null; // 交战阶段让原版 MeleeAttackGoal 接手最后几格的追击与挥击。
 				}
-				double side = pressureIndex == 0 ? 0.0 : (pressureIndex % 2 == 0 ? 0.8 : -0.8);
-				yield targetPosition.add(forward.scale(config.formationRadius)).add(lateral.scale(side));
+				boolean shieldWedge = (squad.assaultPlan == SquadAssaultPlan.SHIELD_WEDGE
+					|| squad.assaultPlan == SquadAssaultPlan.COMBINED_ARMS)
+					&& member != null
+					&& member.mob instanceof Zombie zombie
+					&& ZombieArmory.hasShield(zombie);
+				double side = shieldWedge ? 0.0 : pressureIndex == 0 ? 0.0 : (pressureIndex % 2 == 0 ? 0.8 : -0.8);
+				double depth = shieldWedge ? config.formationRadius - 0.75 : config.formationRadius + 0.35;
+				yield targetPosition.add(forward.scale(depth)).add(lateral.scale(side));
 			}
 			case FLANK_LEFT -> targetPosition
 				.subtract(forward.scale(config.flankBehindDistance))
@@ -981,7 +1111,16 @@ public final class ZombieSquadCoordinator {
 				.add(forward.scale(config.formationRadius + 2.5))
 				.add(lateral.scale((pressureIndex & 1) == 0 ? 2.0 : -2.0));
 			case RANGED -> targetPosition.add(forward.scale(config.skeletonPreferredRange));
-			case BREACHER -> engaging ? null : targetPosition.add(forward.scale(config.formationRadius + 0.75));
+			case BREACHER -> {
+				if (engaging) {
+					yield null;
+				}
+				if (squad.assaultPlan.usesMountedBreach() && member != null) {
+					double side = (member.mob.getId() & 1) == 0 ? 2.75 : -2.75;
+					yield targetPosition.subtract(forward.scale(config.formationRadius + 1.5)).add(lateral.scale(side));
+				}
+				yield targetPosition.add(forward.scale(config.formationRadius + 0.75));
+			}
 			case CARRIER -> {
 				if (member == null) {
 					yield targetPosition.add(forward.scale(config.formationRadius + 1.5));
@@ -994,6 +1133,15 @@ public final class ZombieSquadCoordinator {
 					: passenger.mob.position();
 			}
 		};
+	}
+
+	private @Nullable Integer assignedSpiderCarrierId(final ZombieSquad squad, final int passengerId) {
+		for (Map.Entry<Integer, Integer> assignment : squad.transportPartners.entrySet()) {
+			if (assignment.getValue() == passengerId) {
+				return assignment.getKey();
+			}
+		}
+		return null;
 	}
 
 	/** 返回尚未登上对应载具的第一名预约成员，避免 CARRIER 阵位永久追着自己身上的乘员。 */
@@ -1369,6 +1517,7 @@ public final class ZombieSquadCoordinator {
 	public record SquadView(
 		long squadId,
 		SquadState state,
+		SquadAssaultPlan assaultPlan,
 		int leaderEntityId,
 		int term,
 		int planEpoch,
@@ -1405,6 +1554,7 @@ public final class ZombieSquadCoordinator {
 		private int term;
 		private int planEpoch;
 		private SquadState state = SquadState.FORMING;
+		private SquadAssaultPlan assaultPlan = SquadAssaultPlan.SWARM;
 		private long stateStartedAt;
 		private long stateDeadline;
 		private long nextPlanRefreshAt;

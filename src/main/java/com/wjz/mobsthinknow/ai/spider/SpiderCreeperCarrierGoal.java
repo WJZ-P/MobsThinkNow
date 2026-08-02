@@ -37,6 +37,9 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 	private static final int BOARDING_RETRY_TICKS = 6;
 	private static final int RESERVATION_TICKS = 60;
 	private static final int ASSEMBLY_TIMEOUT_TICKS = 100;
+	private static final int COORDINATED_STAGING_TIMEOUT_TICKS = 50;
+	private static final double COORDINATED_STAGING_REACHED_DISTANCE_SQUARED = 2.4 * 2.4;
+	private static final double EMERGENCY_FUSE_DISTANCE_SQUARED = 3.25 * 3.25;
 	private static final int MAXIMUM_CANDIDATE_CHECKS_PER_SEARCH = 32;
 
 	private final Spider spider;
@@ -53,6 +56,8 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 	private boolean fuseCommitted;
 	private boolean deliveryPounceUsed;
 	private boolean boardingFailed;
+	private boolean coordinatedStagingReached;
+	private long coordinatedStagingDeadlineTick = Long.MIN_VALUE;
 	private double carrierSpeedRandomSample = Double.NaN;
 
 	public SpiderCreeperCarrierGoal(final Spider spider) {
@@ -175,6 +180,9 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.repathCooldown = 0;
 		this.boardingFailed = false;
 		this.phase = mountedCreeper() != null ? Phase.DELIVERING : Phase.ASSEMBLING;
+		if (this.phase == Phase.DELIVERING && this.coordinatedStagingDeadlineTick == Long.MIN_VALUE) {
+			this.coordinatedStagingDeadlineTick = this.spider.level().getGameTime() + COORDINATED_STAGING_TIMEOUT_TICKS;
+		}
 		this.spider.setAggressive(true);
 		this.ensureCarrierSpeedSample();
 		if (this.phase == Phase.ASSEMBLING) {
@@ -432,6 +440,8 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.assemblyDeadlineTick = Long.MIN_VALUE;
 		this.fuseCommitted = current.getSwellDir() > 0;
 		this.deliveryPounceUsed = false;
+		this.coordinatedStagingReached = false;
+		this.coordinatedStagingDeadlineTick = this.spider.level().getGameTime() + COORDINATED_STAGING_TIMEOUT_TICKS;
 		if (isValidTarget(this.target)) {
 			this.aimPayloadAtTarget(current, this.target, true);
 		}
@@ -464,6 +474,16 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		);
 		double distanceSquared = this.spider.distanceToSqr(currentTarget);
 		float fuseProgress = current.getSwelling(1.0F);
+		double speed = SpiderCombatMath.carrierSpeed(
+			this.carrierSpeedMaximum(),
+			combinedIntelligence,
+			this.spider.level().getDifficulty().getId()
+		);
+		if (!this.fuseCommitted
+			&& !current.isIgnited()
+			&& this.tickCoordinatedStaging(current, currentTarget, speed, distanceSquared)) {
+			return;
+		}
 		if (!current.isIgnited()
 			&& this.fuseCommitted
 			&& fuseProgress < 0.55F
@@ -491,11 +511,6 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 				currentTarget.getDeltaMovement(),
 				combinedIntelligence
 			);
-			double speed = SpiderCombatMath.carrierSpeed(
-				this.carrierSpeedMaximum(),
-				combinedIntelligence,
-				this.spider.level().getDifficulty().getId()
-			);
 			if (!this.spider.getNavigation().moveTo(destination.x, destination.y, destination.z, speed)) {
 				this.spider.getNavigation().moveTo(currentTarget, speed);
 			}
@@ -521,6 +536,60 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		}
 	}
 
+	/**
+	 * 四物种/投送方案先绕到侧后 staging point；到位、玩家突然贴脸或超时后才释放普通追击逻辑。
+	 * 路径失败立即降级，避免复杂地形让爆破组在原地永久等待。
+	 */
+	private boolean tickCoordinatedStaging(
+		final Creeper current,
+		final LivingEntity currentTarget,
+		final double speed,
+		final double targetDistanceSquared
+	) {
+		if (this.coordinatedStagingReached
+			|| !(this.spider.level() instanceof net.minecraft.server.level.ServerLevel level)) {
+			return false;
+		}
+		Vec3 staging = ZombieSquadCoordinator.forLevel(level).carrierStagingPointFor(this.spider);
+		if (staging == null) {
+			return false;
+		}
+		long now = level.getGameTime();
+		if (this.coordinatedStagingDeadlineTick == Long.MIN_VALUE) {
+			this.coordinatedStagingDeadlineTick = now + COORDINATED_STAGING_TIMEOUT_TICKS;
+		}
+		double stagingDistanceSquared = this.spider.position().distanceToSqr(staging);
+		if (stagingDistanceSquared <= COORDINATED_STAGING_REACHED_DISTANCE_SQUARED) {
+			this.coordinatedStagingReached = true;
+			this.repathCooldown = 0;
+			SmartSpiderMetrics.coordinatedBreachStaging();
+			level.sendParticles(
+				ParticleTypes.SMOKE,
+				this.spider.getX(), this.spider.getY() + 0.5, this.spider.getZ(),
+				6, 0.35, 0.12, 0.35, 0.01
+			);
+			return false;
+		}
+		if (targetDistanceSquared <= EMERGENCY_FUSE_DISTANCE_SQUARED || now >= this.coordinatedStagingDeadlineTick) {
+			this.coordinatedStagingReached = true;
+			this.repathCooldown = 0;
+			return false;
+		}
+		current.setSwellDir(-1);
+		this.phase = Phase.DELIVERING;
+		if (--this.repathCooldown <= 0 || this.spider.getNavigation().isDone()) {
+			this.repathCooldown = 4;
+			if (!this.spider.getNavigation().moveTo(staging.x, staging.y, staging.z, speed)) {
+				this.coordinatedStagingReached = true;
+				this.repathCooldown = 0;
+				return false;
+			}
+		}
+		this.spider.getLookControl().setLookAt(currentTarget, 55.0F, 45.0F);
+		current.getLookControl().setLookAt(currentTarget, 70.0F, 60.0F);
+		return true;
+	}
+
 	private void abandonTransport() {
 		Creeper current = this.creeper;
 		if (current != null) {
@@ -538,6 +607,8 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.phase = Phase.IDLE;
 		this.fuseCommitted = false;
 		this.deliveryPounceUsed = false;
+		this.coordinatedStagingReached = false;
+		this.coordinatedStagingDeadlineTick = Long.MIN_VALUE;
 		this.boardingFailed = false;
 		this.resetBoardingLeap();
 		this.nextBoardingLeapTick = 0L;

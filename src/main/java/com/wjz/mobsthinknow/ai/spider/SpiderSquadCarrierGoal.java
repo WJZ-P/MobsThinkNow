@@ -44,6 +44,7 @@ public final class SpiderSquadCarrierGoal extends Goal {
 	private int attackCooldown;
 	private long nextBoardingAt;
 	private boolean boarding;
+	private boolean mobileFireSupportActive;
 	private double carrierSpeedSample = Double.NaN;
 
 	public SpiderSquadCarrierGoal(final Spider spider) {
@@ -99,6 +100,7 @@ public final class SpiderSquadCarrierGoal extends Goal {
 	public void start() {
 		this.repathCooldown = 0;
 		this.attackCooldown = 0;
+		this.mobileFireSupportActive = false;
 		this.spider.setAggressive(true);
 		Mob current = this.passenger;
 		if (current != null && current.getVehicle() != this.spider
@@ -124,6 +126,7 @@ public final class SpiderSquadCarrierGoal extends Goal {
 			this.target = null;
 			this.carrierSpeedSample = Double.NaN;
 		}
+		this.mobileFireSupportActive = false;
 		this.resetBoarding();
 		this.spider.getNavigation().stop();
 		this.spider.setAggressive(false);
@@ -244,19 +247,28 @@ public final class SpiderSquadCarrierGoal extends Goal {
 		this.spider.getLookControl().setLookAt(currentTarget, 55.0F, 45.0F);
 		current.getLookControl().setLookAt(currentTarget, 70.0F, 60.0F);
 		int intelligence = Math.max(SpiderIntelligence.get(this.spider), intelligenceOf(current));
+		Vec3 coordinatedStaging = this.coordinatedStagingFor(current);
+		boolean mobileFireSupport = current instanceof AbstractSkeleton && coordinatedStaging != null;
+		if (mobileFireSupport && !this.mobileFireSupportActive) {
+			this.mobileFireSupportActive = true;
+			SmartSpiderMetrics.mobileFireSupportMove();
+		}
 		if (--this.repathCooldown <= 0 || this.spider.getNavigation().isDone()) {
 			this.repathCooldown = SpiderCombatMath.repathTicks(intelligence);
-			Vec3 destination = SpiderCombatMath.carrierDestination(
-				currentTarget.position(),
-				currentTarget.getDeltaMovement(),
-				intelligence
-			);
+			Vec3 destination = mobileFireSupport
+				? coordinatedStaging
+				: SpiderCombatMath.carrierDestination(
+					currentTarget.position(),
+					currentTarget.getDeltaMovement(),
+					intelligence
+				);
 			double speed = SpiderCombatMath.carrierSpeed(
 				this.carrierSpeedMaximum(),
 				intelligence,
 				this.spider.level().getDifficulty().getId()
 			);
-			if (!this.spider.getNavigation().moveTo(destination.x, destination.y, destination.z, speed)) {
+			if (!this.spider.getNavigation().moveTo(destination.x, destination.y, destination.z, speed)
+				&& !mobileFireSupport) {
 				this.spider.getNavigation().moveTo(currentTarget, speed);
 			}
 		}
@@ -271,6 +283,14 @@ public final class SpiderSquadCarrierGoal extends Goal {
 			&& this.spider.doHurtTarget(level, currentTarget)) {
 			this.attackCooldown = 20;
 		}
+	}
+
+	private @Nullable Vec3 coordinatedStagingFor(final Mob current) {
+		if (!(current instanceof AbstractSkeleton)
+			|| !(this.spider.level() instanceof ServerLevel level)) {
+			return null;
+		}
+		return ZombieSquadCoordinator.forLevel(level).carrierStagingPointFor(this.spider);
 	}
 
 	private boolean isAvailable(final Mob candidate, final @Nullable Mob mounted) {

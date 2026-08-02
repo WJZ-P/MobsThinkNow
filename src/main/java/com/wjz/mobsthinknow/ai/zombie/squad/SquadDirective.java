@@ -8,12 +8,14 @@ import org.jspecify.annotations.Nullable;
  *
  * @param term 首领任期；首领更替时递增
  * @param planEpoch 同一任期内的计划版本；重新集结或重新部署时递增
+ * @param assaultPlan 本轮按首领智力与队伍构成冻结的总攻方案
  */
 public record SquadDirective(
 	long squadId,
 	int term,
 	int planEpoch,
 	SquadState state,
+	SquadAssaultPlan assaultPlan,
 	SquadRole role,
 	@Nullable Vec3 destination,
 	@Nullable Vec3 focusPosition,

@@ -41,6 +41,7 @@ public final class MtnCommands {
 						.then(Commands.literal("endermen").executes(MtnCommands::spawnAllEndermen))
 						.then(Commands.literal("giants").executes(MtnCommands::spawnAllGiants))
 						.then(Commands.literal("nether").executes(MtnCommands::spawnAllNether))
+						.then(Commands.literal("assault").executes(context -> spawnOverworldAssault(context, 1)))
 				)
 				.then(
 					Commands.literal("spawnzombies")
@@ -73,6 +74,18 @@ public final class MtnCommands {
 						.executes(MtnCommands::spawnAllGiants)
 				)
 				.then(
+					Commands.literal("spawnoverworldassault")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(context -> spawnOverworldAssault(context, 1))
+						.then(
+							Commands.argument("groups", IntegerArgumentType.integer(1, OverworldAssaultShowcaseSpawner.MAX_GROUPS))
+								.executes(context -> spawnOverworldAssault(
+									context,
+									IntegerArgumentType.getInteger(context, "groups")
+								))
+						)
+				)
+				.then(
 					Commands.literal("spawnnether")
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAllNether)
@@ -100,6 +113,17 @@ public final class MtnCommands {
 		command.then(Commands.literal("endermen").executes(MtnCommands::spawnAllEndermen));
 		command.then(Commands.literal("giants").executes(MtnCommands::spawnAllGiants));
 		command.then(Commands.literal("nether").executes(MtnCommands::spawnAllNether));
+		command.then(
+			Commands.literal("overworld_assault")
+				.executes(context -> spawnOverworldAssault(context, 1))
+				.then(
+					Commands.argument("groups", IntegerArgumentType.integer(1, OverworldAssaultShowcaseSpawner.MAX_GROUPS))
+						.executes(context -> spawnOverworldAssault(
+							context,
+							IntegerArgumentType.getInteger(context, "groups")
+						))
+				)
+		);
 		command.then(
 			Commands.literal("zombie")
 				.executes(context -> spawnSpecific(
@@ -351,7 +375,7 @@ public final class MtnCommands {
 		SmartEndermanMetrics.Snapshot endermanMetrics = SmartEndermanMetrics.snapshot();
 		SmartGiantMetrics.Snapshot giantMetrics = SmartGiantMetrics.snapshot();
 		SmartNetherMetrics.Snapshot netherMetrics = SmartNetherMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, swordFeints=%d, axeWindups=%d, shieldBashes=%d, shieldBashHits=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d, creeperSquadEvacuations=%d"
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, assaultPlans=%d, crossfirePlans=%d, mountedBreachPlans=%d, combinedArmsPlans=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, swordFeints=%d, axeWindups=%d, shieldBashes=%d, shieldBashHits=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d, creeperSquadEvacuations=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -364,6 +388,10 @@ public final class MtnCommands {
 				metrics.leaderElections(),
 				metrics.leaderReelections(),
 				metrics.squadCandidateChecks(),
+				metrics.assaultPlans(),
+				metrics.crossfirePlans(),
+				metrics.mountedBreachPlans(),
+				metrics.combinedArmsPlans(),
 				metrics.retreats(),
 				metrics.terrainBlocksHarvested(),
 				metrics.terrainBlocksPlaced(),
@@ -401,7 +429,7 @@ public final class MtnCommands {
 				creeperMetrics.abortedFuses(),
 				creeperMetrics.squadEvacuations()
 			);
-		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d"
+		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d, spiderBreachStaging=%d, spiderMobileFireSupport=%d"
 			.formatted(
 				config.spiderAiEnabled,
 				spiderMetrics.installedGoals(),
@@ -411,7 +439,9 @@ public final class MtnCommands {
 				spiderMetrics.carrierSearches(),
 				spiderMetrics.carrierCandidateChecks(),
 				spiderMetrics.creepersMounted(),
-				spiderMetrics.deliveryFuses()
+				spiderMetrics.deliveryFuses(),
+				spiderMetrics.coordinatedBreachStaging(),
+				spiderMetrics.mobileFireSupportMoves()
 			);
 		message += ", endermanAI=%s, endermanGoals=%d, endermanCarrierSearches=%d, endermanCandidateChecks=%d, endermanPayloadsPickedUp=%d, endermanDeliveryTeleports=%d, endermanPayloadsIgnited=%d, endermanCombatTeleports=%d, endermanShieldBlocks=%d, endermanShieldCounterHits=%d, endermanSpearCharges=%d, endermanProfessionHits=%d"
 			.formatted(
@@ -475,6 +505,52 @@ public final class MtnCommands {
 		}
 
 		context.getSource().sendFailure(Component.literal("Mobs Think Now configuration could not be reloaded. Check the server log."));
+		return 0;
+	}
+
+	private static int spawnOverworldAssault(
+		final CommandContext<CommandSourceStack> context,
+		final int groups
+	) {
+		OverworldAssaultShowcaseSpawner.SpawnResult result = OverworldAssaultShowcaseSpawner.spawn(
+			context.getSource(),
+			groups
+		);
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_overworld_assault.success",
+					"Spawned %s combined-arms assault group(s), %s mobs total; targeted command executor: %s.",
+					result.groups(),
+					count,
+					result.targetedExecutor()
+				),
+				true
+			);
+			return count;
+		}
+
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_overworld_assault.no_space",
+				"No nearby ground has enough safe space for the complete combined-arms formation."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_overworld_assault.create_failed",
+				"Preparing the combined-arms formation failed; no assault mobs were added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_overworld_assault.add_failed",
+				"Adding the combined-arms formation failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful assault spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
 		return 0;
 	}
 
@@ -605,7 +681,7 @@ public final class MtnCommands {
 				.map(NetherShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
-		String types = "all, zombie, skeleton, creeper, spider, enderman, giant, piglin, hoglin, zoglin, blaze, ghast, magma_cube, zombified_piglin, wither_skeleton, zombies, skeletons, creepers, spiders, endermen, giants, nether, "
+		String types = "all, overworld_assault, zombie, skeleton, creeper, spider, enderman, giant, piglin, hoglin, zoglin, blaze, ghast, magma_cube, zombified_piglin, wither_skeleton, zombies, skeletons, creepers, spiders, endermen, giants, nether, "
 			+ zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes + ", " + endermanTypes
 			+ ", " + giantTypes + ", " + netherTypes;
 		context.getSource().sendSuccess(

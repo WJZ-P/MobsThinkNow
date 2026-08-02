@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadAssaultPlan;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -15,6 +16,10 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong LEADER_ELECTIONS = new AtomicLong();
 	private static final AtomicLong LEADER_REELECTIONS = new AtomicLong();
 	private static final AtomicLong SQUAD_CANDIDATE_CHECKS = new AtomicLong();
+	private static final AtomicLong ASSAULT_PLANS = new AtomicLong();
+	private static final AtomicLong CROSSFIRE_PLANS = new AtomicLong();
+	private static final AtomicLong MOUNTED_BREACH_PLANS = new AtomicLong();
+	private static final AtomicLong COMBINED_ARMS_PLANS = new AtomicLong();
 	private static final AtomicLong RETREATS = new AtomicLong();
 	private static final AtomicLong TERRAIN_BLOCKS_HARVESTED = new AtomicLong();
 	private static final AtomicLong TERRAIN_BLOCKS_PLACED = new AtomicLong();
@@ -73,6 +78,19 @@ public final class SmartZombieMetrics {
 
 	public static void squadCandidateChecks(final int checks) {
 		SQUAD_CANDIDATE_CHECKS.addAndGet(checks);
+	}
+
+	public static void assaultPlanChosen(final SquadAssaultPlan plan) {
+		ASSAULT_PLANS.incrementAndGet();
+		if (plan.usesCrossfire()) {
+			CROSSFIRE_PLANS.incrementAndGet();
+		}
+		if (plan.usesMountedBreach()) {
+			MOUNTED_BREACH_PLANS.incrementAndGet();
+		}
+		if (plan == SquadAssaultPlan.COMBINED_ARMS) {
+			COMBINED_ARMS_PLANS.incrementAndGet();
+		}
 	}
 
 	public static void retreatTriggered() {
@@ -152,6 +170,10 @@ public final class SmartZombieMetrics {
 			LEADER_ELECTIONS.get(),
 			LEADER_REELECTIONS.get(),
 			SQUAD_CANDIDATE_CHECKS.get(),
+			ASSAULT_PLANS.get(),
+			CROSSFIRE_PLANS.get(),
+			MOUNTED_BREACH_PLANS.get(),
+			COMBINED_ARMS_PLANS.get(),
 			RETREATS.get(),
 			TERRAIN_BLOCKS_HARVESTED.get(),
 			TERRAIN_BLOCKS_PLACED.get(),
@@ -183,6 +205,10 @@ public final class SmartZombieMetrics {
 		long leaderElections,
 		long leaderReelections,
 		long squadCandidateChecks,
+		long assaultPlans,
+		long crossfirePlans,
+		long mountedBreachPlans,
+		long combinedArmsPlans,
 		long retreats,
 		long terrainBlocksHarvested,
 		long terrainBlocksPlaced,

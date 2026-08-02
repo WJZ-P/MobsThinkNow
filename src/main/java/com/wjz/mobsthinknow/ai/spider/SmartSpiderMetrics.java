@@ -2,7 +2,7 @@ package com.wjz.mobsthinknow.ai.spider;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-	/** 蜘蛛个人战术与跨物种运输战术的诊断计数器，不反向参与决策。 */
+/** 蜘蛛个人战术与跨物种运输战术的诊断计数器，不反向参与决策。 */
 public final class SmartSpiderMetrics {
 	private static final AtomicLong INSTALLED_GOALS = new AtomicLong();
 	private static final AtomicLong FLANKS = new AtomicLong();
@@ -12,6 +12,8 @@ public final class SmartSpiderMetrics {
 	private static final AtomicLong CARRIER_CANDIDATE_CHECKS = new AtomicLong();
 	private static final AtomicLong CREEPERS_MOUNTED = new AtomicLong();
 	private static final AtomicLong DELIVERY_FUSES = new AtomicLong();
+	private static final AtomicLong COORDINATED_BREACH_STAGING = new AtomicLong();
+	private static final AtomicLong MOBILE_FIRE_SUPPORT_MOVES = new AtomicLong();
 
 	private SmartSpiderMetrics() {
 	}
@@ -48,6 +50,14 @@ public final class SmartSpiderMetrics {
 		DELIVERY_FUSES.incrementAndGet();
 	}
 
+	public static void coordinatedBreachStaging() {
+		COORDINATED_BREACH_STAGING.incrementAndGet();
+	}
+
+	public static void mobileFireSupportMove() {
+		MOBILE_FIRE_SUPPORT_MOVES.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -57,7 +67,9 @@ public final class SmartSpiderMetrics {
 			CARRIER_SEARCHES.get(),
 			CARRIER_CANDIDATE_CHECKS.get(),
 			CREEPERS_MOUNTED.get(),
-			DELIVERY_FUSES.get()
+			DELIVERY_FUSES.get(),
+			COORDINATED_BREACH_STAGING.get(),
+			MOBILE_FIRE_SUPPORT_MOVES.get()
 		);
 	}
 
@@ -69,7 +81,9 @@ public final class SmartSpiderMetrics {
 		long carrierSearches,
 		long carrierCandidateChecks,
 		long creepersMounted,
-		long deliveryFuses
+		long deliveryFuses,
+		long coordinatedBreachStaging,
+		long mobileFireSupportMoves
 	) {
 	}
 }
