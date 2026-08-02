@@ -145,8 +145,9 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			source,
 			command
 		);
-		// 根实体覆盖七个家族；竖直范围同时容纳巨人头顶射手与抬高生成的恶魂炮兵。
-		AABB searchBox = new AABB(sourceBlock).move(0.0, 4.0, 10.0).inflate(22.0, 24.0, 22.0);
+		// 测试源朝向 +Z；57 个根实体会形成 8 行，因此让盒子前移覆盖最后一行，
+		// 而不是向四周无界放大，以免并行 GameTest 误收集相邻结构中的展示怪物。
+		AABB searchBox = new AABB(sourceBlock).move(0.0, 4.0, 18.0).inflate(22.0, 24.0, 22.0);
 		List<Zombie> zombies = helper.getLevel().getEntitiesOfClass(
 			Zombie.class,
 			searchBox,
@@ -199,8 +200,8 @@ public final class AllShowcaseCommandGameTests implements CustomTestMethodInvoke
 			"Global spawnall expected four spider archetypes but found " + spiders.size() + "."
 		);
 		helper.assertTrue(
-			endermen.size() == 2,
-			"Global spawnall expected two enderman archetypes but found " + endermen.size() + "."
+			endermen.size() == 4,
+			"Global spawnall expected four enderman professions but found " + endermen.size() + "."
 		);
 		helper.assertTrue(
 			creepers.size() == 7,

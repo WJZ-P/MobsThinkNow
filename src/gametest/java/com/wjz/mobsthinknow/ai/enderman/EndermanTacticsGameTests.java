@@ -4,27 +4,54 @@ import com.wjz.mobsthinknow.config.ConfigManager;
 import java.lang.reflect.Method;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
-/** 从真实 Mixin 实体、乘员同步和状态机验证末影人苦力怕投送。 */
+/** 从真实 Mixin 实体、职业装备、乘员同步和状态机验证末影人战术。 */
 public final class EndermanTacticsGameTests implements CustomTestMethodInvoker {
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
 	public void endermanMixinInstallsDeliveryGoalAndPersistentIdentity(final GameTestHelper helper) {
 		long before = SmartEndermanMetrics.snapshot().installedGoals();
 		EnderMan enderman = helper.spawn(EntityType.ENDERMAN, 4, 2, 4);
+		enderman.finalizeSpawn(
+			helper.getLevel(),
+			helper.getLevel().getCurrentDifficultyAt(enderman.blockPosition()),
+			EntitySpawnReason.NATURAL,
+			null
+		);
 
 		helper.assertTrue(
 			SmartEndermanMetrics.snapshot().installedGoals() == before + 1,
 			"Enderman construction did not install exactly one creeper-delivery goal."
 		);
 		int intelligence = EndermanIntelligence.get(enderman);
+		EndermanProfession profession = EndermanProfessionProfile.get(enderman);
 		helper.assertTrue(intelligence >= 1 && intelligence <= 10, "Enderman intelligence escaped the 1-10 range.");
+		helper.assertTrue(profession != EndermanProfession.NONE, "Natural enderman did not receive a profession.");
+		switch (profession) {
+			case RIFTBLADE -> helper.assertTrue(enderman.isHolding(Items.IRON_SWORD), "Riftblade lost its sword.");
+			case VOID_GUARD -> helper.assertTrue(
+				enderman.getOffhandItem().has(DataComponents.BLOCKS_ATTACKS),
+				"Void Guard lost its real blocking shield."
+			);
+			case VOID_LANCER -> helper.assertTrue(
+				enderman.getMainHandItem().has(DataComponents.KINETIC_WEAPON),
+				"Void Lancer lost its kinetic spear."
+			);
+			case CREEPER_HERALD -> helper.assertTrue(
+				enderman.getMainHandItem().isEmpty() && enderman.getOffhandItem().isEmpty(),
+				"Creeper Herald should keep both hands free for its payload."
+			);
+			case NONE -> throw new IllegalStateException("NONE was checked above.");
+		}
 		helper.assertTrue(
 			enderman.getCustomName() != null && enderman.getCustomName().getString().endsWith("[" + intelligence + "]"),
 			"Natural enderman name did not expose its stable intelligence."
@@ -57,6 +84,7 @@ public final class EndermanTacticsGameTests implements CustomTestMethodInvoker {
 		enderman.setNoAi(true);
 		creeper.setNoAi(true);
 		EndermanIntelligence.set(enderman, 10);
+		EndermanProfessionProfile.applyShowcaseLoadout(enderman, EndermanProfession.CREEPER_HERALD);
 
 		Player player = helper.makeMockPlayer(GameType.SURVIVAL);
 		Vec3 playerFeet = helper.absoluteVec(new Vec3(16.5, 2.0, 4.5));
@@ -138,6 +166,76 @@ public final class EndermanTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(
 			enderman.position().subtract(creeper.position()).multiply(1.0, 0.0, 1.0).lengthSqr() >= 12.0 * 12.0,
 			"Enderman retreat remained inside the delivered creeper's blast pressure zone."
+		);
+		goal.stop();
+		player.discard();
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 30, padding = 4)
+	public void voidGuardRaisesRealShieldThenOpensDelayedCounterWindow(final GameTestHelper helper) {
+		EnderMan enderman = helper.spawn(EntityType.ENDERMAN, 4, 2, 4);
+		enderman.setNoAi(true);
+		EndermanIntelligence.set(enderman, 9);
+		EndermanProfessionProfile.applyShowcaseLoadout(enderman, EndermanProfession.VOID_GUARD);
+
+		Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+		Vec3 playerFeet = helper.absoluteVec(new Vec3(5.4, 2.0, 4.5));
+		player.snapTo(playerFeet.x, playerFeet.y, playerFeet.z, 90.0F, 0.0F);
+		helper.assertTrue(helper.getLevel().addFreshEntity(player), "The shield counter target was not added.");
+		enderman.setTarget(player);
+
+		EndermanProfessionCombatGoal goal = new EndermanProfessionCombatGoal(enderman);
+		helper.assertTrue(goal.canUse(), "Void Guard profession did not activate its combat goal.");
+		goal.start();
+		goal.tick();
+		helper.assertTrue(
+			enderman.isUsingItem()
+				&& enderman.getUsedItemHand() == net.minecraft.world.InteractionHand.OFF_HAND
+				&& enderman.getOffhandItem().has(DataComponents.BLOCKS_ATTACKS),
+			"Void Guard did not raise a real offhand shield before attacking."
+		);
+
+		float healthBeforeCounter = player.getHealth();
+		goal.onShieldBlock(player);
+		helper.assertTrue(goal.counterFromBlock(), "A real shield-block signal did not schedule a counter.");
+		boolean sawUnshieldedWindow = false;
+		for (int tick = 0; tick < 9; tick++) {
+			goal.tick();
+			sawUnshieldedWindow |= !enderman.isUsingItem();
+		}
+		helper.assertTrue(sawUnshieldedWindow, "Void Guard never visibly lowered its shield for the counterattack.");
+		helper.assertTrue(player.getHealth() < healthBeforeCounter, "Delayed Void Guard counterattack never hit its target.");
+		goal.stop();
+		player.discard();
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 30, padding = 4)
+	public void voidLancerUsesVanillaKineticSpearStateAfterFlankSetup(final GameTestHelper helper) {
+		EnderMan enderman = helper.spawn(EntityType.ENDERMAN, 4, 2, 4);
+		enderman.setNoAi(true);
+		EndermanIntelligence.set(enderman, 9);
+		EndermanProfessionProfile.applyShowcaseLoadout(enderman, EndermanProfession.VOID_LANCER);
+
+		Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+		Vec3 playerFeet = helper.absoluteVec(new Vec3(12.0, 2.0, 4.5));
+		player.snapTo(playerFeet.x, playerFeet.y, playerFeet.z, 90.0F, 0.0F);
+		helper.assertTrue(helper.getLevel().addFreshEntity(player), "The spear target was not added.");
+		enderman.setTarget(player);
+
+		EndermanVoidLancerGoal goal = new EndermanVoidLancerGoal(enderman);
+		helper.assertTrue(goal.canUse(), "Void Lancer profession did not activate the spear goal.");
+		goal.start();
+		goal.tick();
+		helper.assertTrue(
+			enderman.getMainHandItem().has(DataComponents.KINETIC_WEAPON),
+			"Void Lancer command loadout was not a real kinetic spear."
+		);
+		helper.assertTrue(
+			enderman.isUsingItem()
+				&& enderman.getUsedItemHand() == net.minecraft.world.InteractionHand.MAIN_HAND,
+			"Void Lancer did not enter the vanilla spear charge/use state."
 		);
 		goal.stop();
 		player.discard();

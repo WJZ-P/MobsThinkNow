@@ -1,6 +1,9 @@
 package com.wjz.mobsthinknow.command;
 
 import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligence;
+import com.wjz.mobsthinknow.ai.enderman.EndermanProfession;
+import com.wjz.mobsthinknow.ai.enderman.EndermanProfessionProfile;
+import java.util.EnumSet;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -30,14 +33,26 @@ public final class EndermanShowcaseCommandGameTests implements CustomTestMethodI
 		}
 
 		List<EnderMan> endermen = endermenNear(helper, sourceBlock, 14.0);
-		helper.assertTrue(endermen.size() == 2, "Specific commands did not create both enderman presets.");
+		helper.assertTrue(endermen.size() == 4, "Specific commands did not create all four enderman professions.");
 		Map<Integer, Long> intelligenceCounts = endermen.stream().collect(Collectors.groupingBy(
 			EndermanIntelligence::get,
 			Collectors.counting()
 		));
 		helper.assertTrue(
-			intelligenceCounts.equals(Map.of(7, 1L, 10, 1L)),
+			intelligenceCounts.equals(Map.of(7, 1L, 9, 2L, 10, 1L)),
 			"Enderman preset intelligence no longer matches its tactic thresholds: " + intelligenceCounts
+		);
+		EnumSet<EndermanProfession> professions = endermen.stream()
+			.map(EndermanProfessionProfile::get)
+			.collect(java.util.stream.Collectors.toCollection(() -> EnumSet.noneOf(EndermanProfession.class)));
+		helper.assertTrue(
+			professions.equals(EnumSet.of(
+				EndermanProfession.RIFTBLADE,
+				EndermanProfession.VOID_GUARD,
+				EndermanProfession.VOID_LANCER,
+				EndermanProfession.CREEPER_HERALD
+			)),
+			"Specific commands did not preserve one of each synced profession: " + professions
 		);
 		helper.assertTrue(
 			endermen.stream().filter(enderman -> enderman.getFirstPassenger() instanceof Creeper).count() == 1,
@@ -63,6 +78,12 @@ public final class EndermanShowcaseCommandGameTests implements CustomTestMethodI
 			"At least one bomber enderman lost its IQ-10 preset."
 		);
 		helper.assertTrue(
+			endermen.stream().allMatch(
+				enderman -> EndermanProfessionProfile.get(enderman) == EndermanProfession.CREEPER_HERALD
+			),
+			"At least one bomber enderman lost its Creeper Herald profession."
+		);
+		helper.assertTrue(
 			creepers.stream().allMatch(creeper -> creeper.getVehicle() instanceof EnderMan),
 			"At least one bomber payload was not mounted on its enderman."
 		);
@@ -78,7 +99,7 @@ public final class EndermanShowcaseCommandGameTests implements CustomTestMethodI
 		);
 
 		List<EnderMan> endermen = endermenNear(helper, sourceBlock, 14.0);
-		helper.assertTrue(endermen.size() == 2, "Enderman shortcut did not create one of every preset.");
+		helper.assertTrue(endermen.size() == 4, "Enderman shortcut did not create one of every profession.");
 		helper.assertTrue(
 			endermen.stream().allMatch(enderman -> enderman.isPersistenceRequired() && enderman.isCustomNameVisible()),
 			"An enderman showcase entity was not persistent or lacked its visible preset name."
@@ -95,7 +116,7 @@ public final class EndermanShowcaseCommandGameTests implements CustomTestMethodI
 		);
 
 		List<EnderMan> endermen = endermenNear(helper, sourceBlock, 14.0);
-		helper.assertTrue(endermen.size() == 2, "Nested enderman shortcut did not create both presets.");
+		helper.assertTrue(endermen.size() == 4, "Nested enderman shortcut did not create all four professions.");
 		helper.assertTrue(
 			endermen.stream().filter(enderman -> enderman.getFirstPassenger() instanceof Creeper).count() == 1,
 			"Nested shortcut lost its enderman-creeper bomber."
