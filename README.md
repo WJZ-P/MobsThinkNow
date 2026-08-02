@@ -39,6 +39,15 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 - 首领常驻金色头顶光环；组队期间成员头上显示带颜色的职业名牌
   （首领/施压手/左翼/右翼/截断手/辅助兵/远程手/爆破手/机动坐骑），离队自动恢复原名；
 - 首领按智力分配正面施压、左/右翼包抄和截断退路任务；
+- **阵容驱动的总攻方案**：协调器在职位重编时只读取本队成员快照，再按首领智力冻结
+  `SWARM`、`PIN_AND_FLANK`、`SHIELD_WEDGE`、`CROSSFIRE`、`MOUNTED_BREACH` 或
+  `COMBINED_ARMS`。低智力队伍仍会直接群冲；IQ 5 起可用远近牵制，IQ 6 起由盾卫建立正面楔形，
+  IQ 7 起可形成双射手交叉火力或蜘蛛—苦力怕机动爆破，IQ 8 且僵尸、骷髅、苦力怕、蜘蛛齐备时
+  才进入完整联合兵种合围；
+- **完整联合兵种合围**：盾卫和斧手从正面制造压力，未登乘骷髅分居目标左右建立交叉射界；
+  一只蜘蛛先把苦力怕送到目标侧后方集结点再提交最终引信，另一只蜘蛛把骷髅保持在偏好射程，
+  形成会移动的火力平台，而不是把远程乘员送去贴脸。部署阶段被预约的乘员会原地等载具接取，
+  避免双方同时追逐导致会合抖动；路径失败或目标突然贴脸时会立即降级为原有直接攻击；
 - 包抄成员会实时读取目标的视线方向：被盯住时继续沿弧线绕后，没有被注视时
   则直接突袭目标当前位置；不再设置专门承担伤害的诱饵职位；
 - 组队期间全员获得默认 +10% 的临时移速加成（`squadSpeedBonus`，离队自动移除、
@@ -336,15 +345,16 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
   只有进入苦力怕自己的起爆距离后才把引信方向切为正，并在最终冲锋阶段追加一次携弹跳扑；
 - **混编机动坐骑**：普通蜘蛛会参加同目标小队，并由协调器做一对一乘员分配；优先投送苦力怕，
   其次快速换位骷髅，最后搭载近战僵尸。小队交战后，乘员先用至少 `3 tick` 的真实跳跃登背，蜘蛛
-  再按同一随机速度上限冲向预测位置。载具蜘蛛不再叠加小队通用 `+10%` 移速，避免突破 `1.40`
-  默认峰值；未分到乘员的蜘蛛继续使用自己的侧袭、跳扑和拉扯战术；
+  再按同一随机速度上限执行总攻命令。机动爆破方案会先绕到目标侧后约 6～7 格的 staging point，
+  到位后才转入最终冲锋；载着骷髅时则停在左右交叉射界并持续随目标重定位。载具蜘蛛不再叠加
+  小队通用 `+10%` 移速，避免突破 `1.40` 默认峰值；未分到乘员的蜘蛛继续使用自己的侧袭、跳扑和拉扯战术；
 - 合体仍保留苦力怕原版完整 30 tick 引信、嘶声、爆炸半径和伤害。目标在引信早期拉开超过
   “起爆距离 + 6 格”时，载具会先退火再追；目标失效时双方分离并清理预约；
 - 配对不是全局互扫：每只蜘蛛每 `10～20 tick` 只查询配置半径内的实体，单次最多评估 32 个候选；
   每只苦力怕只有一条 60 tick 可续租预约，因此多只蜘蛛不会同时争抢同一载荷；100 tick 内无法
   完成会合时会释放载荷，让双方恢复各自战斗；
-- `/mtn status` 会额外记录蜘蛛 Goal 安装、绕侧、跳扑、命中后拉扯、配对搜索/候选检查、
-  成功合体和投送引信次数。
+- `/mtn status` 会额外记录六类总攻方案、交叉火力、机动爆破、完整联合兵种方案，以及蜘蛛 Goal
+  安装、绕侧、跳扑、命中后拉扯、配对搜索/候选检查、成功合体、侧后集结和移动火力平台次数。
 
 当前只改造 `minecraft:spider`；洞穴蜘蛛继续使用原版毒素节奏。玩家可以利用配对会合窗口、猫对
 苦力怕的克制、引信嘶声、早期拉远和坚固掩体进行反制。
@@ -531,7 +541,7 @@ Goal 数、战术决策数、活跃小队、首领选举/换届、候选检查�
 `zombies`、`skeletons`、`creepers`、`spiders`、`endermen`、`giants` 与分类入口 `nether` 则一次生成对应分类的全部预设：
 
 ```text
-all             zombie          skeleton        creeper          spider          enderman        giant
+all             overworld_assault zombie        skeleton        creeper          spider          enderman        giant
 piglin          hoglin          zoglin           blaze            ghast           magma_cube
 zombified_piglin wither_skeleton
 zombies         skeletons       creepers        spiders          endermen        giants          nether
@@ -557,8 +567,14 @@ blaze_skirmisher blaze_volleymaster blaze_cinder_guard
 ghast_artillery ghast_spotter ghast_siegebreaker
 magma_cube_hunter magma_cube_ambusher magma_cube_titan
 zombified_piglin_lancer zombified_piglin_berserker zombified_piglin_warcaller
-wither_skeleton_duelist wither_skeleton_reaper wither_skeleton_hexer
+ wither_skeleton_duelist wither_skeleton_reaper wither_skeleton_hexer
 ```
+
+要直接观察跨职业配合，可在生存模式执行 `/mtn spawn overworld_assault [组数]` 或快捷入口
+`/mtn spawnoverworldassault [组数]`；组数范围 `1～8`。每组固定生成一名剑盾卫、一名斧手、一名
+水桶辅助、弓手与弩手各一名、一只绕后苦力怕和两只高智力蜘蛛，共八个根实体。它们会立即共享
+命令执行者为目标并选择 `COMBINED_ARMS`；`/mtn spawnall assault` 可快速生成一组。创造或旁观
+模式不会成为原版合法仇恨目标，此时可切换生存后让任意成员索敌，协调器仍会自动合队。
 
 例如 `/mtn spawn air_assault` 只生成一只持矛空袭兵，`/mtn spawn water_support 12` 会生成
 十二只带真实水桶的工程兵变体，`/mtn spawn builder 20` 则生成二十只 IQ 10、材料槽已满的
