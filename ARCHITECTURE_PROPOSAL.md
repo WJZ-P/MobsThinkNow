@@ -442,21 +442,27 @@ TNT、桶、空桶与打火石只是表现工具；`ZombieEngineerEquipment` 会
   原版同 tick 重复伤害；水平碰撞、唯一命中或 24 tick 到期都会进入 50 tick 恢复；
 - `MagmaCubeMixin` 在原版 `jumpFromGround` 尾部读取真实目标，对 2.5～16 格可见目标计算最多 6 tick
   的水平提前方向。新增速度按配置、尺寸与难度缩放，只混合 X/Z，原版 Y、跳跃间隔和接触伤害保持；
+- `ZombifiedPiglinMixin` 只移除精确的原版 `ZombieAttackGoal`，原版中立仇恨、群体警报与 priority 1
+  `SpearUseGoal` 均保留；持剑职业进入 `SmartNetherUndeadMeleeGoal`，冷却时正面侧后撤，狂战士在
+  3.2～7 格经过 6 tick 有声前摇后短突进。`AbstractSkeletonMixin` 对凋灵骷髅采用同一近战状态机，
+  但收割者前摇为 8 tick；咒火弓手继续使用原版 `RangedBowAttackGoal`、燃烧箭和凋灵效果，只在
+  `performRangedAttack` 的既有弹道参数上增加有限水平提前量；
 - `NetherProfessionProfile` 在 `Mob.finalizeSpawn` 的公共返回边界按实体家族、猪灵武器和难度只分配一次
-  持久职业。简单/普通/困难的精英阈值分别为 8%/18%/32%；猪灵弩手由真实弩装备确定，其他四个家族
-  在基础、专精与精英之间抽取。`NetherProfessionTactics` 只返回 O(1) 参数倍率，不创建第二套 Goal；
+  持久职业。简单/普通/困难的精英阈值分别为 8%/18%/32%；猪灵弩手与僵尸猪灵长矛手由真实装备
+  确定，凋灵骷髅在子类生成石剑以后晚分配，困难难度下咒火弓手概率约 21%。
+  `NetherProfessionTactics` 只返回 O(1) 参数倍率；近战状态机没有邻居查询且每 6～12 tick 才重算路径；
 - 职业同步数据按继承边界安装：猪灵/蛮兵共用 `AbstractPiglin` 槽，岩浆怪复用 `Slime` 槽且普通史莱姆
-  始终为 `NONE`，烈焰人、恶魂、疣猪兽和僵尸疣猪兽各自持有一个 byte。公共生命周期 Mixin 只对受支持
-  类型写入 `MobsThinkNowNetherProfession`，因此普通 Mob 没有额外跟踪数据；旧存档没有字段时按装备回填
-  稳定基础职业；
-- 客户端在 `LivingEntityRenderer.extractRenderState` 尾部把同步职业复制到共享渲染快照，再由六类 renderer
-  只替换纹理资源。24 张 PNG 保持原版 atlas 尺寸；恶魂充能态成对切图，幼年体直接回落原版贴图。
+  始终为 `NONE`，烈焰人、恶魂、疣猪兽和僵尸疣猪兽各自持有一个 byte；僵尸猪灵与凋灵骷髅分别
+  复用 `Zombie`/`AbstractSkeleton` 新增的单字节槽，非目标子类始终为 `NONE`。公共生命周期 Mixin
+  只对受支持类型写入 `MobsThinkNowNetherProfession`；旧存档没有字段时按装备回填稳定基础职业；
+- 客户端在 `LivingEntityRenderer.extractRenderState` 尾部把同步职业复制到共享渲染快照，再由八类 renderer
+  只替换纹理资源。30 张 PNG 保持原版 atlas 尺寸；恶魂充能态成对切图，幼年体直接回落原版贴图。
   `netherProfessionSkins=false` 只关闭视觉替换，不改变服务端职业战术；
 - `NetherCombatMath` 是无世界访问的纯向量层；`SmartNetherMetrics` 只累计已发生动作。
   猪灵无同伴查询，飞行单位与冲锋单位每 tick 只读取一个目标；仅低频猪灵落点会创建有界路径，
   因而同屏 N 个下界单位的本模组决策保持 O(N)，不引入派系间 O(N²) 组队；
-- 僵尸猪灵和凋灵骷髅继续排除在 `OverworldUndeadFamilies` 之外。下界原版派系关系优先于复用便利，
-  不让猪灵、疣猪兽、凋灵阵营或主世界混编小队互相错误结盟。
+- 僵尸猪灵和凋灵骷髅继续排除在 `OverworldUndeadFamilies` 之外，只复用无派系语义的单体近战状态机。
+  下界原版派系关系优先于复用便利，不让猪灵、疣猪兽、凋灵阵营或主世界混编小队互相错误结盟。
 
 ## 3. 小队生命周期
 
@@ -1039,11 +1045,12 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   高优先级投送 Goal 抢占，以及阻塞掌心能够改选世界边界内且不碰撞巨人或方块的释放点；
   下界另覆盖生产 Mixin/控制器安装、职业自然分配与同步槽、猪灵在真实平地 Brain 中写入可达战线、烈焰人充能后发射
   受限弹幕、恶魂预测炮击后换位、疣猪兽经历蓄力再产生真实位移、岩浆怪保留原版垂直速度的跳扑，
-  以及二十种职业预设、三种整组快捷入口和基础/战术批量参数；全局 `spawnall` 另验证一次事务式生成
-  49 个战术/变种根、54 个总实体与五个额外乘员；阵型间距按本批最大真实碰撞宽度自适应，末影人另覆盖生产 Mixin Goal
+  以及僵尸猪灵/凋灵骷髅同步槽、装备晚分配、可读突进和二十六种职业预设、三种整组快捷入口与
+  基础/战术批量参数；全局 `spawnall` 另验证一次事务式生成 55 个战术/变种根、60 个总实体与五个
+  额外乘员；阵型间距按本批最大真实碰撞宽度自适应，末影人另覆盖生产 Mixin Goal
    安装、持久智力名称、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
    随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、十二个基础生物名、
-   六个复数分类、`nether` 分类与四十九个战术/变种 literal 全量注册，并真实批量生成十二类基础实体；当前共 138 项
+   六个复数分类、`nether` 分类与五十五个战术/变种 literal 全量注册，并真实批量生成十四类基础实体；当前共 139 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。

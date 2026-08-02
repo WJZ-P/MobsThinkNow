@@ -12,7 +12,7 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 - 可选客户端配置界面：Mod Menu `18.0.0` + Cloth Config `26.1.154`
 - 开发客户端光影环境：Iris `1.11.2` + Sodium `0.9.1`（仅 `localRuntime`）
 - 构建所需 Java：`25`
-- 当前支持的怪物：僵尸家族（僵尸、尸壳、溺尸、僵尸村民）、骷髅家族（骷髅、流浪者、沼骸、干尸）、普通苦力怕、普通蜘蛛、普通末影人、重新启用完整 AI 的原版巨人，以及猪灵、猪灵蛮兵、疣猪兽、僵尸疣猪兽、烈焰人、恶魂与岩浆怪七种下界战斗单位
+- 当前支持的怪物：僵尸家族（僵尸、尸壳、溺尸、僵尸村民）、骷髅家族（骷髅、流浪者、沼骸、干尸）、普通苦力怕、普通蜘蛛、普通末影人、重新启用完整 AI 的原版巨人，以及猪灵、猪灵蛮兵、疣猪兽、僵尸疣猪兽、烈焰人、恶魂、岩浆怪、僵尸猪灵与凋灵骷髅九种下界战斗单位
 
 ## 僵尸已经会做什么
 
@@ -438,16 +438,21 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
   畏惧方块、族群判断与僵尸疣猪兽的广泛敌对关系均不改写；
 - **岩浆怪预判跳扑**：每次原版真实离地时冻结一次短期预测点，只增强该次跳跃的水平分量；尺寸、
   难度与配置共同限制速度，原版垂直跳高、跳跃间隔和接触伤害不变；
-- **15 种持久职业**：猪灵分为弩手、先锋、指挥官；烈焰人分为空中散兵、齐射大师、熔核近卫；
+- **僵尸猪灵战士**：原版中立仇恨、群体警报和金矛状态机保持不变；持矛者固定为长矛手，持剑者
+  分为狂战士与战吼者。狂战士在 3.2～7 格先用 6 tick 怒吼蓄力再短突进，命中后不再一直粘住
+  碰撞箱；战吼者则用更长的侧后撤窗口重新找角度；
+- **凋灵骷髅战士**：决斗者命中后长时间面向目标拉开，收割者使用 8 tick 可读前摇突进；困难模式
+  提高稀有咒火弓手占比。弓手保留原版燃烧箭、凋灵骷髅敌我关系与射击节奏，只增加有限移动预判；
+- **21 种持久职业**：猪灵分为弩手、先锋、指挥官；烈焰人分为空中散兵、齐射大师、熔核近卫；
   恶魂分为机动炮兵、远程观测手、攻城破坏者；疣猪兽/僵尸疣猪兽共享冲锋手、壁垒、破阵者；
-  岩浆怪分为猎手、伏击者、熔火泰坦。困难难度提高精英占比，职业会真实改变编队移速、偏好射程、
+  岩浆怪分为猎手、伏击者、熔火泰坦；僵尸猪灵与凋灵骷髅各有三种独立职业。困难难度提高精英占比，职业会真实改变编队移速、偏好射程、
   弹幕规模/前摇、恶魂预判/换位/爆炸威力、冲锋蓄力/冲量或跳扑速度，而非只换一个名字；
-- **24 张差异化像素贴图**：职业编号通过实体同步数据发给客户端并写入存档，临时换手、攻击阶段和
+- **30 张差异化像素贴图**：职业编号通过实体同步数据发给客户端并写入存档，临时换手、攻击阶段和
   重新登录都不会随机变脸。猪灵蛮兵拥有独立版本，疣猪兽与僵尸疣猪兽分别绘制，恶魂普通脸/蓄力脸
-  成对提供，幼年猪灵与幼年疣猪兽继续使用原版专用 UV。配置里可只关闭职业贴图而保留战术差异；
+  成对提供，新增僵尸猪灵与凋灵骷髅各三张；幼年猪灵、幼年僵尸猪灵与幼年疣猪兽继续使用原版专用 UV。配置里可只关闭职业贴图而保留战术差异；
   完整视觉矩阵和可再生流程见 [`docs/concepts/NETHER_PROFESSION_ASSETS.md`](docs/concepts/NETHER_PROFESSION_ASSETS.md)；
-- 下界派系没有被硬塞进主世界混编小队：猪灵、疣猪兽和凋灵阵营继续遵循原版敌我关系。
-  僵尸猪灵与凋灵骷髅本轮仍使用原版派系 AI，后续会单独设计而不是复用主世界小队白名单。
+- 下界派系没有被硬塞进主世界混编小队：猪灵、疣猪兽、僵尸猪灵和凋灵阵营继续遵循原版敌我关系；
+  新增亡灵职业只替换自身战斗 Goal，不会让两个敌对阵营错误结盟。
 
 ## 安装
 
@@ -480,14 +485,14 @@ Goal 数、战术决策数、活跃小队、首领选举/换届、候选检查�
 绕后、截击、移动引信、软墙提交、主动退火和队友疏散次数，以及蜘蛛绕侧、跳扑、拉扯、局部配对、成功合体和
 投送起爆次数，末影人抱取、传送投放和点燃次数，以及巨人替换、登乘、拾取、抛投、近战动作、
 冲击和累计命中目标次数；下界部分还会显示控制器安装、猪灵战线改位、烈焰人弹幕/火球、
-恶魂射击/换位、疣猪兽冲锋/命中与岩浆怪跳扑次数；
+恶魂射击/换位、疣猪兽冲锋/命中、岩浆怪跳扑，以及下界亡灵佯攻、突进、命中和预测箭次数；
 重载命令需要管理员权限。
 
-管理员执行 `/mtn spawnall` 会在命令源面前按紧凑混编阵型生成当前全部 49 种智能 AI
+管理员执行 `/mtn spawnall` 会在命令源面前按紧凑混编阵型生成当前全部 55 种智能 AI
 战术/变种预设：十二种僵尸家族成员、六种骷髅家族成员、四种苦力怕、四种蜘蛛、两种末影人与
-一种巨人攻城平台，再加二十种下界职业预设。
+一种巨人攻城平台，再加二十六种下界职业预设。
 蜘蛛/末影投送兵各携带一只苦力怕；巨人再携带头顶骷髅、手部苦力怕和手部僵尸，因此实际加入
-`54` 个实体。全部落点会按各自碰撞箱统一预检，全部实体
+`60` 个实体。全部落点会按各自碰撞箱统一预检，全部实体
 也会先准备完毕再事务式加入世界；任意一步失败都会整批回滚。
 
 只观察僵尸时可以使用 `/mtn spawnzombies` 或 `/mtn spawnall zombies`，在命令源面前排出
@@ -501,13 +506,14 @@ Goal 数、战术决策数、活跃小队、首领选举/换届、候选检查�
 
 使用 `/mtn spawn` 可以查看兵种与批量语法，随后执行 `/mtn spawn <类型> [数量]`，在命令源
 正前方安全地生成指定兵种；`<类型>` 支持 Tab 补全，省略数量时保持原行为、默认生成一只，
-数量参数通常允许 `1～100`（巨人平台为 `1～32`）。基础入口 `zombie`、`skeleton`、`creeper`、`spider`、`enderman`、`giant`、`piglin`、`hoglin`、`zoglin`、`blaze`、`ghast`、`magma_cube` 分别生成对应
+数量参数通常允许 `1～100`（巨人平台为 `1～32`）。基础入口 `zombie`、`skeleton`、`creeper`、`spider`、`enderman`、`giant`、`piglin`、`hoglin`、`zoglin`、`blaze`、`ghast`、`magma_cube`、`zombified_piglin`、`wither_skeleton` 分别生成对应
 智能生物的默认代表兵种；`/mtn spawn all` 等价于全局 `/mtn spawnall`，复数入口
 `zombies`、`skeletons`、`creepers`、`spiders`、`endermen`、`giants` 与分类入口 `nether` 则一次生成对应分类的全部预设：
 
 ```text
 all             zombie          skeleton        creeper          spider          enderman        giant
 piglin          hoglin          zoglin           blaze            ghast           magma_cube
+zombified_piglin wither_skeleton
 zombies         skeletons       creepers        spiders          endermen        giants          nether
 unarmed        swordsman       axeman
 sword_shield   axe_shield      builder
@@ -529,6 +535,8 @@ zoglin_charger zoglin_bulwark zoglin_ravager
 blaze_skirmisher blaze_volleymaster blaze_cinder_guard
 ghast_artillery ghast_spotter ghast_siegebreaker
 magma_cube_hunter magma_cube_ambusher magma_cube_titan
+zombified_piglin_lancer zombified_piglin_berserker zombified_piglin_warcaller
+wither_skeleton_duelist wither_skeleton_reaper wither_skeleton_hexer
 ```
 
 例如 `/mtn spawn air_assault` 只生成一只持矛空袭兵，`/mtn spawn water_support 12` 会生成
@@ -559,8 +567,9 @@ IQ 10 苦力怕的投送兵；例如 `/mtn spawn spider_ambusher 6` 或
 `/mtn spawnall endermen`）会一次生成两种末影人预设。巨人可用 `/mtn spawn giant_siege [数量]`
 或基础别名 `giant` 生成预装攻城平台；`/mtn spawngiants` 与 `/mtn spawnall giants` 会生成完整分类。
 下界职业可分别用 `/mtn spawn piglin_commander 8`、`/mtn spawn blaze_volleymaster 4`、
-`/mtn spawn ghast_siegebreaker 2` 或 `/mtn spawn magma_cube_titan 3` 批量验证；
-`/mtn spawnnether`、`/mtn spawnall nether` 与 `/mtn spawn nether` 都会一次生成二十种职业预设。
+`/mtn spawn ghast_siegebreaker 2`、`/mtn spawn zombified_piglin_berserker 6`、
+`/mtn spawn wither_skeleton_hexer 4` 或 `/mtn spawn magma_cube_titan 3` 批量验证；
+`/mtn spawnnether`、`/mtn spawnall nether` 与 `/mtn spawn nether` 都会一次生成二十六种职业预设。
 所有指令都需要管理员权限，并保留当前配置开关的约束。
 
 项目验收约定：以后每增加一种新的怪物 AI，同一批改动必须同步加入可 Tab 补全的
@@ -581,9 +590,9 @@ IQ 10 苦力怕的投送兵；例如 `/mtn spawn spider_ambusher 6` 或
 `build` 会运行 Fabric Loader JUnit、启动真实 Minecraft 服务端执行注册的 GameTest，并生成发布包；
 `runGameTest` 可用于单独重跑服务端用例。可发布 JAR 位于：
 
-当前服务端回归共 `138` 项，覆盖下界职业自然分配/同步槽、猪灵 Brain 战线、烈焰人充能弹幕、
-恶魂预测炮击与换位、疣猪兽蓄力冲锋、岩浆怪真实跳扑、二十种下界快捷/批量命令和全局事务阵型；
-JUnit 另逐张验证 24 个职业 PNG 的存在性与原版 UV 尺寸。
+当前服务端回归共 `139` 项，覆盖下界职业自然分配/同步槽、猪灵 Brain 战线、烈焰人充能弹幕、
+恶魂预测炮击与换位、疣猪兽蓄力冲锋、岩浆怪真实跳扑、僵尸猪灵可读突进、二十六种下界快捷/批量命令和全局事务阵型；
+JUnit 另逐张验证 30 个职业 PNG 的存在性与原版 UV 尺寸。
 
 ```text
 build/libs/mobsthinknow-0.1.0-alpha.1.jar
