@@ -25,6 +25,10 @@ class ZombieBodyActionTest {
 		assertTrue(ZombieBodyAction.AXE_LEAP.isActiveAt(10_000.0F));
 		assertTrue(ZombieBodyAction.ENGINEER_WORK.isActiveAt(10_000.0F));
 		assertFalse(ZombieBodyAction.SWORD_FEINT.isActiveAt(18.0F));
+		assertTrue(ZombieBodyAction.CALL_TO_MEETING.isActiveAt(23.99F));
+		assertFalse(ZombieBodyAction.CALL_TO_MEETING.isActiveAt(24.0F));
+		assertFalse(ZombieBodyAction.SHAKE_HEAD.isActiveAt(16.0F));
+		assertFalse(ZombieBodyAction.ADVANCE_ORDER.isActiveAt(18.0F));
 		assertFalse(ZombieBodyAction.NONE.isActiveAt(0.0F));
 	}
 
@@ -39,5 +43,10 @@ class ZombieBodyActionTest {
 		assertTrue(ZombieBodyAction.ENGINEER_WORK.priority() > ZombieBodyAction.WAR_CRY.priority());
 		assertTrue(ZombieBodyAction.WAR_CRY.priority() > ZombieBodyAction.COMMAND.priority());
 		assertTrue(ZombieBodyAction.COMMAND.priority() > ZombieBodyAction.ACKNOWLEDGE.priority());
+		assertTrue(ZombieBodyAction.ADVANCE_ORDER.priority() > ZombieBodyAction.CALL_TO_MEETING.priority());
+		assertEquals(ZombieBodyAction.CALL_TO_MEETING.priority(), ZombieBodyAction.COMMAND_LEFT.priority());
+		assertEquals(ZombieBodyAction.COMMAND_RIGHT.priority(), ZombieBodyAction.SURVEY_MEMBERS.priority());
+		assertEquals(ZombieBodyAction.NOD.priority(), ZombieBodyAction.SHAKE_HEAD.priority());
+		assertTrue(ZombieBodyAction.NOD.priority() > ZombieBodyAction.CONFER.priority());
 	}
 }

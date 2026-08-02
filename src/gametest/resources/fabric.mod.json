@@ -18,6 +18,7 @@
 			"com.wjz.mobsthinknow.ai.zombie.ZombieEnvironmentalTacticsGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieEngineerSkillGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.squad.SquadCombatUrgencyGameTests",
+			"com.wjz.mobsthinknow.ai.zombie.squad.ZombieSocialTheatricsGameTests",
 			"com.wjz.mobsthinknow.command.ZombieShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.command.SkeletonShowcaseCommandGameTests",
 			"com.wjz.mobsthinknow.ai.creeper.CreeperTacticsGameTests",
