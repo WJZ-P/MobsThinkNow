@@ -46,9 +46,10 @@ public final class PiglinBattleLineController {
 		this.nextDecisionAt = now + 16L + Math.floorMod(piglin.getId() * 5, 12);
 
 		boolean crossbow = piglin instanceof Piglin && piglin.isHolding(Items.CROSSBOW);
+		NetherProfession profession = NetherProfessionProfile.get(piglin);
 		Vec3 desired = crossbow
 			? this.crossbowLane(piglin, target)
-			: this.meleeLane(piglin, target, piglin instanceof PiglinBrute);
+			: this.meleeLane(piglin, target, piglin instanceof PiglinBrute, profession);
 		if (desired == null) {
 			return;
 		}
@@ -56,7 +57,8 @@ public final class PiglinBattleLineController {
 		if (stand == null) {
 			return;
 		}
-		float speed = crossbow ? 0.92F : piglin instanceof PiglinBrute ? 1.12F : 1.02F;
+		float baseSpeed = crossbow ? 0.92F : piglin instanceof PiglinBrute ? 1.12F : 1.02F;
+		float speed = (float)(baseSpeed * NetherProfessionTactics.piglinMoveSpeedMultiplier(profession));
 		piglin.getBrain().setMemory(
 			MemoryModuleType.WALK_TARGET,
 			new WalkTarget(new BlockPosTracker(Vec3.atBottomCenterOf(stand)), speed, 1)
@@ -89,7 +91,8 @@ public final class PiglinBattleLineController {
 	private Vec3 meleeLane(
 		final AbstractPiglin piglin,
 		final LivingEntity target,
-		final boolean brute
+		final boolean brute,
+		final NetherProfession profession
 	) {
 		double distanceSquared = piglin.distanceToSqr(target);
 		if (distanceSquared < 3.0 * 3.0 || distanceSquared > 12.0 * 12.0) {
@@ -98,8 +101,9 @@ public final class PiglinBattleLineController {
 		Vec3 targetForward = NetherCombatMath.horizontalUnitOrEntityFallback(target.getLookAngle(), target.getId());
 		Vec3 targetRight = NetherCombatMath.rotateHorizontal(targetForward, Math.PI * 0.5);
 		int lane = Math.floorMod(piglin.getId(), 3) - 1;
-		double behind = brute ? 0.8 : 2.2;
-		double side = brute ? lane * 1.2 : lane * 2.6;
+		boolean commander = profession == NetherProfession.PIGLIN_COMMANDER;
+		double behind = brute ? 0.8 : commander ? 1.2 : 2.2;
+		double side = brute ? lane * 1.2 : commander ? lane * 1.5 : lane * 2.6;
 		return target.position()
 			.add(target.getDeltaMovement().scale(1.5))
 			.subtract(targetForward.scale(behind))

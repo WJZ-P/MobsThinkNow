@@ -159,6 +159,8 @@ public final class MobsThinkNowConfig {
 	public boolean giantZombieMeleeActions = true;
 	/** 下界战术总开关；关闭后猪灵、烈焰人、恶魂、疣猪兽与岩浆怪全部委托原版 AI。 */
 	public boolean netherAiEnabled = true;
+	/** 客户端按同步职业切换下界单位贴图；关闭后尊重原版或资源包贴图，战术参数保持不变。 */
+	public boolean netherProfessionSkins = true;
 	/** 猪灵弩手按实体散列分配射击侧翼，近战猪灵与蛮兵从不同角度接敌；不执行同伴全量扫描。 */
 	public boolean piglinFormationTactics = true;
 	/** 烈焰人在目标外围盘旋、近身拉开，并按难度发射二至四连发的可读弹幕。 */

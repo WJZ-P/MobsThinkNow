@@ -3,6 +3,7 @@
 	"package": "com.wjz.mobsthinknow.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
+		"AbstractPiglinProfessionMixin",
 		"AbstractSkeletonMixin",
 		"BlazeMixin",
 		"CreeperMixin",
@@ -14,9 +15,11 @@
 		"HoglinMixin",
 		"LivingEntityMixin",
 		"MagmaCubeMixin",
+		"NetherProfessionLifecycleMixin",
 		"PiglinBruteMixin",
 		"PiglinMixin",
 		"SpiderMixin",
+		"SlimeProfessionMixin",
 		"ZombieMixin",
 		"ZoglinMixin"
 	],
@@ -24,11 +27,18 @@
 		"client.AbstractSkeletonRendererMixin",
 		"client.AbstractZombieModelMixin",
 		"client.AbstractZombieRendererMixin",
+		"client.BlazeRendererMixin",
 		"client.EndermanModelMixin",
 		"client.EndermanRendererMixin",
 		"client.EndermanRenderStateMixin",
 		"client.GiantMobRendererMixin",
+		"client.GhastRendererMixin",
+		"client.HoglinRendererMixin",
 		"client.LivingEntityRendererMixin",
+		"client.LivingEntityRenderStateMixin",
+		"client.MagmaCubeRendererMixin",
+		"client.PiglinRendererMixin",
+		"client.ZoglinRendererMixin",
 		"client.ZombieRenderStateMixin"
 	],
 	"injectors": {

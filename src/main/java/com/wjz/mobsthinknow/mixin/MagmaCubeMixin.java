@@ -1,6 +1,8 @@
 package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.nether.NetherCombatMath;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionProfile;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionTactics;
 import com.wjz.mobsthinknow.ai.nether.SmartNetherMetrics;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import net.minecraft.world.entity.LivingEntity;
@@ -51,7 +53,10 @@ public abstract class MagmaCubeMixin {
 		);
 		double sizeFactor = 0.82 + Math.min(cube.getSize(), 4) * 0.045;
 		double difficultyFactor = 0.85 + cube.level().getDifficulty().getId() * 0.05;
-		double speed = config.magmaCubePounceSpeed * sizeFactor * difficultyFactor;
+		double speed = config.magmaCubePounceSpeed
+			* sizeFactor
+			* difficultyFactor
+			* NetherProfessionTactics.magmaPounceMultiplier(NetherProfessionProfile.get(cube));
 		Vec3 current = cube.getDeltaMovement();
 		cube.setDeltaMovement(
 			current.x * 0.18 + direction.x * speed,

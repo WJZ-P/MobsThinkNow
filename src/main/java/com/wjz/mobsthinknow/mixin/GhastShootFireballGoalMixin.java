@@ -1,6 +1,9 @@
 package com.wjz.mobsthinknow.mixin;
 
 import com.wjz.mobsthinknow.ai.nether.NetherCombatMath;
+import com.wjz.mobsthinknow.ai.nether.NetherProfession;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionProfile;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionTactics;
 import com.wjz.mobsthinknow.ai.nether.SmartNetherMetrics;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import net.minecraft.server.level.ServerLevel;
@@ -81,12 +84,13 @@ public abstract class GhastShootFireballGoalMixin {
 			this.ghast.getZ() + view.z * 4.0
 		);
 		double distance = source.distanceTo(target.getEyePosition());
+		NetherProfession profession = NetherProfessionProfile.get(this.ghast);
 		Vec3 predicted = NetherCombatMath.predictedPoint(
 			target.getEyePosition(),
 			target.getDeltaMovement(),
 			distance,
 			1.0,
-			predictionStrength,
+			predictionStrength * NetherProfessionTactics.ghastPredictionMultiplier(profession),
 			12.0
 		);
 		Vec3 direction = predicted.subtract(source);
@@ -97,7 +101,7 @@ public abstract class GhastShootFireballGoalMixin {
 			level,
 			this.ghast,
 			direction.normalize(),
-			this.ghast.getExplosionPower()
+			NetherProfessionTactics.ghastExplosionPower(this.ghast.getExplosionPower(), profession)
 		);
 		fireball.setPos(source);
 		if (!level.addFreshEntity(fireball)) {
@@ -119,7 +123,9 @@ public abstract class GhastShootFireballGoalMixin {
 		double side = ((this.ghast.getId() + this.mobsthinknow$shotIndex) & 1) == 0 ? 1.0 : -1.0;
 		double turn = this.ghast.distanceToSqr(target) < 12.0 * 12.0 ? 0.15 : 0.72;
 		Vec3 direction = NetherCombatMath.rotateHorizontal(away, side * turn);
-		double radius = 22.0 + Math.floorMod(this.ghast.getId() * 3 + this.mobsthinknow$shotIndex * 5, 7);
+		NetherProfession profession = NetherProfessionProfile.get(this.ghast);
+		double radius = (22.0 + Math.floorMod(this.ghast.getId() * 3 + this.mobsthinknow$shotIndex * 5, 7))
+			* NetherProfessionTactics.ghastRelocationRadiusMultiplier(profession);
 		Vec3 destination = target.position().add(direction.scale(radius)).add(
 			0.0,
 			7.0 + Math.floorMod(this.ghast.getId() + this.mobsthinknow$shotIndex, 5),

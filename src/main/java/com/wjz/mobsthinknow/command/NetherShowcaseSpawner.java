@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.command;
 
+import com.wjz.mobsthinknow.ai.nether.NetherProfession;
+import com.wjz.mobsthinknow.ai.nether.NetherProfessionProfile;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -22,7 +24,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
-/** 为下界第一批智能 AI 提供可批量复现的七种测试预设。 */
+/** 为下界智能 AI 提供可批量复现的二十种职业测试预设。 */
 public final class NetherShowcaseSpawner {
 	public static final int MAX_BATCH_SIZE = 100;
 
@@ -127,12 +129,23 @@ public final class NetherShowcaseSpawner {
 		if (mob instanceof Hoglin hoglin) {
 			hoglin.setImmuneToZombification(true);
 		}
-		if (archetype == ShowcaseArchetype.PIGLIN_CROSSBOW) {
-			mob.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.CROSSBOW));
+		if (mob.getType() == EntityType.PIGLIN) {
+			ItemStack weapon = switch (archetype.profession()) {
+				case PIGLIN_MARKSMAN -> new ItemStack(Items.CROSSBOW);
+				case PIGLIN_COMMANDER -> new ItemStack(Items.GOLDEN_AXE);
+				default -> new ItemStack(Items.GOLDEN_SWORD);
+			};
+			mob.setItemSlot(EquipmentSlot.MAINHAND, weapon);
 		}
 		if (mob instanceof MagmaCube cube) {
-			cube.setSize(3, true);
+			int size = switch (archetype.profession()) {
+				case MAGMA_AMBUSHER -> 2;
+				case MAGMA_TITAN -> 4;
+				default -> 3;
+			};
+			cube.setSize(size, true);
 		}
+		NetherProfessionProfile.set(mob, archetype.profession());
 
 		mob.setPersistenceRequired();
 		mob.setHealth(mob.getMaxHealth());
@@ -146,19 +159,37 @@ public final class NetherShowcaseSpawner {
 	}
 
 	public enum ShowcaseArchetype {
-		PIGLIN_CROSSBOW("piglin_crossbow", "mobsthinknow.showcase.piglin_crossbow", "Piglin Battle-Line Crossbow", ChatFormatting.GOLD, EntityType.PIGLIN, 0.0),
-		PIGLIN_BRUTE("piglin_brute", "mobsthinknow.showcase.piglin_brute", "Piglin Brute Vanguard", ChatFormatting.DARK_RED, EntityType.PIGLIN_BRUTE, 0.0),
-		HOGLIN_CHARGER("hoglin_charger", "mobsthinknow.showcase.hoglin_charger", "Hoglin Charger", ChatFormatting.RED, EntityType.HOGLIN, 0.0),
-		ZOGLIN_CHARGER("zoglin_charger", "mobsthinknow.showcase.zoglin_charger", "Zoglin Charger", ChatFormatting.DARK_GREEN, EntityType.ZOGLIN, 0.0),
-		BLAZE_SKIRMISHER("blaze_skirmisher", "mobsthinknow.showcase.blaze_skirmisher", "Blaze Skirmisher", ChatFormatting.YELLOW, EntityType.BLAZE, 1.0),
-		GHAST_ARTILLERY("ghast_artillery", "mobsthinknow.showcase.ghast_artillery", "Ghast Artillery", ChatFormatting.WHITE, EntityType.GHAST, 4.0),
-		MAGMA_CUBE_HUNTER("magma_cube_hunter", "mobsthinknow.showcase.magma_cube_hunter", "Magma Cube Hunter", ChatFormatting.DARK_RED, EntityType.MAGMA_CUBE, 0.0);
+		PIGLIN_CROSSBOW("piglin_crossbow", "mobsthinknow.showcase.piglin_crossbow", "Piglin Marksman", ChatFormatting.AQUA, EntityType.PIGLIN, NetherProfession.PIGLIN_MARKSMAN, 0.0),
+		PIGLIN_VANGUARD("piglin_vanguard", "mobsthinknow.showcase.piglin_vanguard", "Piglin Vanguard", ChatFormatting.RED, EntityType.PIGLIN, NetherProfession.PIGLIN_VANGUARD, 0.0),
+		PIGLIN_COMMANDER("piglin_commander", "mobsthinknow.showcase.piglin_commander", "Piglin Commander", ChatFormatting.GOLD, EntityType.PIGLIN, NetherProfession.PIGLIN_COMMANDER, 0.0),
+		PIGLIN_BRUTE("piglin_brute", "mobsthinknow.showcase.piglin_brute", "Piglin Brute Vanguard", ChatFormatting.DARK_RED, EntityType.PIGLIN_BRUTE, NetherProfession.PIGLIN_VANGUARD, 0.0),
+		PIGLIN_BRUTE_COMMANDER("piglin_brute_commander", "mobsthinknow.showcase.piglin_brute_commander", "Piglin Brute Commander", ChatFormatting.DARK_PURPLE, EntityType.PIGLIN_BRUTE, NetherProfession.PIGLIN_COMMANDER, 0.0),
+
+		HOGLIN_CHARGER("hoglin_charger", "mobsthinknow.showcase.hoglin_charger", "Hoglin Charger", ChatFormatting.RED, EntityType.HOGLIN, NetherProfession.HOGLIN_CHARGER, 0.0),
+		HOGLIN_BULWARK("hoglin_bulwark", "mobsthinknow.showcase.hoglin_bulwark", "Hoglin Bulwark", ChatFormatting.GOLD, EntityType.HOGLIN, NetherProfession.HOGLIN_BULWARK, 0.0),
+		HOGLIN_RAVAGER("hoglin_ravager", "mobsthinknow.showcase.hoglin_ravager", "Hoglin Ravager", ChatFormatting.DARK_RED, EntityType.HOGLIN, NetherProfession.HOGLIN_RAVAGER, 0.0),
+		ZOGLIN_CHARGER("zoglin_charger", "mobsthinknow.showcase.zoglin_charger", "Zoglin Charger", ChatFormatting.DARK_GREEN, EntityType.ZOGLIN, NetherProfession.HOGLIN_CHARGER, 0.0),
+		ZOGLIN_BULWARK("zoglin_bulwark", "mobsthinknow.showcase.zoglin_bulwark", "Zoglin Bulwark", ChatFormatting.GRAY, EntityType.ZOGLIN, NetherProfession.HOGLIN_BULWARK, 0.0),
+		ZOGLIN_RAVAGER("zoglin_ravager", "mobsthinknow.showcase.zoglin_ravager", "Zoglin Ravager", ChatFormatting.DARK_RED, EntityType.ZOGLIN, NetherProfession.HOGLIN_RAVAGER, 0.0),
+
+		BLAZE_SKIRMISHER("blaze_skirmisher", "mobsthinknow.showcase.blaze_skirmisher", "Blaze Skirmisher", ChatFormatting.YELLOW, EntityType.BLAZE, NetherProfession.BLAZE_SKIRMISHER, 1.0),
+		BLAZE_VOLLEYMASTER("blaze_volleymaster", "mobsthinknow.showcase.blaze_volleymaster", "Blaze Volleymaster", ChatFormatting.LIGHT_PURPLE, EntityType.BLAZE, NetherProfession.BLAZE_VOLLEYMASTER, 1.0),
+		BLAZE_CINDER_GUARD("blaze_cinder_guard", "mobsthinknow.showcase.blaze_cinder_guard", "Blaze Cinder Guard", ChatFormatting.GOLD, EntityType.BLAZE, NetherProfession.BLAZE_CINDER_GUARD, 1.0),
+
+		GHAST_ARTILLERY("ghast_artillery", "mobsthinknow.showcase.ghast_artillery", "Ghast Artillery", ChatFormatting.WHITE, EntityType.GHAST, NetherProfession.GHAST_ARTILLERY, 4.0),
+		GHAST_SPOTTER("ghast_spotter", "mobsthinknow.showcase.ghast_spotter", "Ghast Spotter", ChatFormatting.AQUA, EntityType.GHAST, NetherProfession.GHAST_SPOTTER, 4.0),
+		GHAST_SIEGEBREAKER("ghast_siegebreaker", "mobsthinknow.showcase.ghast_siegebreaker", "Ghast Siegebreaker", ChatFormatting.DARK_RED, EntityType.GHAST, NetherProfession.GHAST_SIEGEBREAKER, 4.0),
+
+		MAGMA_CUBE_HUNTER("magma_cube_hunter", "mobsthinknow.showcase.magma_cube_hunter", "Magma Cube Hunter", ChatFormatting.DARK_RED, EntityType.MAGMA_CUBE, NetherProfession.MAGMA_HUNTER, 0.0),
+		MAGMA_CUBE_AMBUSHER("magma_cube_ambusher", "mobsthinknow.showcase.magma_cube_ambusher", "Magma Cube Ambusher", ChatFormatting.LIGHT_PURPLE, EntityType.MAGMA_CUBE, NetherProfession.MAGMA_AMBUSHER, 0.0),
+		MAGMA_CUBE_TITAN("magma_cube_titan", "mobsthinknow.showcase.magma_cube_titan", "Magma Cube Titan", ChatFormatting.GOLD, EntityType.MAGMA_CUBE, NetherProfession.MAGMA_TITAN, 0.0);
 
 		private final String commandId;
 		private final String translationKey;
 		private final String fallback;
 		private final ChatFormatting color;
 		private final EntityType<? extends Mob> entityType;
+		private final NetherProfession profession;
 		private final double verticalOffset;
 
 		ShowcaseArchetype(
@@ -167,6 +198,7 @@ public final class NetherShowcaseSpawner {
 			final String fallback,
 			final ChatFormatting color,
 			final EntityType<? extends Mob> entityType,
+			final NetherProfession profession,
 			final double verticalOffset
 		) {
 			this.commandId = commandId;
@@ -174,6 +206,7 @@ public final class NetherShowcaseSpawner {
 			this.fallback = fallback;
 			this.color = color;
 			this.entityType = entityType;
+			this.profession = profession;
 			this.verticalOffset = verticalOffset;
 		}
 
@@ -187,6 +220,10 @@ public final class NetherShowcaseSpawner {
 
 		public EntityType<? extends Mob> entityType() {
 			return this.entityType;
+		}
+
+		public NetherProfession profession() {
+			return this.profession;
 		}
 
 		double verticalOffset() {

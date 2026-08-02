@@ -273,5 +273,20 @@
 	"mobsthinknow.showcase.zoglin_charger": "Zoglin Charger",
 	"mobsthinknow.showcase.blaze_skirmisher": "Blaze Skirmisher",
 	"mobsthinknow.showcase.ghast_artillery": "Ghast Artillery",
-	"mobsthinknow.showcase.magma_cube_hunter": "Magma Cube Hunter"
+	"mobsthinknow.showcase.magma_cube_hunter": "Magma Cube Hunter",
+	"mobsthinknow.config.nether_profession_skins": "Nether profession skins",
+	"mobsthinknow.config.nether_profession_skins.tooltip": "Selects distinct pixel textures for adult Piglins, Blazes, Ghasts, Hoglins, Zoglins, and Magma Cubes from their persistent server-synced profession. Disabling this restores vanilla or resource-pack visuals without changing profession tactics.",
+	"mobsthinknow.showcase.piglin_vanguard": "Piglin Vanguard",
+	"mobsthinknow.showcase.piglin_commander": "Piglin Gold Commander",
+	"mobsthinknow.showcase.piglin_brute_commander": "Piglin Brute Commander",
+	"mobsthinknow.showcase.hoglin_bulwark": "Hoglin Bulwark",
+	"mobsthinknow.showcase.hoglin_ravager": "Hoglin Ravager",
+	"mobsthinknow.showcase.zoglin_bulwark": "Zoglin Bulwark",
+	"mobsthinknow.showcase.zoglin_ravager": "Zoglin Ravager",
+	"mobsthinknow.showcase.blaze_volleymaster": "Blaze Volleymaster",
+	"mobsthinknow.showcase.blaze_cinder_guard": "Blaze Cinder Guard",
+	"mobsthinknow.showcase.ghast_spotter": "Ghast Spotter",
+	"mobsthinknow.showcase.ghast_siegebreaker": "Ghast Siegebreaker",
+	"mobsthinknow.showcase.magma_cube_ambusher": "Magma Cube Ambusher",
+	"mobsthinknow.showcase.magma_cube_titan": "Magma Cube Titan"
 }

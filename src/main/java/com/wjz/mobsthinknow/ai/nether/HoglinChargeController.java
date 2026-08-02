@@ -76,7 +76,10 @@ public final class HoglinChargeController {
 		}
 
 		this.phase = Phase.WINDUP;
-		this.ticksRemaining = 12 + Math.floorMod(body.getId(), 5);
+		this.ticksRemaining = NetherProfessionTactics.hoglinWindupTicks(
+			12 + Math.floorMod(body.getId(), 5),
+			NetherProfessionProfile.get(body)
+		);
 		this.targetEntityId = target.getId();
 		this.chargeDirection = direction;
 		this.impactResolved = false;
@@ -123,7 +126,8 @@ public final class HoglinChargeController {
 			this.enterRecovery();
 			return;
 		}
-		double impulse = chargeImpulse(config.hoglinChargeSpeed);
+		double impulse = chargeImpulse(config.hoglinChargeSpeed)
+			* NetherProfessionTactics.hoglinImpulseMultiplier(NetherProfessionProfile.get(body));
 		Vec3 current = body.getDeltaMovement();
 		body.setDeltaMovement(
 			this.chargeDirection.x * impulse,

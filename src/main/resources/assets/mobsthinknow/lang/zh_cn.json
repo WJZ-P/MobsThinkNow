@@ -273,5 +273,20 @@
 	"mobsthinknow.showcase.zoglin_charger": "僵尸疣猪兽冲锋手",
 	"mobsthinknow.showcase.blaze_skirmisher": "烈焰人空中散兵",
 	"mobsthinknow.showcase.ghast_artillery": "恶魂机动炮兵",
-	"mobsthinknow.showcase.magma_cube_hunter": "岩浆怪跳扑猎手"
+	"mobsthinknow.showcase.magma_cube_hunter": "岩浆怪跳扑猎手",
+	"mobsthinknow.config.nether_profession_skins": "下界职业差异化贴图",
+	"mobsthinknow.config.nether_profession_skins.tooltip": "按服务器同步的持久职业，为成年猪灵、烈焰人、恶魂、疣猪兽、僵尸疣猪兽与岩浆怪选择差异化像素贴图。关闭后尊重原版或资源包外观，职业战术参数不变。",
+	"mobsthinknow.showcase.piglin_vanguard": "猪灵近战先锋",
+	"mobsthinknow.showcase.piglin_commander": "猪灵黄金指挥官",
+	"mobsthinknow.showcase.piglin_brute_commander": "猪灵蛮兵指挥官",
+	"mobsthinknow.showcase.hoglin_bulwark": "疣猪兽重甲壁垒",
+	"mobsthinknow.showcase.hoglin_ravager": "疣猪兽狂暴破阵者",
+	"mobsthinknow.showcase.zoglin_bulwark": "僵尸疣猪兽壁垒",
+	"mobsthinknow.showcase.zoglin_ravager": "僵尸疣猪兽破阵者",
+	"mobsthinknow.showcase.blaze_volleymaster": "烈焰人齐射大师",
+	"mobsthinknow.showcase.blaze_cinder_guard": "烈焰人熔核近卫",
+	"mobsthinknow.showcase.ghast_spotter": "恶魂远程观测手",
+	"mobsthinknow.showcase.ghast_siegebreaker": "恶魂攻城破坏者",
+	"mobsthinknow.showcase.magma_cube_ambusher": "岩浆怪伏击者",
+	"mobsthinknow.showcase.magma_cube_titan": "岩浆怪熔火泰坦"
 }

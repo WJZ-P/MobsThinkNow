@@ -16,6 +16,7 @@ import org.jspecify.annotations.Nullable;
 /** 所有战术怪物展示指令共用的安全落点和阵型规划。 */
 final class ShowcaseSpawnPlacement {
 	private static final double GRID_SPACING = 3.0;
+	private static final double COLLISION_CLEARANCE = 0.5;
 	private static final double FORMATION_FRONT_DISTANCE = 5.0;
 	private static final double SINGLE_SPAWN_DISTANCE = 4.0;
 	private static final int[] VERTICAL_SEARCH = {0, 1, -1, 2, -2, 3, -3, 4, -4};
@@ -70,6 +71,7 @@ final class ShowcaseSpawnPlacement {
 		Vec3 forward = new Vec3(-Math.sin(radians), 0.0, Math.cos(radians));
 		Vec3 lateral = new Vec3(Math.cos(radians), 0.0, Math.sin(radians));
 		int columns = (int)Math.ceil(Math.sqrt(count));
+		double spacing = formationSpacing(entityTypes);
 		List<BlockPos> positions = new ArrayList<>(count);
 		List<AABB> reservedBoxes = new ArrayList<>(count);
 
@@ -79,9 +81,9 @@ final class ShowcaseSpawnPlacement {
 			int rowStart = row * columns;
 			int rowSize = Math.min(columns, count - rowStart);
 			int column = index - rowStart;
-			double lateralOffset = (column - (rowSize - 1) * 0.5) * GRID_SPACING;
+			double lateralOffset = (column - (rowSize - 1) * 0.5) * spacing;
 			Vec3 preferred = origin
-				.add(forward.scale(FORMATION_FRONT_DISTANCE + row * GRID_SPACING))
+				.add(forward.scale(FORMATION_FRONT_DISTANCE + row * spacing))
 				.add(lateral.scale(lateralOffset));
 			@Nullable BlockPos safe = findSafeFeet(level, preferred, origin.y, reservedBoxes, entityType);
 			if (safe == null) {
@@ -91,6 +93,19 @@ final class ShowcaseSpawnPlacement {
 			reservedBoxes.add(spawnBox(entityType, safe));
 		}
 		return List.copyOf(positions);
+	}
+
+	/**
+	 * 普通人形批次继续使用三格网距；混入恶魂或巨人时只按本批最大真实宽度扩张。
+	 * 这避免大碰撞箱互相穿插，也不会让常用的小批量测试无谓地铺满屏幕。
+	 */
+	private static double formationSpacing(final List<EntityType<?>> entityTypes) {
+		double maximumWidth = entityTypes.stream()
+			.map(type -> type.getSpawnAABB(0.0, 0.0, 0.0))
+			.mapToDouble(AABB::getXsize)
+			.max()
+			.orElse(0.0);
+		return Math.max(GRID_SPACING, maximumWidth + COLLISION_CLEARANCE);
 	}
 
 	private static @Nullable BlockPos findSafeFeet(

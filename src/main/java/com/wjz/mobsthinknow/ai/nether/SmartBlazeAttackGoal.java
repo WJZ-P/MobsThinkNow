@@ -80,13 +80,14 @@ public final class SmartBlazeAttackGoal extends Goal {
 			return;
 		}
 		MobsThinkNowConfig config = ConfigManager.get();
+		NetherProfession profession = NetherProfessionProfile.get(this.blaze);
 		boolean visible = this.blaze.getSensing().hasLineOfSight(target);
 		this.lastSeen = visible ? 0 : this.lastSeen + 1;
 		this.attackTime--;
 		this.meleeCooldown--;
 
 		double distanceSquared = this.blaze.distanceToSqr(target);
-		this.steerAround(target, config, distanceSquared, visible);
+		this.steerAround(target, config, distanceSquared, visible, profession);
 		this.blaze.getLookControl().setLookAt(target, 30.0F, 30.0F);
 
 		if (distanceSquared <= MINIMUM_MELEE_DISTANCE_SQUARED && visible) {
@@ -111,17 +112,23 @@ public final class SmartBlazeAttackGoal extends Goal {
 		}
 		if (this.attackStep == 0) {
 			this.attackStep = 1;
-			this.attackTime = chargeTicks(this.blaze.level().getDifficulty().getId());
+			this.attackTime = NetherProfessionTactics.blazeChargeTicks(
+				chargeTicks(this.blaze.level().getDifficulty().getId()),
+				profession
+			);
 			this.setCharged(true);
 			SmartNetherMetrics.blazeVolley();
 			return;
 		}
 
-		if (!this.launchFireball(target, config)) {
+		if (!this.launchFireball(target, config, profession)) {
 			this.attackTime = 4;
 			return;
 		}
-		int volleySize = volleySize(this.blaze.level().getDifficulty().getId());
+		int volleySize = NetherProfessionTactics.blazeVolleySize(
+			volleySize(this.blaze.level().getDifficulty().getId()),
+			profession
+		);
 		if (this.attackStep >= volleySize) {
 			this.attackStep = 0;
 			this.attackTime = 64 + this.blaze.getRandom().nextInt(25);
@@ -137,13 +144,15 @@ public final class SmartBlazeAttackGoal extends Goal {
 		final LivingEntity target,
 		final MobsThinkNowConfig config,
 		final double distanceSquared,
-		final boolean visible
+		final boolean visible,
+		final NetherProfession profession
 	) {
 		Vec3 away = NetherCombatMath.horizontalUnitOrEntityFallback(
 			this.blaze.position().subtract(target.position()),
 			this.blaze.getId()
 		);
-		double preferred = config.blazePreferredRange;
+		double preferred = config.blazePreferredRange
+			* NetherProfessionTactics.blazeRangeMultiplier(profession);
 		double distance = Math.sqrt(distanceSquared);
 		double turn = distance < preferred * 0.65 ? 0.18 : 0.42;
 		Vec3 radial = NetherCombatMath.rotateHorizontal(away, this.orbitDirection * turn);
@@ -157,7 +166,11 @@ public final class SmartBlazeAttackGoal extends Goal {
 		this.blaze.getMoveControl().setWantedPosition(destination.x, altitude, destination.z, 1.05);
 	}
 
-	private boolean launchFireball(final LivingEntity target, final MobsThinkNowConfig config) {
+	private boolean launchFireball(
+		final LivingEntity target,
+		final MobsThinkNowConfig config,
+		final NetherProfession profession
+	) {
 		if (!(this.blaze.level() instanceof ServerLevel level)) {
 			return false;
 		}
@@ -171,7 +184,8 @@ public final class SmartBlazeAttackGoal extends Goal {
 			config.netherPredictionStrength,
 			8.0
 		);
-		double uncertainty = 0.10 + (3 - this.blaze.level().getDifficulty().getId()) * 0.035;
+		double uncertainty = (0.10 + (3 - this.blaze.level().getDifficulty().getId()) * 0.035)
+			* NetherProfessionTactics.blazeUncertaintyMultiplier(profession);
 		Vec3 direction = predicted.subtract(source).add(
 			this.blaze.getRandom().triangle(0.0, uncertainty),
 			this.blaze.getRandom().triangle(0.0, uncertainty * 0.65),

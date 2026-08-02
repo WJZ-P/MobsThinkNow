@@ -387,6 +387,14 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.netherAiEnabled = value))
 			.build());
 		netherCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.nether_profession_skins"),
+			config.netherProfessionSkins
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.nether_profession_skins.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.netherProfessionSkins = value))
+			.build());
+		netherCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.piglin_formation_tactics"),
 			config.piglinFormationTactics
 		)
