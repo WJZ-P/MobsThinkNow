@@ -12,10 +12,20 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 - 可选客户端配置界面：Mod Menu `18.0.0` + Cloth Config `26.1.154`
 - 开发客户端光影环境：Iris `1.11.2` + Sodium `0.9.1`（仅 `localRuntime`）
 - 构建所需 Java：`25`
-- 当前支持的怪物：僵尸家族（僵尸、尸壳、溺尸、僵尸村民）、骷髅家族（骷髅、流浪者、沼骸、干尸）、普通苦力怕、普通蜘蛛、普通末影人，以及重新启用完整 AI 的原版巨人
+- 当前支持的怪物：僵尸家族（僵尸、尸壳、溺尸、僵尸村民）、骷髅家族（骷髅、流浪者、沼骸、干尸）、普通苦力怕、普通蜘蛛、普通末影人、重新启用完整 AI 的原版巨人，以及猪灵、猪灵蛮兵、疣猪兽、僵尸疣猪兽、烈焰人、恶魂与岩浆怪七种下界战斗单位
 
 ## 僵尸已经会做什么
 
+- **九套职业皮肤**（`zombieProfessionSkins`，默认开启）：普通新兵、剑手、斧手、剑盾卫、斧盾卫、
+  工程兵、水桶辅助、岩浆骚扰和持矛空袭兵分别使用保持原版 64×64 UV 与像素颗粒感的独立服装；
+  职业编号随实体存档并通过原版同步数据发给客户端，因此临时吃东西、工程技能换手、桶离手或空袭兵
+  耗尽火箭时不会闪回另一套皮肤。尸壳、溺尸和僵尸村民继续保留原版辨识度；本地关闭该选项后会
+  重新使用原版或当前资源包纹理；
+- **可读战术动作**（`zombieBodyLanguage`，默认开启）：开会时首领伸臂指挥、成员点头拍胸回应，
+  进入交战时按声浪依次抬臂怒吼，受击撤退时前倾冲刺并保持目视前方；剑手在攻击间隙采用胸前
+  戒备姿势，斧手则把武器蓄在肩后。战斗状态机还会同步剑士假挥、斧手起跳前下蹲举斧、空中跳劈、
+  副手盾击以及工程兵单膝操作 TNT。动作只同步“编号＋世界开始时间”，客户端本地采样全身关键帧，
+  不会给每只僵尸每 tick 发送骨骼数据；真实攻击、盾挡、进食、游泳和鞘翅飞行拥有更高姿势优先级；
 - 每只僵尸拥有会随实体存档的随机智力值 `1～10`，头顶名字末尾显示对应数字，
   例如“僵尸 [7]”；
 - 每只僵尸出生时还会固化一条 `0.86～1.14` 的个体声线，并获得速度、最大生命、
@@ -101,7 +111,9 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
   TNT、换出打火石点燃，并生成 owner 为该工程兵、80 tick 引信的原版 `PrimedTnt`；随后
   以 1.35 倍速度后撤，最远跑 8 格或持续 60 tick。落点必须有完整地基、可替换、无流体/
   方块实体/生物碰撞，且 3.25 格内没有其他僵尸；未点燃时被高优先级行为打断会自动拆除
-  本次装药。该技能同时服从 `engineerTntSkill`、`mobGriefing` 和 `tntExplodes`；
+  本次装药。放置到点燃期间工程兵会停步、面向装药并单膝降低重心，放置和点燃分别使用真实挥手、
+  方块放置声与打火石声；点燃成功的同一状态转换会释放蹲姿并开始撤离。该技能同时服从
+  `engineerTntSkill`、`mobGriefing` 和 `tntExplodes`；
 - ② **水流控制**与③ **岩浆控制**会在目标脚下及四个正交邻格选择已加载、位于世界边界内
   且可替换的真实落点，走进 4.25 格桶交互范围，取出对应桶并调用原版 `BucketItem` 投放，
   因此包含原版倒桶声音、挥手和流体事件。水保留 45～60 tick，岩浆保留 32～41 tick；
@@ -176,15 +188,25 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 - **智能武器战斗**（`weaponCombatTactics`，默认开启）作用于所有普通持剑/斧僵尸，
   不要求装备来自武装小队。它们命中后先短促后撤侧移，再沿约 2.8 格圆弧周旋，
   武器冷却完成才重新接近；冷却由物品 `ATTACK_SPEED` 计算，例如木/石/铜斧
-  25 tick、铁斧 23 tick、钻石/下界合金斧 20 tick、剑 13 tick。斧手有平地与
-  视线时会先建立 1.8～3.3 格起跳距离，仅在下落阶段命中并获得玩家同款 1.5 倍
+  25 tick、铁斧 23 tick、钻石/下界合金斧 20 tick、剑 13 tick。智力达到
+  `swordFeintMinimumIntelligence`（默认 7）的剑士面对举盾目标时，每个合格攻击轮次有
+  `swordFeintChance`（默认 35%）选择佯攻：先以假挥声和前跨制造攻击错觉，但绝不调用伤害结算；
+  目标在第 6 tick 后放盾便立刻转为真攻击，坚持举盾则剑士后撤并短暂恢复。判定有 24 tick
+  重试节流，不会每 tick 重抽而最终必然触发；
+- 斧手有平地与视线时会先建立 1.8～3.3 格起跳距离，然后停步进行完整 **8 tick** 下蹲举斧前摇；
+  前摇结束仍会重新检查距离、高差和碰撞，条件失效就取消而非瞬移追踪。真正起跳后保持空中举斧，
+  仅在下落阶段命中并获得玩家同款 1.5 倍
   暴击与粒子/声音；水中或明显高低差会立即普通挥击，狭窄地形连续 30 tick 无法
-  建立起跳窗口后也会降级。
-  剑手只执行普通地面攻击，不跳劈；
+  建立起跳窗口后也会降级。真实挥击帧会覆盖准备姿势，命中、落地、目标丢失或 Goal 停止都会释放
+  临时动作，避免模型卡在举斧状态；
 - 武装小队还会产出**盾卫僵尸**（`armedShieldChance`，持械者额外配盾，普通
   减半/困难全额）：敌人进入 6 格交战带时优先举盾推进，进入近战距离后停步守候
   随机 12～28 tick（0.6～1.4 秒）。这期间敌人的攻击被盾牌完全挡住后，盾卫会继续
-  举盾随机等待 2～4 tick，再明确放盾反击；敌人一直不出手，则在观察期结束且武器
+  举盾随机等待 2～4 tick，再明确放盾反击；达到 `shieldBashMinimumIntelligence`（默认 7）的
+  盾卫会按 `shieldBashChance`（默认 35%）把这次真实格挡改为副手盾击：前摇第 5 tick 才进行一次
+  唯一命中检查，默认造成 2 点伤害和 1.25 强度水平击退，使用盾牌撞击声与横扫粒子，且盾击期间
+  `blocksAttack` 会阻止主手武器同时结算。四项参数均可在 Cloth Config 的“武装与武器战术”中调整；
+  未触发盾击时仍使用原有延迟武器反击。敌人一直不出手，则在观察期结束且武器
   CD 就绪时主动放盾试探一次。攻击窗口最多 10 tick，攻击与防御互斥；一次挥击后
   保持放盾收招 2～4 tick 才重新举盾，目标躲开则窗口到期收招，不会裸奔追击。
   格挡走原版正面判定；客户端采用玩家同款胸前 `BLOCK` 姿势，盾面图案改为方形像素
@@ -258,8 +280,8 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 
 - 每只普通苦力怕拥有随实体存档的智力 `1～10`。简单、普通、困难的自然出生区间分别为
   `1～7`、`2～9`、`4～10`，难度越高平均战术能力越强；名称末尾显示固定智力数字；
-- `CreeperMixin` 只移除原版精确的 `SwellGoal` 与 `MeleeAttackGoal`，分别换成
-  `SmartCreeperSwellGoal`（优先级 2）和 `SmartCreeperApproachGoal`（优先级 4）。总开关或
+- `CreeperMixin` 只移除原版精确的 `SwellGoal` 与 `MeleeAttackGoal`，安装优先级 0 的小队爆点撤离，
+  并分别换成 `SmartCreeperSwellGoal`（优先级 2）和 `SmartCreeperApproachGoal`（优先级 4）。总开关或
   `creeperAiEnabled` 关闭时，两套完整生命周期直接委托原版实现；优先级 3 的猫/豹猫回避仍会
   正常抢占接敌移动；
 - **观察感知与绕盾**（`creeperFlanking`）：智力至少 6 的个体会比较目标水平视线与自己所处方向。
@@ -278,7 +300,11 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
   它保持引信完成破口；黑曜石、基岩、无效射线以及关闭 `mobGriefing` 的世界会被拒绝；
 - **混编爆破位**：苦力怕与僵尸、骷髅、蜘蛛、巨人共享小队黑板，也可凭全队最高智力当选首领；非首领
   苦力怕标记为爆破手，蜘蛛充足时优先获得载具投送，队友误伤不会让它临时倒戈；
-- `/mtn status` 会记录两个 Goal 的安装量、绕后、截击、移动引信、破墙提交和主动退火次数。
+- **引信后小队疏散**（`creeperSquadEvacuation`）：同队苦力怕开始嘶鸣后，非爆破成员会放下远程武器并
+  沿真实可达路径退出原版伤害候选圈；普通和带电个体分别使用约 `6.75`、`12.75` 格触发半径，并保留
+  一格结束迟滞。协调器只维护正在引信的爆点 ID，查询为 O(P)，不会让每只怪物扫描整支小队；蜘蛛
+  不会逃离自己背上的爆破载荷，正在提交的苦力怕也不会因另一个爆点反复取消自身引信；
+- `/mtn status` 会记录三个 Goal 的安装量、绕后、截击、移动引信、破墙提交、主动退火和队友疏散次数。
 
 当前只改造 `minecraft:creeper`。完整引信声音、猫克制、玩家拉远和坚固方块都是明确反制窗口；
 本版本不修改爆炸半径、伤害或原版生成数量。
@@ -289,8 +315,9 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
   抬升到 `4～10`，名称末尾显示固定智力数字；
 - 每次完成出生流程时另有总计 `5%` 的速度药水特质：`4%` 获得带可见粒子的永久速度 I，`1%`
   获得永久速度 II；若原版或其他 Mod 已给出同级或更强速度效果则原样保留；
-- `SpiderMixin` 精确替换原版 `LeapAtTargetGoal` 和私有 `SpiderAttackGoal`，并安装集结、苦力怕投送、
-  普通队友载运、优先级 3 的 `SmartSpiderPounceGoal` 与优先级 4 的 `SmartSpiderCombatGoal` 共五个 Goal；
+- `SpiderMixin` 精确替换原版 `LeapAtTargetGoal` 和私有 `SpiderAttackGoal`，并安装爆点撤离、集结、
+  苦力怕投送、普通队友载运、优先级 3 的 `SmartSpiderPounceGoal` 与优先级 4 的
+  `SmartSpiderCombatGoal` 共六个 Goal；
   总开关或 `spiderAiEnabled` 关闭时，个人战斗 Goal 委托原版生命周期。爬墙仍使用原版
   `WallClimberNavigation`；
 - **预判跳扑**（`spiderPredictivePounce`）：智力至少 4 的蜘蛛可在 `2.5～7` 格内根据目标水平速度
@@ -395,12 +422,32 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
   关闭新近战时会自动回落到普通单体挥拳。`/mtn status` 记录出生替换、射手登顶、载荷拾取、
   两类抛投以及近战动作/命中/受击目标、成功抓取/抛出、受击打断和安全释放改位次数。
 
+## 下界生物已经会做什么
+
+- **猪灵战线**：猪灵弩手按实体 ID 固定分到左右射击通道，距离过近先后撤并横移；近战猪灵从
+  目标侧后方接敌，猪灵蛮兵则压住中线。控制器只在原版 Brain 完成本 tick 后写入
+  `WALK_TARGET` 与 `LOOK_TARGET`，交易、金甲判定、疣猪兽数量、僵尸化恐惧和既有仇恨仍由原版决定；
+  每只猪灵用 O(1) 散列选线，不会互相全量扫描而退化为 O(N²)；
+- **烈焰人空中散兵**：在默认约 10 格外盘旋，目标贴近时主动拉开；先进入可见充能，再按简单、
+  普通、困难分别发射 2、3、4 枚小火球。目标速度会加入有上限的提前量，散布、碰撞、声音与
+  原版火球伤害保持不变；关闭配置后 priority 4 的原版攻击 Goal 会自动恢复；
+- **恶魂机动炮兵**：玩家垂直索敌带从原版 4 格扩到 16 格；仍保留 20 tick 充能声光，开火时对
+  移动目标有限预判，并在每次射击后沿目标外圈换炮位，避免悬在原地持续对射；
+- **疣猪兽冲锋**：成年疣猪兽与僵尸疣猪兽会在 6～13 格直线上先用 12～16 tick 蓄力，逐段检查
+  地基、净空与悬崖后只施加一次真实冲锋冲量；命中只结算一次，随后进入固定恢复期。原版繁殖、
+  畏惧方块、族群判断与僵尸疣猪兽的广泛敌对关系均不改写；
+- **岩浆怪预判跳扑**：每次原版真实离地时冻结一次短期预测点，只增强该次跳跃的水平分量；尺寸、
+  难度与配置共同限制速度，原版垂直跳高、跳跃间隔和接触伤害不变；
+- 下界派系没有被硬塞进主世界混编小队：猪灵、疣猪兽和凋灵阵营继续遵循原版敌我关系。
+  僵尸猪灵与凋灵骷髅本轮仍使用原版派系 AI，后续会单独设计而不是复用主世界小队白名单。
+
 ## 安装
 
 1. 安装 Minecraft Java 26.1.2 对应的 Fabric Loader。
 2. 把 Fabric API 和本模组 JAR 放进实例的 `mods` 目录。
 3. 如需图形化配置，再在客户端安装 Mod Menu 和 Cloth Config；不使用配置页时无需安装。
 4. 单人游戏安装在客户端；专用服务器可只安装本模组和 Fabric API，无需安装上述两个客户端配置依赖。
+   多人玩家若希望看到职业皮肤、持盾/空袭/抱持等专用动作，也需要在自己的客户端安装本模组。
 
 首次启动后会生成：
 
@@ -419,18 +466,20 @@ config/mobsthinknow.json
 专用服务器请直接修改配置文件，随后执行
 `/mtn reload`。使用 `/mtn status` 可查看是否启用、已安装
 Goal 数、战术决策数、活跃小队、首领选举/换届、候选检查、寻路失败数以及累计
-采集/放置方块、立柱俯击、流体投放/回收/丢失、工程兵 TNT/水/岩浆/点燃次数，以及骷髅全力逃跑、
+采集/放置方块、立柱俯击、流体投放/回收/丢失、工程兵 TNT/水/岩浆/点燃次数，
+剑士佯攻、斧手跳劈前摇、盾击启动/命中次数，以及骷髅全力逃跑、
 掩体计划/探头射击、持弓拉扯、来箭闪避、射击、预判、弩箭和爆炸烟花射击次数，以及苦力怕
-绕后、截击、移动引信、软墙提交和主动退火次数，以及蜘蛛绕侧、跳扑、拉扯、局部配对、成功合体和
+绕后、截击、移动引信、软墙提交、主动退火和队友疏散次数，以及蜘蛛绕侧、跳扑、拉扯、局部配对、成功合体和
 投送起爆次数，末影人抱取、传送投放和点燃次数，以及巨人替换、登乘、拾取、抛投、近战动作、
-冲击和累计命中目标次数；
+冲击和累计命中目标次数；下界部分还会显示控制器安装、猪灵战线改位、烈焰人弹幕/火球、
+恶魂射击/换位、疣猪兽冲锋/命中与岩浆怪跳扑次数；
 重载命令需要管理员权限。
 
-管理员执行 `/mtn spawnall` 会在命令源面前按紧凑混编阵型生成当前全部 29 种智能 AI
+管理员执行 `/mtn spawnall` 会在命令源面前按紧凑混编阵型生成当前全部 36 种智能 AI
 战术/变种预设：十二种僵尸家族成员、六种骷髅家族成员、四种苦力怕、四种蜘蛛、两种末影人与
-一种巨人攻城平台。
+一种巨人攻城平台，再加七种下界战斗预设。
 蜘蛛/末影投送兵各携带一只苦力怕；巨人再携带头顶骷髅、手部苦力怕和手部僵尸，因此实际加入
-`34` 个实体。全部落点会按各自碰撞箱统一预检，全部实体
+`41` 个实体。全部落点会按各自碰撞箱统一预检，全部实体
 也会先准备完毕再事务式加入世界；任意一步失败都会整批回滚。
 
 只观察僵尸时可以使用 `/mtn spawnzombies` 或 `/mtn spawnall zombies`，在命令源面前排出
@@ -444,13 +493,14 @@ Goal 数、战术决策数、活跃小队、首领选举/换届、候选检查�
 
 使用 `/mtn spawn` 可以查看兵种与批量语法，随后执行 `/mtn spawn <类型> [数量]`，在命令源
 正前方安全地生成指定兵种；`<类型>` 支持 Tab 补全，省略数量时保持原行为、默认生成一只，
-数量参数通常允许 `1～100`（巨人平台为 `1～32`）。基础入口 `zombie`、`skeleton`、`creeper`、`spider`、`enderman`、`giant` 分别生成对应
+数量参数通常允许 `1～100`（巨人平台为 `1～32`）。基础入口 `zombie`、`skeleton`、`creeper`、`spider`、`enderman`、`giant`、`piglin`、`hoglin`、`zoglin`、`blaze`、`ghast`、`magma_cube` 分别生成对应
 智能生物的默认代表兵种；`/mtn spawn all` 等价于全局 `/mtn spawnall`，复数入口
-`zombies`、`skeletons`、`creepers`、`spiders`、`endermen`、`giants` 则一次生成对应分类的全部预设：
+`zombies`、`skeletons`、`creepers`、`spiders`、`endermen`、`giants` 与分类入口 `nether` 则一次生成对应分类的全部预设：
 
 ```text
 all             zombie          skeleton        creeper          spider          enderman        giant
-zombies         skeletons       creepers        spiders          endermen        giants
+piglin          hoglin          zoglin           blaze            ghast           magma_cube
+zombies         skeletons       creepers        spiders          endermen        giants          nether
 unarmed        swordsman       axeman
 sword_shield   axe_shield      builder
 water_support  lava_harasser   air_assault
@@ -464,13 +514,23 @@ spider_hunter spider_ambusher spider_alpha
 spider_creeper_bomber
 enderman_hunter enderman_creeper_bomber
 giant_siege
+piglin_crossbow piglin_brute hoglin_charger zoglin_charger
+blaze_skirmisher ghast_artillery magma_cube_hunter
 ```
 
 例如 `/mtn spawn air_assault` 只生成一只持矛空袭兵，`/mtn spawn water_support 12` 会生成
 十二只带真实水桶的工程兵变体，`/mtn spawn builder 20` 则生成二十只 IQ 10、材料槽已满的
 通用工程兵；两者都可以随机使用 TNT、水、岩浆和打火石。批量实体会以三格间距排成近似
 正方形阵型，并先统一检查全部落点和创建结果；空间不足或中途加入世界失败时整批取消，
-不会留下少于请求数量的残阵。骷髅也走同一事务：例如 `/mtn spawn skeleton_crossbow 5`
+不会留下少于请求数量的残阵。
+
+本批战斗动作可直接用既有预设验证：`/mtn spawn swordsman` 现在固定为 IQ 8，玩家近身举盾即可
+观察假挥、前跨、无伤骗盾与放盾后的真攻击；`/mtn spawn axeman` 可观察 8 tick 举斧前摇、起跳和
+下落命中；开启 `armedSquads` 后用 `/mtn spawn sword_shield`，正面攻击其盾牌可观察 2～4 tick
+延迟后的随机盾击；`/mtn spawn builder` 锁定目标后可观察 TNT 放置/点燃期间的单膝操作。对应
+概率都能在 Cloth Config 的“武装与武器战术”分类临时调到 100%，无需新增只服务于调试的实体类型。
+
+骷髅也走同一事务：例如 `/mtn spawn skeleton_crossbow 5`
 生成五只 IQ 8 弩手，`/mtn spawn skeleton_firework_crossbow 4` 生成四只 IQ 10、各带六枚真实
   爆炸烟花的弩手。执行 `/mtn spawnskeletons`（或 `/mtn spawnall skeletons`）会一次生成弓手、
   弩手、爆炸烟花弩手、流浪者、沼骸和干尸各一只；也可用 `/mtn spawn stray 8` 等命令批量测试
@@ -484,6 +544,9 @@ IQ 10 苦力怕的投送兵；例如 `/mtn spawn spider_ambusher 6` 或
 `/mtn spawn enderman_creeper_bomber 4` 会生成四组真实乘客树，`/mtn spawnendermen`（或
 `/mtn spawnall endermen`）会一次生成两种末影人预设。巨人可用 `/mtn spawn giant_siege [数量]`
 或基础别名 `giant` 生成预装攻城平台；`/mtn spawngiants` 与 `/mtn spawnall giants` 会生成完整分类。
+下界预设可分别用 `/mtn spawn piglin_crossbow 8`、`/mtn spawn hoglin_charger 4` 或
+`/mtn spawn ghast_artillery 2` 批量验证；`/mtn spawnnether`、`/mtn spawnall nether` 与
+`/mtn spawn nether` 都会一次生成七种下界预设。
 所有指令都需要管理员权限，并保留当前配置开关的约束。
 
 项目验收约定：以后每增加一种新的怪物 AI，同一批改动必须同步加入可 Tab 补全的
@@ -503,6 +566,9 @@ IQ 10 苦力怕的投送兵；例如 `/mtn spawn spider_ambusher 6` 或
 
 `build` 会运行 Fabric Loader JUnit、启动真实 Minecraft 服务端执行注册的 GameTest，并生成发布包；
 `runGameTest` 可用于单独重跑服务端用例。可发布 JAR 位于：
+
+当前服务端回归共 `137` 项，覆盖下界七个运行期 Mixin/控制器、猪灵 Brain 战线、烈焰人充能弹幕、
+恶魂预测炮击与换位、疣猪兽蓄力冲锋、岩浆怪真实跳扑，以及全部下界快捷/批量命令。
 
 ```text
 build/libs/mobsthinknow-0.1.0-alpha.1.jar
