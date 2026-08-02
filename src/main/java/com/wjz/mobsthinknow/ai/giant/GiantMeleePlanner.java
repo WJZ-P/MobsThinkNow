@@ -88,14 +88,17 @@ public final class GiantMeleePlanner {
 		GiantHand hand = chooseAvailableHand(context, handRoll);
 		if (hand != null
 			&& context.targetGrabbable()
-			&& enemies == 1
+			&& enemies <= 2
 			&& intelligence >= 7
 			&& distance <= 4.65) {
 			GiantMeleeAction grab = hand == GiantHand.RIGHT
 				? GiantMeleeAction.GRAB_RIGHT
 				: GiantMeleeAction.GRAB_LEFT;
+			double isolationBonus = enemies == 1 ? 18.0 : 0.0;
+			double crowdPenalty = enemies > 1 ? 30.0 : 0.0;
 			double comboBonus = previous.family() == GiantMeleeAction.Family.SLAP ? 24.0 : 0.0;
-			double score = 68.0 + intelligence * 2.0 + (4.65 - distance) * 4.0 + comboBonus;
+			double score = 72.0 + intelligence * 2.0 + (4.65 - distance) * 4.0
+				+ isolationBonus + comboBonus - crowdPenalty;
 			add(result, grab, score, previous);
 		}
 		if (hand != null && distance <= MAXIMUM_ACTION_DISTANCE) {

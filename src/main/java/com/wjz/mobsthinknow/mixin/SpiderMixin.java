@@ -11,6 +11,7 @@ import com.wjz.mobsthinknow.ai.spider.SpiderSpawnEffects;
 import com.wjz.mobsthinknow.ai.spider.SpiderSquadCarrierGoal;
 import com.wjz.mobsthinknow.ai.spider.SpiderSquadTransportAccess;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadFriendlyFireGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
@@ -63,6 +64,7 @@ public abstract class SpiderMixin extends Monster implements SpiderIntelligenceA
 		// 私有 SpiderAttackGoal 只能按精确二进制类名识别；不会误删其他 Mod 的 MeleeAttackGoal 子类。
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == LeapAtTargetGoal.class
 			|| goal.getClass().getName().equals("net.minecraft.world.entity.monster.spider.Spider$SpiderAttackGoal"));
+		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(spider));
 		this.goalSelector.addGoal(1, new SquadPreparationGoal(spider, 1.18));
 		this.goalSelector.addGoal(2, new SpiderCreeperCarrierGoal(spider));
 		this.goalSelector.addGoal(2, new SpiderSquadCarrierGoal(spider));

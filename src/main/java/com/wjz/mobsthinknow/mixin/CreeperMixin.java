@@ -10,6 +10,7 @@ import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperSwellGoal;
 import com.wjz.mobsthinknow.ai.spider.CreeperTransportAccess;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadFriendlyFireGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
@@ -64,6 +65,7 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 		// 只替换原版精确类，保留其他 Mod 注入的派生 Goal。
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == SwellGoal.class || goal.getClass() == MeleeAttackGoal.class);
 		this.mobsthinknow$tacticalController = new CreeperTacticalController(creeper);
+		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(creeper));
 		this.goalSelector.addGoal(1, new SquadPreparationGoal(creeper, 1.12));
 		this.goalSelector.addGoal(2, new SmartCreeperSwellGoal(creeper, this.mobsthinknow$tacticalController));
 		this.goalSelector.addGoal(4, new SmartCreeperApproachGoal(creeper, this.mobsthinknow$tacticalController));

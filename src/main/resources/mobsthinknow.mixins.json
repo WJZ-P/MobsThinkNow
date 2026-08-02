@@ -4,13 +4,21 @@
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
 		"AbstractSkeletonMixin",
+		"BlazeMixin",
 		"CreeperMixin",
 		"EnderManMixin",
 		"FireworkRocketEntityMixin",
+		"GhastMixin",
+		"GhastShootFireballGoalMixin",
 		"GiantMixin",
+		"HoglinMixin",
 		"LivingEntityMixin",
+		"MagmaCubeMixin",
+		"PiglinBruteMixin",
+		"PiglinMixin",
 		"SpiderMixin",
-		"ZombieMixin"
+		"ZombieMixin",
+		"ZoglinMixin"
 	],
 	"client": [
 		"client.AbstractSkeletonRendererMixin",

@@ -319,6 +319,7 @@ public final class ZombieEngineerSkillGoal extends Goal {
 
 	@Override
 	public void stop() {
+		this.stopTntWorkPose();
 		this.cleanupUnprimedTnt();
 		ZombieEngineerEquipment.restore(this.zombie, false);
 		this.zombie.getNavigation().stop();
@@ -365,11 +366,13 @@ public final class ZombieEngineerSkillGoal extends Goal {
 	private void beginTntPlacement(final long now) {
 		this.phase = Phase.PLACING_TNT;
 		this.phaseDeadline = now + TNT_PLACEMENT_WINDUP_TICKS;
+		ZombieBodyLanguage.startPersistent(this.zombie, ZombieBodyAction.ENGINEER_WORK);
 	}
 
 	private void tickPlacingTnt() {
 		TntPlan plan = this.tntPlan;
 		if (plan == null || !(this.zombie.level() instanceof ServerLevel level)) {
+			this.stopTntWorkPose();
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -379,6 +382,7 @@ public final class ZombieEngineerSkillGoal extends Goal {
 			return;
 		}
 		if (!this.isWithinTntReach(plan.position()) || !this.placeTnt(level, plan.position())) {
+			this.stopTntWorkPose();
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -390,6 +394,7 @@ public final class ZombieEngineerSkillGoal extends Goal {
 	private void tickArmingTnt() {
 		TntPlan plan = this.tntPlan;
 		if (plan == null || !(this.zombie.level() instanceof ServerLevel level)) {
+			this.stopTntWorkPose();
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -399,6 +404,7 @@ public final class ZombieEngineerSkillGoal extends Goal {
 			return;
 		}
 		if (!level.getBlockState(plan.position()).is(Blocks.TNT)) {
+			this.stopTntWorkPose();
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -406,15 +412,21 @@ public final class ZombieEngineerSkillGoal extends Goal {
 		level.playSound(null, plan.position(), SoundEvents.FLINTANDSTEEL_USE, SoundSource.BLOCKS, 1.0F,
 			0.9F + this.zombie.getRandom().nextFloat() * 0.2F);
 		if (!this.primeTnt(level, plan.position())) {
+			this.stopTntWorkPose();
 			this.phase = Phase.DONE;
 			return;
 		}
+		this.stopTntWorkPose();
 		ZombieEngineerEquipment.restore(this.zombie, false);
 		this.phase = Phase.TNT_RETREAT;
 		this.phaseDeadline = level.getGameTime() + TNT_RETREAT_MAXIMUM_TICKS;
 		this.retreatDestination = null;
 		this.nextPathRefreshAt = level.getGameTime();
 		SmartZombieMetrics.engineerTntCharge();
+	}
+
+	private void stopTntWorkPose() {
+		ZombieBodyLanguage.stopPersistent(this.zombie, ZombieBodyAction.ENGINEER_WORK);
 	}
 
 	private void tickTntRetreat() {

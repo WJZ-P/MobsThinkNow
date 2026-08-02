@@ -5,13 +5,20 @@ import com.wjz.mobsthinknow.ai.giant.GiantHand;
 import com.wjz.mobsthinknow.ai.giant.GiantHandPhase;
 import com.wjz.mobsthinknow.ai.giant.GiantMeleeAction;
 import com.wjz.mobsthinknow.client.render.GiantCarrierRenderStateAccess;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
+import com.wjz.mobsthinknow.ai.zombie.ZombieProfession;
+import com.wjz.mobsthinknow.client.render.ZombieBodyActionRenderStateAccess;
+import com.wjz.mobsthinknow.client.render.ZombieProfessionRenderStateAccess;
 import net.minecraft.client.renderer.entity.state.ZombieRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
-/** 给共用的 ZombieRenderState 增加巨人专用的双手、登乘和全身近战动作快照。 */
+/** 给共用的 ZombieRenderState 增加职业皮肤，以及巨人专用双手、登乘和全身近战动作快照。 */
 @Mixin(ZombieRenderState.class)
-public abstract class ZombieRenderStateMixin implements GiantCarrierRenderStateAccess {
+public abstract class ZombieRenderStateMixin implements
+	GiantCarrierRenderStateAccess,
+	ZombieProfessionRenderStateAccess,
+	ZombieBodyActionRenderStateAccess {
 	@Unique
 	private GiantHandPhase mobsthinknow$rightPhase = GiantHandPhase.EMPTY;
 	@Unique
@@ -32,6 +39,38 @@ public abstract class ZombieRenderStateMixin implements GiantCarrierRenderStateA
 	private GiantMeleeAction mobsthinknow$meleeAction = GiantMeleeAction.NONE;
 	@Unique
 	private float mobsthinknow$meleeProgress;
+	@Unique
+	private ZombieProfession mobsthinknow$zombieProfession = ZombieProfession.VANILLA;
+	@Unique
+	private ZombieBodyAction mobsthinknow$bodyAction = ZombieBodyAction.NONE;
+	@Unique
+	private float mobsthinknow$bodyActionElapsedTicks;
+
+	@Override
+	public void mobsthinknow$setZombieProfession(final ZombieProfession profession) {
+		this.mobsthinknow$zombieProfession = profession == null ? ZombieProfession.VANILLA : profession;
+	}
+
+	@Override
+	public ZombieProfession mobsthinknow$getZombieProfession() {
+		return this.mobsthinknow$zombieProfession;
+	}
+
+	@Override
+	public void mobsthinknow$setBodyActionState(final ZombieBodyAction action, final float elapsedTicks) {
+		this.mobsthinknow$bodyAction = action == null ? ZombieBodyAction.NONE : action;
+		this.mobsthinknow$bodyActionElapsedTicks = Math.max(0.0F, elapsedTicks);
+	}
+
+	@Override
+	public ZombieBodyAction mobsthinknow$getBodyAction() {
+		return this.mobsthinknow$bodyAction;
+	}
+
+	@Override
+	public float mobsthinknow$getBodyActionElapsedTicks() {
+		return this.mobsthinknow$bodyActionElapsedTicks;
+	}
 
 	@Override
 	public void mobsthinknow$setGiantHandState(

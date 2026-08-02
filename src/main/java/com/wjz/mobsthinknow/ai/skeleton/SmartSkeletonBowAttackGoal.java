@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCoverPlanner.CoverPlan;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import java.util.EnumSet;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.LivingEntity;
@@ -39,12 +40,14 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	private static final int POST_SHOT_FACING_TICKS = 2;
 	private static final int RETURN_TO_COVER_TIMEOUT_TICKS = 30;
 	private static final int MAXIMUM_COVER_PLAN_TICKS = 260;
+	private static final int FRIENDLY_BLOCK_CANCEL_TICKS = 12;
 
 	private final AbstractSkeleton skeleton;
 	private final double speedModifier;
 	/** 创建 Goal 时按具体变种读取的原版间隔；沼骸和干尸保持 50/70 tick 的慢射节奏。 */
 	private final int baseAttackInterval;
 	private boolean smartMode;
+	private boolean mountedMode;
 	private int attackTime;
 	private int seeTime;
 	private int approachRepathCooldown;
@@ -61,6 +64,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	private int coverPlanTicks;
 	private int coverShotsRemaining;
 	private int coverVisibleTicks;
+	private int friendlyBlockedTicks;
 
 	public SmartSkeletonBowAttackGoal(
 		final AbstractSkeleton skeleton,
@@ -97,6 +101,10 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		if (!smartAiEnabled()) {
 			return false;
 		}
+		if (this.mountedMode != this.usesMountedMode()) {
+			// 挂载状态改变后重启一次，让 GoalSelector 按新的动态 Flag 集合重新加锁。
+			return false;
+		}
 
 		LivingEntity target = this.skeleton.getTarget();
 		return target != null && target.isAlive() && this.isHoldingBow();
@@ -105,6 +113,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	@Override
 	public void start() {
 		super.start();
+		this.mountedMode = this.usesMountedMode();
 		if (!this.smartMode) {
 			return;
 		}
@@ -118,6 +127,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.strafeDirection = randomDirection();
 		this.strafeSwitchTicks = nextStrafeWindow();
 		this.movementMode = MovementMode.APPROACH;
+		this.friendlyBlockedTicks = 0;
 		// 同 tick 生成的一批骷髅按实体 ID 分摊到三拍内首搜，避免集群同时做 96 格几何检查。
 		this.coverSearchCooldown = Math.floorMod(this.skeleton.getId(), 3);
 		this.clearCoverState(false);
@@ -130,9 +140,20 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			this.skeleton.getNavigation().stop();
 		}
 		this.smartMode = false;
+		this.mountedMode = false;
 		this.dodgeTicks = 0;
 		this.movementMode = MovementMode.APPROACH;
+		this.friendlyBlockedTicks = 0;
 		this.clearCoverState(false);
+	}
+
+	@Override
+	public EnumSet<Flag> getFlags() {
+		/*
+		 * 乘客没有自己的位移权：只锁 LOOK，便可与原版优先级 2/3 的避日、避狼 MOVE Goal 并行。
+		 * 下马时 canContinueToUse 会先结束本轮，再以父类的 MOVE+LOOK 完整锁重新启动。
+		 */
+		return this.usesMountedMode() ? EnumSet.of(Flag.LOOK) : super.getFlags();
 	}
 
 	@Override
@@ -144,6 +165,10 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 
 		LivingEntity target = this.skeleton.getTarget();
 		if (target == null || !target.isAlive()) {
+			return;
+		}
+		if (MountedSkeletonCombat.isManagedRider(this.skeleton)) {
+			this.tickFromMount(target);
 			return;
 		}
 
@@ -201,6 +226,22 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		}
 
 		tickBow(target, hasLineOfSight);
+	}
+
+	/**
+	 * 载具负责位移，射手只负责观察和射击；不再让掩体、闪避或拉扯逻辑向乘客导航写入无效路径。
+	 */
+	private void tickFromMount(final LivingEntity target) {
+		if (this.coverPhase != CoverPhase.INACTIVE) {
+			this.clearCoverState(true);
+		}
+		this.skeleton.getNavigation().stop();
+		this.dodgeTicks = 0;
+		this.movementMode = MovementMode.STRAFE;
+		this.faceCombatTarget(target);
+		boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
+		this.updateSightMemory(hasLineOfSight);
+		this.tickBow(target, hasLineOfSight);
 	}
 
 	/** 当前状态仅用于 GameTest、诊断 UI 和后续表现层，不允许外部反向驱动 Goal。 */
@@ -289,11 +330,20 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 
 			int usingTicks = this.skeleton.getTicksUsingItem();
 			if (hasLineOfSight && usingTicks >= BOW_DRAW_TICKS) {
-				this.fireArrow(target, usingTicks, false);
+				if (SkeletonShotSafety.hasClearShot(this.skeleton, target, false)) {
+					this.fireArrow(target, usingTicks, false);
+				} else if (++this.friendlyBlockedTicks >= FRIENDLY_BLOCK_CANCEL_TICKS) {
+					// 队友持续占线时放下弓并换侧，避免无限蓄力或把箭硬塞进队友后背。
+					this.skeleton.stopUsingItem();
+					this.attackTime = Math.max(this.attackTime, 5);
+					this.strafeDirection = -this.strafeDirection;
+					this.friendlyBlockedTicks = 0;
+				}
 			}
 			return;
 		}
 
+		this.friendlyBlockedTicks = 0;
 		this.attackTime--;
 		if (this.attackTime <= 0 && this.seeTime >= 3) {
 			this.skeleton.startUsingItem(ProjectileUtil.getWeaponHoldingHand(this.skeleton, Items.BOW));
@@ -441,6 +491,14 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.coverVisibleTicks = hasLineOfSight ? this.coverVisibleTicks + 1 : 0;
 		if (this.coverVisibleTicks >= PEEK_STABILIZE_TICKS
 			&& this.skeleton.getTicksUsingItem() >= BOW_DRAW_TICKS) {
+			if (!SkeletonShotSafety.hasClearShot(this.skeleton, target, false)) {
+				if (++this.friendlyBlockedTicks >= FRIENDLY_BLOCK_CANCEL_TICKS) {
+					this.friendlyBlockedTicks = 0;
+					this.coverShotsRemaining = 0;
+					return this.beginReturnToCover(plan);
+				}
+				return true;
+			}
 			this.fireArrow(target, this.skeleton.getTicksUsingItem(), true);
 			this.coverShotsRemaining--;
 			// 保留两个 tick 的正面射后姿态，再转身缩回；避免同一服务端 tick 内导航先把模型扭向掩体，
@@ -559,6 +617,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	}
 
 	private void fireArrow(final LivingEntity target, final int usingTicks, final boolean fromCover) {
+		this.friendlyBlockedTicks = 0;
 		this.faceCombatTarget(target);
 		this.skeleton.stopUsingItem();
 		this.skeleton.performRangedAttack(target, BowItem.getPowerForTime(usingTicks));
@@ -660,6 +719,10 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	private boolean smartAiEnabled() {
 		MobsThinkNowConfig config = ConfigManager.get();
 		return config.enabled && config.skeletonAiEnabled;
+	}
+
+	private boolean usesMountedMode() {
+		return MountedSkeletonCombat.sharedTarget(this.skeleton) != null;
 	}
 
 	private static double validPreferredRange(final double configured) {

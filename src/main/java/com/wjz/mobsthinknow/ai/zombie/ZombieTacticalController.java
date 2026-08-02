@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadCombatUrgency;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadState;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
@@ -74,6 +75,13 @@ final class ZombieTacticalController {
 				this.lastSeenAt
 			);
 			this.squadDirective = coordinator.directiveFor(this.zombie);
+			if (this.squadDirective != null
+				&& SquadCombatUrgency.shouldInterruptPreparation(this.zombie, target)
+				&& (this.squadDirective.isMeetingPhase()
+					|| this.squadDirective.state() == SquadState.DEPLOYING)) {
+				// 只忽略本 tick 的准备命令；心跳仍会上报，危险解除后可立即回归队形。
+				this.squadDirective = null;
+			}
 		} else {
 			this.squadDirective = null;
 		}

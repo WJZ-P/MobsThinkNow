@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyLanguage;
 import com.wjz.mobsthinknow.ai.zombie.ZombieVoiceProfile;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
@@ -60,6 +62,10 @@ public final class SquadTheatrics {
 			}
 		}
 
+		long phase = Math.max(0L, now - stateStartedAt);
+		if (config.zombieBodyLanguage) {
+			emitBodyLanguage(state, leader, members, phase);
+		}
 		if (!config.squadVisualEffects) {
 			return;
 		}
@@ -68,8 +74,7 @@ public final class SquadTheatrics {
 			emitLeaderAura(level, leader, now);
 		}
 
-		long phase = Math.max(0L, now - stateStartedAt);
-			switch (state) {
+		switch (state) {
 			case FORMING, RALLYING -> emitMarchGrunts(level, members, phase);
 			case BRIEFING, REORGANIZING -> emitBriefingConversation(level, squadId, leader, members, phase);
 			case DEPLOYING -> emitRoleTrails(level, members, phase);
@@ -197,6 +202,46 @@ public final class SquadTheatrics {
 		);
 	}
 
+	/**
+	 * 身体语言与声音/粒子开关解耦：服务器只在节拍命中时发布一次动作转换，客户端可再用本机配置隐藏。
+	 */
+	private static void emitBodyLanguage(
+		final SquadState state,
+		final @Nullable Mob leader,
+		final List<RoleMember> members,
+		final long phase
+	) {
+		if (state == SquadState.BRIEFING || state == SquadState.REORGANIZING) {
+			if (leader != null && phase % BRIEFING_SENTENCE_TICKS == 0L) {
+				playBodyAction(leader, ZombieBodyAction.COMMAND);
+				return;
+			}
+			if (phase % BRIEFING_SENTENCE_TICKS == BRIEFING_SENTENCE_TICKS / 2) {
+				List<RoleMember> followers = followersOf(members, leader);
+				if (!followers.isEmpty()) {
+					Mob speaker = followers.get((int)((phase / BRIEFING_SENTENCE_TICKS) % followers.size())).mob();
+					playBodyAction(speaker, ZombieBodyAction.ACKNOWLEDGE);
+				}
+			}
+			return;
+		}
+		if (state != SquadState.ENGAGING) {
+			return;
+		}
+		if (phase == 0L && leader != null) {
+			playBodyAction(leader, ZombieBodyAction.WAR_CRY);
+			return;
+		}
+		if (phase < 2L || phase % 2L != 0L) {
+			return;
+		}
+		List<RoleMember> followers = followersOf(members, leader);
+		int index = (int)((phase - 2L) / 2L);
+		if (index < Math.min(followers.size(), WAR_CRY_MAX_VOICES)) {
+			playBodyAction(followers.get(index).mob(), ZombieBodyAction.WAR_CRY);
+		}
+	}
+
 	/** 集结路上偶尔的低吼，暗示它们不是各自游荡而是在赶去汇合。 */
 	private static void emitMarchGrunts(final ServerLevel level, final List<RoleMember> members, final long phase) {
 		if (members.isEmpty() || phase % MARCH_GRUNT_TICKS != 0L) {
@@ -279,18 +324,32 @@ public final class SquadTheatrics {
 		if (phase < 2L || phase % 2L != 0L) {
 			return;
 		}
-		List<RoleMember> followers = new ArrayList<>(members.size());
-		for (RoleMember member : members) {
-			if (leader == null || member.mob() != leader) {
-				followers.add(member);
-			}
-		}
+		List<RoleMember> followers = followersOf(members, leader);
 		int index = (int)((phase - 2L) / 2L);
 		if (index >= Math.min(followers.size(), WAR_CRY_MAX_VOICES)) {
 			return;
 		}
 		Mob voice = followers.get(index).mob();
 		playVoice(level, voice, 0.9F, 0.86F);
+	}
+
+	private static List<RoleMember> followersOf(
+		final List<RoleMember> members,
+		final @Nullable Mob leader
+	) {
+		List<RoleMember> followers = new ArrayList<>(members.size());
+		for (RoleMember member : members) {
+			if (leader == null || member.mob() != leader) {
+				followers.add(member);
+			}
+		}
+		return followers;
+	}
+
+	private static void playBodyAction(final Mob mob, final ZombieBodyAction action) {
+		if (mob instanceof Zombie zombie) {
+			ZombieBodyLanguage.play(zombie, action);
+		}
 	}
 
 	private static void playVoice(final ServerLevel level, final Mob mob, final float volume, final float expression) {

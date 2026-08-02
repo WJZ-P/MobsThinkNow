@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import com.wjz.mobsthinknow.MobsThinkNow;
+import com.wjz.mobsthinknow.ai.creeper.CreeperBlastEvacuationMath;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.giant.GiantIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath;
@@ -253,6 +254,7 @@ public final class ZombieSquadCoordinator {
 
 		ZombieSquad squad = this.squads.get(member.squadId);
 		if (squad != null) {
+			this.updatePrimedCreeperIndex(squad, member);
 			this.mergeObservation(squad, member);
 		}
 	}
@@ -314,6 +316,49 @@ public final class ZombieSquadCoordinator {
 			return null;
 		}
 		return new SquadView(squad.id, squad.state, squad.leaderId, squad.term, squad.planEpoch, squad.memberIds.size());
+	}
+
+	/**
+	 * 返回当前成员最危险的已引信同队苦力怕。
+	 *
+	 * <p>每支小队只维护正在引信的实体 ID，查询复杂度是 O(P)，P 为同时活动的爆点数量，而不是
+	 * O(K) 全员扫描。蜘蛛不会把自己背上的苦力怕误判成应当逃离的外部爆点。</p>
+	 */
+	public @Nullable Creeper nearestPrimedCreeperThreatFor(final Mob mob) {
+		MemberRecord member = this.members.get(mob.getId());
+		ZombieSquad squad = member == null ? null : this.squads.get(member.squadId);
+		if (squad == null || squad.primedCreeperIds.isEmpty()) {
+			return null;
+		}
+
+		Creeper selected = null;
+		double bestRelativeDanger = Double.POSITIVE_INFINITY;
+		Iterator<Integer> iterator = squad.primedCreeperIds.iterator();
+		while (iterator.hasNext()) {
+			int candidateId = iterator.next();
+			MemberRecord candidate = this.members.get(candidateId);
+			if (candidate == null
+				|| candidate.squadId != squad.id
+				|| !(candidate.mob instanceof Creeper creeper)
+				|| !isPrimedCreeper(creeper)) {
+				iterator.remove();
+				continue;
+			}
+			if (creeper == mob || creeper.getVehicle() == mob || mob.getVehicle() == creeper) {
+				continue;
+			}
+			double distanceSquared = mob.distanceToSqr(creeper);
+			if (!CreeperBlastEvacuationMath.isInsideDanger(distanceSquared, creeper.isPowered())) {
+				continue;
+			}
+			double radius = CreeperBlastEvacuationMath.dangerRadius(creeper.isPowered());
+			double relativeDanger = distanceSquared / (radius * radius);
+			if (relativeDanger < bestRelativeDanger) {
+				bestRelativeDanger = relativeDanger;
+				selected = creeper;
+			}
+		}
+		return selected;
 	}
 
 	/**
@@ -540,6 +585,7 @@ public final class ZombieSquadCoordinator {
 			if (member.squadId == 0L && member.target == first.target) {
 				squad.memberIds.add(member.mob.getId());
 				member.squadId = squad.id;
+				this.updatePrimedCreeperIndex(squad, member);
 				this.mergeObservation(squad, member);
 			}
 		}
@@ -1052,6 +1098,18 @@ public final class ZombieSquadCoordinator {
 		}
 	}
 
+	private void updatePrimedCreeperIndex(final ZombieSquad squad, final MemberRecord member) {
+		if (member.mob instanceof Creeper creeper && isPrimedCreeper(creeper)) {
+			squad.primedCreeperIds.add(member.mob.getId());
+		} else {
+			squad.primedCreeperIds.remove(member.mob.getId());
+		}
+	}
+
+	private static boolean isPrimedCreeper(final Creeper creeper) {
+		return creeper.isAlive() && (creeper.isIgnited() || creeper.getSwellDir() > 0);
+	}
+
 	private void enterState(
 		final ZombieSquad squad,
 		final SquadState state,
@@ -1073,6 +1131,7 @@ public final class ZombieSquadCoordinator {
 		ZombieSquad squad = this.squads.get(member.squadId);
 		if (squad != null) {
 			squad.memberIds.remove(member.mob.getId());
+			squad.primedCreeperIds.remove(member.mob.getId());
 			squad.roles.remove(member.mob.getId());
 			squad.orders.remove(member.mob.getId());
 			boolean removedCarrier = squad.transportPartners.remove(member.mob.getId()) != null;
@@ -1336,6 +1395,7 @@ public final class ZombieSquadCoordinator {
 		private final long id;
 		private final LivingEntity target;
 		private final Set<Integer> memberIds = new LinkedHashSet<>();
+		private final Set<Integer> primedCreeperIds = new LinkedHashSet<>();
 		private final Map<Integer, SquadRole> roles = new HashMap<>();
 		private final Map<Integer, SquadOrder> orders = new HashMap<>();
 		private final Map<Integer, Integer> transportPartners = new HashMap<>();

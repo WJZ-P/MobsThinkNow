@@ -455,7 +455,17 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		}
 
 		long now = this.now();
+		int rocketsBeforeTick = this.orbitRocketsLaunched;
 		this.tickOrbitRocketPlan(now);
+		if (this.orbitRocketsLaunched > rocketsBeforeTick) {
+			/*
+			 * 发射烟花和切换蓄力不能发生在同一个服务端 tick。否则客户端只会收到
+			 * ORBITING -> ARMING 的最终状态，刚抬起的副手和助推动作会被举矛姿态吞掉；
+			 * 监控端同样无法把这枚烟花归属到本轮盘旋。保留完整一拍也让 1 枚预算的
+			 * 航线和 2 枚预算的航线遵循同一套可观察状态契约。
+			 */
+			return;
+		}
 		/*
 		 * 公共烟花冷却在极端航线中可能一直压到硬截止的最后一拍。若本轮仍一枚都没发，
 		 * 提前一拍开放最低预算并保留这一帧 ORBITING：玩家能看见最后一次助推，监控端也不会
@@ -466,8 +476,9 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 			&& this.availableRocketCount() > 0) {
 			this.nextRocketAt = Math.min(this.nextRocketAt, now);
 			this.nextOrbitRocketAt = Math.min(this.nextOrbitRocketAt, now);
+			int rocketsBeforeForcedLaunch = this.orbitRocketsLaunched;
 			this.tickOrbitRocketPlan(now);
-			if (this.orbitRocketsLaunched > 0) {
+			if (this.orbitRocketsLaunched > rocketsBeforeForcedLaunch) {
 				return;
 			}
 		}

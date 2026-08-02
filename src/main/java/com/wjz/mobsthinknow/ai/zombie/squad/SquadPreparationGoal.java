@@ -82,6 +82,9 @@ public final class SquadPreparationGoal extends Goal {
 		if (target == null || !target.isAlive()) {
 			return null;
 		}
+		if (SquadCombatUrgency.shouldInterruptPreparation(this.mob, target)) {
+			return null;
+		}
 		SquadDirective current = ZombieSquadCoordinator.forLevel(level).directiveFor(this.mob);
 		return current != null
 			&& (current.isMeetingPhase() || current.state() == SquadState.DEPLOYING)

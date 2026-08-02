@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadCombatUrgency;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadState;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import net.minecraft.server.level.ServerLevel;
@@ -24,6 +25,9 @@ final class SkeletonSquadOrders {
 		final double speedModifier
 	) {
 		if (!(skeleton.level() instanceof ServerLevel serverLevel)) {
+			return false;
+		}
+		if (SquadCombatUrgency.shouldInterruptPreparation(skeleton, target)) {
 			return false;
 		}
 		SquadDirective directive = ZombieSquadCoordinator.forLevel(serverLevel).directiveFor(skeleton);

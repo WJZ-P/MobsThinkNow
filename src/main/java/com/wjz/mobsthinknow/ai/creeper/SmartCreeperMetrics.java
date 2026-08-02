@@ -10,12 +10,13 @@ public final class SmartCreeperMetrics {
 	private static final AtomicLong MOVING_FUSES = new AtomicLong();
 	private static final AtomicLong BREACH_FUSES = new AtomicLong();
 	private static final AtomicLong ABORTED_FUSES = new AtomicLong();
+	private static final AtomicLong SQUAD_EVACUATIONS = new AtomicLong();
 
 	private SmartCreeperMetrics() {
 	}
 
 	public static void goalsInstalled() {
-		INSTALLED_GOALS.addAndGet(2L);
+		INSTALLED_GOALS.addAndGet(3L);
 	}
 
 	public static void flankStarted() {
@@ -38,6 +39,10 @@ public final class SmartCreeperMetrics {
 		ABORTED_FUSES.incrementAndGet();
 	}
 
+	public static void squadEvacuationStarted() {
+		SQUAD_EVACUATIONS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -45,7 +50,8 @@ public final class SmartCreeperMetrics {
 			INTERCEPTS.get(),
 			MOVING_FUSES.get(),
 			BREACH_FUSES.get(),
-			ABORTED_FUSES.get()
+			ABORTED_FUSES.get(),
+			SQUAD_EVACUATIONS.get()
 		);
 	}
 
@@ -55,7 +61,8 @@ public final class SmartCreeperMetrics {
 		long intercepts,
 		long movingFuses,
 		long breachFuses,
-		long abortedFuses
+		long abortedFuses,
+		long squadEvacuations
 	) {
 	}
 }

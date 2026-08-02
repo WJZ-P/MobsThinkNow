@@ -92,6 +92,7 @@ public final class ReactiveRetreatGoal extends Goal {
 		this.nextWaterScreenAttemptAt = now;
 		this.zombie.getNavigation().stop();
 		this.zombie.stopUsingItem();
+		ZombieBodyLanguage.startPersistent(this.zombie, ZombieBodyAction.RETREAT);
 		SmartZombieMetrics.retreatTriggered();
 
 		if (this.zombie.level() instanceof ServerLevel serverLevel) {
@@ -151,6 +152,7 @@ public final class ReactiveRetreatGoal extends Goal {
 		this.retreatDestination = null;
 		this.retreatDeadline = 0L;
 		this.nextWaterScreenAttemptAt = 0L;
+		ZombieBodyLanguage.stopPersistent(this.zombie, ZombieBodyAction.RETREAT);
 	}
 
 	@Override

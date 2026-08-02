@@ -5,7 +5,13 @@ import com.wjz.mobsthinknow.ai.giant.GiantBoardingPhase;
 import com.wjz.mobsthinknow.ai.giant.GiantHand;
 import com.wjz.mobsthinknow.ai.giant.GiantHandPhase;
 import com.wjz.mobsthinknow.ai.giant.GiantMeleeAnimation;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAnimation;
+import com.wjz.mobsthinknow.ai.zombie.ZombieProfession;
 import com.wjz.mobsthinknow.client.render.GiantCarrierRenderStateAccess;
+import com.wjz.mobsthinknow.client.render.ZombieBodyActionRenderStateAccess;
+import com.wjz.mobsthinknow.client.render.ZombieProfessionRenderStateAccess;
+import com.wjz.mobsthinknow.config.ConfigManager;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.monster.zombie.AbstractZombieModel;
@@ -16,6 +22,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.item.Items;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -39,6 +46,7 @@ public abstract class AbstractZombieModelMixin {
 	) {
 		GiantCarrierRenderStateAccess carrier = (GiantCarrierRenderStateAccess)state;
 		HumanoidModel<?> model = (HumanoidModel<?>)(Object)this;
+		mobsthinknow$applyZombieBodyLanguage(model, state);
 		mobsthinknow$applyMeleePose(
 			model,
 			GiantMeleeAnimation.sample(
@@ -52,6 +60,106 @@ public abstract class AbstractZombieModelMixin {
 			: GiantArmAnimation.boardingPose(boardingPhase, carrier.mobsthinknow$getGiantBoardingProgress());
 		mobsthinknow$applyPose(model.rightArm, rightPose);
 		mobsthinknow$applyPose(model.leftArm, mobsthinknow$sampleHand(carrier, GiantHand.LEFT));
+	}
+
+	@Unique
+	private static void mobsthinknow$applyZombieBodyLanguage(
+		final HumanoidModel<?> model,
+		final ZombieRenderState state
+	) {
+		if (!ConfigManager.get().zombieBodyLanguage
+			|| state.isUsingItem
+			|| state.isFallFlying
+			|| state.isVisuallySwimming
+			|| state.swimAmount > 0.25F
+			|| state.isPassenger) {
+			return;
+		}
+
+		ZombieBodyActionRenderStateAccess actionState = (ZombieBodyActionRenderStateAccess)state;
+		ZombieBodyAction action = actionState.mobsthinknow$getBodyAction();
+		if (action != ZombieBodyAction.NONE && state.attackTime <= 0.01F) {
+			mobsthinknow$applyZombiePose(
+				model,
+				ZombieBodyAnimation.sample(
+					action,
+					actionState.mobsthinknow$getBodyActionElapsedTicks(),
+					state.ageInTicks,
+					mobsthinknow$actionArmIsRight(state, action)
+				)
+			);
+			return;
+		}
+
+		if (!state.isAggressive || state.attackTime > 0.01F || state.getMainHandItemStack().isEmpty()) {
+			return;
+		}
+		ZombieProfession profession = ((ZombieProfessionRenderStateAccess)state).mobsthinknow$getZombieProfession();
+		mobsthinknow$applyZombiePose(
+			model,
+			ZombieBodyAnimation.combatReady(
+				profession,
+				state.mainArm == HumanoidArm.RIGHT,
+				state.ageInTicks,
+				state.walkAnimationSpeed
+			)
+		);
+	}
+
+	@Unique
+	private static boolean mobsthinknow$actionArmIsRight(
+		final ZombieRenderState state,
+		final ZombieBodyAction action
+	) {
+		if (action == ZombieBodyAction.SHIELD_BASH) {
+			// 盾牌由副手持有，因此动作臂和主手相反。
+			return state.mainArm != HumanoidArm.RIGHT;
+		}
+		if (action == ZombieBodyAction.ENGINEER_WORK) {
+			boolean rightTool = mobsthinknow$isEngineerTool(state.rightHandItemStack);
+			boolean leftTool = mobsthinknow$isEngineerTool(state.leftHandItemStack);
+			if (rightTool != leftTool) {
+				return rightTool;
+			}
+		}
+		return state.mainArm == HumanoidArm.RIGHT;
+	}
+
+	@Unique
+	private static boolean mobsthinknow$isEngineerTool(final ItemStack stack) {
+		return stack.is(Items.TNT) || stack.is(Items.FLINT_AND_STEEL);
+	}
+
+	@Unique
+	private static void mobsthinknow$applyZombiePose(
+		final HumanoidModel<?> model,
+		final ZombieBodyAnimation.BodyPose pose
+	) {
+		mobsthinknow$applyZombiePart(model.rightArm, pose.rightArm());
+		mobsthinknow$applyZombiePart(model.leftArm, pose.leftArm());
+		mobsthinknow$applyZombiePart(model.body, pose.body());
+		mobsthinknow$applyZombiePart(model.rightLeg, pose.rightLeg());
+		mobsthinknow$applyZombiePart(model.leftLeg, pose.leftLeg());
+		ZombieBodyAnimation.PartPose head = pose.head();
+		if (head.weight() > 0.0F) {
+			// 头部采用相对偏移，保留 LookControl 已计算的目标朝向；否则点头会突然把脸扭回正前方。
+			model.head.xRot += head.xRot() * head.weight();
+			model.head.yRot += head.yRot() * head.weight();
+			model.head.zRot += head.zRot() * head.weight();
+		}
+	}
+
+	@Unique
+	private static void mobsthinknow$applyZombiePart(
+		final ModelPart part,
+		final ZombieBodyAnimation.PartPose pose
+	) {
+		if (pose.weight() <= 0.0F) {
+			return;
+		}
+		part.xRot = Mth.lerp(pose.weight(), part.xRot, pose.xRot());
+		part.yRot = Mth.lerp(pose.weight(), part.yRot, pose.yRot());
+		part.zRot = Mth.lerp(pose.weight(), part.zRot, pose.zRot());
 	}
 
 	@Unique

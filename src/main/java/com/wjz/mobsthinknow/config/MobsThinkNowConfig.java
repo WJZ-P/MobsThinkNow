@@ -67,6 +67,24 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_GIANT_ZOMBIE_MOVEMENT_SPEED = 0.16;
 	public static final double MINIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED = 0.08;
 	public static final double MAXIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED = 0.22;
+	public static final int DEFAULT_SWORD_FEINT_MINIMUM_INTELLIGENCE = 7;
+	public static final double DEFAULT_SWORD_FEINT_CHANCE = 0.35;
+	public static final int DEFAULT_SHIELD_BASH_MINIMUM_INTELLIGENCE = 7;
+	public static final double DEFAULT_SHIELD_BASH_CHANCE = 0.35;
+	public static final double DEFAULT_SHIELD_BASH_DAMAGE = 2.0;
+	public static final double DEFAULT_SHIELD_BASH_KNOCKBACK = 1.25;
+	public static final double MAXIMUM_SHIELD_BASH_DAMAGE = 8.0;
+	public static final double MAXIMUM_SHIELD_BASH_KNOCKBACK = 3.0;
+	public static final double DEFAULT_BLAZE_PREFERRED_RANGE = 10.0;
+	public static final double MINIMUM_BLAZE_PREFERRED_RANGE = 7.0;
+	public static final double MAXIMUM_BLAZE_PREFERRED_RANGE = 16.0;
+	public static final double DEFAULT_NETHER_PREDICTION_STRENGTH = 0.70;
+	public static final double DEFAULT_HOGLIN_CHARGE_SPEED = 1.15;
+	public static final double MINIMUM_HOGLIN_CHARGE_SPEED = 0.85;
+	public static final double MAXIMUM_HOGLIN_CHARGE_SPEED = 1.45;
+	public static final double DEFAULT_MAGMA_CUBE_POUNCE_SPEED = 0.68;
+	public static final double MINIMUM_MAGMA_CUBE_POUNCE_SPEED = 0.35;
+	public static final double MAXIMUM_MAGMA_CUBE_POUNCE_SPEED = 1.00;
 
 	public boolean enabled = true;
 	public boolean zombieAiEnabled = true;
@@ -93,6 +111,8 @@ public final class MobsThinkNowConfig {
 	public boolean creeperFlanking = true;
 	/** 引信鸣响后继续追向预测爆点；原版 30 tick 引信与首次嘶声保持不变。 */
 	public boolean creeperMovingFuse = true;
+	/** 同队苦力怕进入引信后，其他僵尸、骷髅、苦力怕与蜘蛛会退出真实爆炸伤害范围。 */
+	public boolean creeperSquadEvacuation = true;
 	/** 高智力个体只对可被爆炸破坏的第一层软墙保留引信；同时服从 mobGriefing。 */
 	public boolean creeperWallBreaching = true;
 	/** IQ 10 普通个体的最远起爆距离；低智力按 3 格原版距离向该值插值，带电个体另加半格。 */
@@ -137,9 +157,30 @@ public final class MobsThinkNowConfig {
 	public boolean giantZombiePayloadThrowing = true;
 	/** 以带前摇/命中帧/后摇的横扫、拍击、踩踏和双拳砸地替代原版瞬时挥拳。 */
 	public boolean giantZombieMeleeActions = true;
+	/** 下界战术总开关；关闭后猪灵、烈焰人、恶魂、疣猪兽与岩浆怪全部委托原版 AI。 */
+	public boolean netherAiEnabled = true;
+	/** 猪灵弩手按实体散列分配射击侧翼，近战猪灵与蛮兵从不同角度接敌；不执行同伴全量扫描。 */
+	public boolean piglinFormationTactics = true;
+	/** 烈焰人在目标外围盘旋、近身拉开，并按难度发射二至四连发的可读弹幕。 */
+	public boolean blazeCombatTactics = true;
+	public double blazePreferredRange = DEFAULT_BLAZE_PREFERRED_RANGE;
+	/** 烈焰弹与恶魂火球对移动目标使用有上限的速度提前量；仍保留原版碰撞与误差。 */
+	public double netherPredictionStrength = DEFAULT_NETHER_PREDICTION_STRENGTH;
+	/** 恶魂在开火后更换炮击位置，并将目标速度纳入下一枚火球的瞄准。 */
+	public boolean ghastArtilleryTactics = true;
+	/** 成年疣猪兽与僵尸疣猪兽在安全直线上先低头蓄力，再执行一次有冷却的冲撞。 */
+	public boolean hoglinChargeTactics = true;
+	public double hoglinChargeSpeed = DEFAULT_HOGLIN_CHARGE_SPEED;
+	/** 岩浆怪起跳时预测目标短期移动，为本次跳跃加入有限水平扑击速度。 */
+	public boolean magmaCubePredictivePounce = true;
+	public double magmaCubePounceSpeed = DEFAULT_MAGMA_CUBE_POUNCE_SPEED;
 	public boolean shieldFlanking = true;
 	public boolean packSurrounding = true;
 	public boolean squadVisualEffects = true;
+	/** 客户端把普通僵尸按持久职业切换为九套 64x64 像素皮肤；关闭后尊重原版/资源包纹理。 */
+	public boolean zombieProfessionSkins = true;
+	/** 客户端播放指挥、应声、怒吼、撤退冲刺以及剑/斧战备姿势。 */
+	public boolean zombieBodyLanguage = true;
 	public boolean squadRoleNameTags = true;
 	/** 每只普通僵尸是否获得随世界难度整体上移的速度、生命、伤害和追踪距离差异；固定声线属于表现层。 */
 	public boolean individualTraits = true;
@@ -185,6 +226,16 @@ public final class MobsThinkNowConfig {
 	public boolean armedSquads = false;
 	/** 所有受支持地面僵尸家族成员持剑/斧时按武器冷却周旋；斧手会优先尝试跳劈。 */
 	public boolean weaponCombatTactics = true;
+	/** 高智力剑士面对正在格挡的目标时，偶尔以前后步假挥诱导目标过早放盾。 */
+	public boolean swordFeints = true;
+	public int swordFeintMinimumIntelligence = DEFAULT_SWORD_FEINT_MINIMUM_INTELLIGENCE;
+	public double swordFeintChance = DEFAULT_SWORD_FEINT_CHANCE;
+	/** 高智力盾卫成功格挡后，偶尔以副手盾击代替立即挥剑。 */
+	public boolean shieldBashes = true;
+	public int shieldBashMinimumIntelligence = DEFAULT_SHIELD_BASH_MINIMUM_INTELLIGENCE;
+	public double shieldBashChance = DEFAULT_SHIELD_BASH_CHANCE;
+	public double shieldBashDamage = DEFAULT_SHIELD_BASH_DAMAGE;
+	public double shieldBashKnockback = DEFAULT_SHIELD_BASH_KNOCKBACK;
 	/** 原版自然生成的持矛僵尸是否自动装备鞘翅和 16～64 枚烟花，改用空中突刺。 */
 	public boolean spearAirAssault = true;
 	/** 僵尸专用烟花的推进效率；1.0 对齐原版，默认 0.5 将稳定推进速度限制为约一半。 */
@@ -296,6 +347,12 @@ public final class MobsThinkNowConfig {
 		this.armedShieldChance = clamp(this.armedShieldChance, 0.0, 1.0);
 		this.armedShieldBreakSeconds = clamp(this.armedShieldBreakSeconds, 0.0, 10.0);
 		this.armedFlankSpeedBonus = clamp(this.armedFlankSpeedBonus, 0.0, 0.35);
+		this.swordFeintMinimumIntelligence = clamp(this.swordFeintMinimumIntelligence, 1, 10);
+		this.swordFeintChance = clamp(this.swordFeintChance, 0.0, 1.0);
+		this.shieldBashMinimumIntelligence = clamp(this.shieldBashMinimumIntelligence, 1, 10);
+		this.shieldBashChance = clamp(this.shieldBashChance, 0.0, 1.0);
+		this.shieldBashDamage = clamp(this.shieldBashDamage, 0.0, MAXIMUM_SHIELD_BASH_DAMAGE);
+		this.shieldBashKnockback = clamp(this.shieldBashKnockback, 0.0, MAXIMUM_SHIELD_BASH_KNOCKBACK);
 		this.spearRocketEfficiency = clamp(
 			this.spearRocketEfficiency,
 			MINIMUM_SPEAR_ROCKET_EFFICIENCY,
@@ -364,6 +421,22 @@ public final class MobsThinkNowConfig {
 			this.giantZombieMovementSpeed,
 			MINIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED,
 			MAXIMUM_GIANT_ZOMBIE_MOVEMENT_SPEED
+		);
+		this.blazePreferredRange = clamp(
+			this.blazePreferredRange,
+			MINIMUM_BLAZE_PREFERRED_RANGE,
+			MAXIMUM_BLAZE_PREFERRED_RANGE
+		);
+		this.netherPredictionStrength = clamp(this.netherPredictionStrength, 0.0, 1.0);
+		this.hoglinChargeSpeed = clamp(
+			this.hoglinChargeSpeed,
+			MINIMUM_HOGLIN_CHARGE_SPEED,
+			MAXIMUM_HOGLIN_CHARGE_SPEED
+		);
+		this.magmaCubePounceSpeed = clamp(
+			this.magmaCubePounceSpeed,
+			MINIMUM_MAGMA_CUBE_POUNCE_SPEED,
+			MAXIMUM_MAGMA_CUBE_POUNCE_SPEED
 		);
 		this.waterBucketChance = clamp(this.waterBucketChance, 0.0, 1.0);
 		this.lavaBucketChance = clamp(this.lavaBucketChance, 0.0, 1.0);

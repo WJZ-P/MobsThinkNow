@@ -172,11 +172,13 @@ public final class ZombieSpecialEquipment {
 		if (utility == UtilityClass.WATER) {
 			ensureWaterMobility(zombie, ConfigManager.get().specialEquipmentDropChance);
 		}
+		ZombieProfessionProfile.assignFromLoadout(zombie);
 	}
 
 	/** 玩家移走源方块后保留真实的空桶，但清除辅助身份，后续由普通战斗 Goal 接手。 */
 	public static void markFluidLost(final Zombie zombie) {
 		stateAccess(zombie).mobsthinknow$setFluidCarrierState(ZombieFluidCarrierState.NONE);
+		ZombieProfessionProfile.assignFromLoadout(zombie);
 	}
 
 	public static void save(final Zombie zombie, final ValueOutput output) {
@@ -218,6 +220,7 @@ public final class ZombieSpecialEquipment {
 		if (loaded.utility() == UtilityClass.WATER) {
 			ensureWaterMobility(zombie, ConfigManager.get().specialEquipmentDropChance);
 		}
+		ZombieProfessionProfile.assignFromLoadout(zombie);
 	}
 
 	/**

@@ -8,6 +8,7 @@ import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
 import com.wjz.mobsthinknow.ai.enderman.SmartEndermanMetrics;
 import com.wjz.mobsthinknow.ai.giant.SmartGiantMetrics;
+import com.wjz.mobsthinknow.ai.nether.SmartNetherMetrics;
 import com.wjz.mobsthinknow.ai.spider.SmartSpiderMetrics;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
@@ -39,6 +40,7 @@ public final class MtnCommands {
 						.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders))
 						.then(Commands.literal("endermen").executes(MtnCommands::spawnAllEndermen))
 						.then(Commands.literal("giants").executes(MtnCommands::spawnAllGiants))
+						.then(Commands.literal("nether").executes(MtnCommands::spawnAllNether))
 				)
 				.then(
 					Commands.literal("spawnzombies")
@@ -70,6 +72,11 @@ public final class MtnCommands {
 						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 						.executes(MtnCommands::spawnAllGiants)
 				)
+				.then(
+					Commands.literal("spawnnether")
+						.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
+						.executes(MtnCommands::spawnAllNether)
+				)
 				.then(spawnSpecificCommand())
 				.then(
 					Commands.literal("reload")
@@ -84,7 +91,7 @@ public final class MtnCommands {
 		LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("spawn")
 			.requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 			.executes(MtnCommands::listSpawnTypes);
-		// 先注册全局、分类与基础实体入口；后面的二十九个战术/变种预设仍保留独立 Tab literal。
+		// 先注册全局、分类与基础实体入口；所有战术/变种预设仍保留独立 Tab literal。
 		command.then(Commands.literal("all").executes(MtnCommands::spawnAll));
 		command.then(Commands.literal("zombies").executes(MtnCommands::spawnAllZombies));
 		command.then(Commands.literal("skeletons").executes(MtnCommands::spawnAllSkeletons));
@@ -92,6 +99,7 @@ public final class MtnCommands {
 		command.then(Commands.literal("spiders").executes(MtnCommands::spawnAllSpiders));
 		command.then(Commands.literal("endermen").executes(MtnCommands::spawnAllEndermen));
 		command.then(Commands.literal("giants").executes(MtnCommands::spawnAllGiants));
+		command.then(Commands.literal("nether").executes(MtnCommands::spawnAllNether));
 		command.then(
 			Commands.literal("zombie")
 				.executes(context -> spawnSpecific(
@@ -188,6 +196,12 @@ public final class MtnCommands {
 						))
 				)
 		);
+		command.then(netherAlias("piglin", NetherShowcaseSpawner.ShowcaseArchetype.PIGLIN_CROSSBOW));
+		command.then(netherAlias("hoglin", NetherShowcaseSpawner.ShowcaseArchetype.HOGLIN_CHARGER));
+		command.then(netherAlias("zoglin", NetherShowcaseSpawner.ShowcaseArchetype.ZOGLIN_CHARGER));
+		command.then(netherAlias("blaze", NetherShowcaseSpawner.ShowcaseArchetype.BLAZE_SKIRMISHER));
+		command.then(netherAlias("ghast", NetherShowcaseSpawner.ShowcaseArchetype.GHAST_ARTILLERY));
+		command.then(netherAlias("magma_cube", NetherShowcaseSpawner.ShowcaseArchetype.MAGMA_CUBE_HUNTER));
 		for (ZombieShowcaseSpawner.ShowcaseArchetype archetype
 			: ZombieShowcaseSpawner.ShowcaseArchetype.values()) {
 			command.then(
@@ -290,7 +304,40 @@ public final class MtnCommands {
 					)
 			);
 		}
+		for (NetherShowcaseSpawner.ShowcaseArchetype archetype
+			: NetherShowcaseSpawner.ShowcaseArchetype.values()) {
+			command.then(
+				Commands.literal(archetype.commandId())
+					.executes(context -> spawnSpecificNether(context, archetype, 1))
+					.then(
+						Commands.argument(
+							"count",
+							IntegerArgumentType.integer(1, NetherShowcaseSpawner.MAX_BATCH_SIZE)
+						).executes(context -> spawnSpecificNether(
+							context,
+							archetype,
+							IntegerArgumentType.getInteger(context, "count")
+						))
+					)
+			);
+		}
 		return command;
+	}
+
+	private static LiteralArgumentBuilder<CommandSourceStack> netherAlias(
+		final String literal,
+		final NetherShowcaseSpawner.ShowcaseArchetype archetype
+	) {
+		return Commands.literal(literal)
+			.executes(context -> spawnSpecificNether(context, archetype, 1))
+			.then(
+				Commands.argument("count", IntegerArgumentType.integer(1, NetherShowcaseSpawner.MAX_BATCH_SIZE))
+					.executes(context -> spawnSpecificNether(
+						context,
+						archetype,
+						IntegerArgumentType.getInteger(context, "count")
+					))
+			);
 	}
 
 	private static int status(final CommandContext<CommandSourceStack> context) {
@@ -301,7 +348,8 @@ public final class MtnCommands {
 		SmartSpiderMetrics.Snapshot spiderMetrics = SmartSpiderMetrics.snapshot();
 		SmartEndermanMetrics.Snapshot endermanMetrics = SmartEndermanMetrics.snapshot();
 		SmartGiantMetrics.Snapshot giantMetrics = SmartGiantMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d"
+		SmartNetherMetrics.Snapshot netherMetrics = SmartNetherMetrics.snapshot();
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, swordFeints=%d, axeWindups=%d, shieldBashes=%d, shieldBashHits=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d, creeperSquadEvacuations=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -326,6 +374,10 @@ public final class MtnCommands {
 				metrics.engineerWaterDeployments(),
 				metrics.engineerLavaDeployments(),
 				metrics.engineerIgnitions(),
+				metrics.swordFeints(),
+				metrics.axeWindups(),
+				metrics.shieldBashes(),
+				metrics.shieldBashHits(),
 				config.skeletonAiEnabled,
 				skeletonMetrics.installedGoals(),
 				skeletonMetrics.installedEmergencyGoals(),
@@ -344,7 +396,8 @@ public final class MtnCommands {
 				creeperMetrics.intercepts(),
 				creeperMetrics.movingFuses(),
 				creeperMetrics.breachFuses(),
-				creeperMetrics.abortedFuses()
+				creeperMetrics.abortedFuses(),
+				creeperMetrics.squadEvacuations()
 			);
 		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d"
 			.formatted(
@@ -385,6 +438,19 @@ public final class MtnCommands {
 				giantMetrics.meleeInterrupts(),
 				giantMetrics.grappleReleaseRelocations()
 			);
+		message += ", netherAI=%s, netherControllers=%d, piglinFormationMoves=%d, blazeVolleys=%d, blazeFireballs=%d, ghastShots=%d, ghastRelocations=%d, hoglinCharges=%d, hoglinImpacts=%d, magmaPounces=%d"
+			.formatted(
+				config.netherAiEnabled,
+				netherMetrics.installedControllers(),
+				netherMetrics.piglinFormationMoves(),
+				netherMetrics.blazeVolleys(),
+				netherMetrics.blazeFireballs(),
+				netherMetrics.ghastShots(),
+				netherMetrics.ghastRelocations(),
+				netherMetrics.hoglinCharges(),
+				netherMetrics.hoglinImpacts(),
+				netherMetrics.magmaPounces()
+			);
 		String statusMessage = message;
 		context.getSource().sendSuccess(() -> Component.literal(statusMessage), false);
 		return Command.SINGLE_SUCCESS;
@@ -408,7 +474,7 @@ public final class MtnCommands {
 			context.getSource().sendSuccess(
 				() -> Component.translatableWithFallback(
 					"mobsthinknow.command.spawn_all.success",
-					"Spawned %s intelligent-AI archetypes (%s entities): %s zombies, %s skeletons, %s creepers, %s spiders, %s endermen, and %s giants.",
+					"Spawned %s intelligent-AI archetypes (%s entities): %s zombies, %s skeletons, %s creepers, %s spiders, %s endermen, %s giants, and %s Nether mobs.",
 					count,
 					result.totalEntities(),
 					AllShowcaseSpawner.ZOMBIE_ARCHETYPES,
@@ -416,7 +482,8 @@ public final class MtnCommands {
 					AllShowcaseSpawner.CREEPER_ARCHETYPES,
 					AllShowcaseSpawner.SPIDER_ARCHETYPES,
 					AllShowcaseSpawner.ENDERMAN_ARCHETYPES,
-					AllShowcaseSpawner.GIANT_ARCHETYPES
+					AllShowcaseSpawner.GIANT_ARCHETYPES,
+					AllShowcaseSpawner.NETHER_ARCHETYPES
 				),
 				true
 			);
@@ -521,9 +588,15 @@ public final class MtnCommands {
 				.map(GiantShowcaseSpawner.ShowcaseArchetype::commandId)
 				.toList()
 		);
-		String types = "all, zombie, skeleton, creeper, spider, enderman, giant, zombies, skeletons, creepers, spiders, endermen, giants, "
+		String netherTypes = String.join(
+			", ",
+			Arrays.stream(NetherShowcaseSpawner.ShowcaseArchetype.values())
+				.map(NetherShowcaseSpawner.ShowcaseArchetype::commandId)
+				.toList()
+		);
+		String types = "all, zombie, skeleton, creeper, spider, enderman, giant, piglin, hoglin, zoglin, blaze, ghast, magma_cube, zombies, skeletons, creepers, spiders, endermen, giants, nether, "
 			+ zombieTypes + ", " + skeletonTypes + ", " + creeperTypes + ", " + spiderTypes + ", " + endermanTypes
-			+ ", " + giantTypes;
+			+ ", " + giantTypes + ", " + netherTypes;
 		context.getSource().sendSuccess(
 			() -> Component.translatableWithFallback(
 				"mobsthinknow.command.spawn.types",
@@ -1026,6 +1099,93 @@ public final class MtnCommands {
 				requestedCount
 			);
 			case NONE -> throw new IllegalStateException("Successful giant spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(error);
+		return 0;
+	}
+
+	private static int spawnAllNether(final CommandContext<CommandSourceStack> context) {
+		NetherShowcaseSpawner.SpawnResult result = NetherShowcaseSpawner.spawnAll(context.getSource());
+		if (result.success()) {
+			int count = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn_all_nether.success",
+					"Spawned %s intelligent Nether combat archetypes.",
+					count
+				),
+				true
+			);
+			return count;
+		}
+		ErrorMessage error = switch (result.failure()) {
+			case PEACEFUL -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_nether.no_space",
+				"No nearby formation has enough ground and air clearance for every Nether archetype."
+			);
+			case CREATE_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_nether.create_failed",
+				"Preparing the Nether combat formation failed; nothing was added."
+			);
+			case ADD_FAILED -> new ErrorMessage(
+				"mobsthinknow.command.spawn_all_nether.add_failed",
+				"Adding the Nether combat formation failed; this spawn attempt was rolled back."
+			);
+			case NONE -> throw new IllegalStateException("Successful Nether spawn reached the failure branch.");
+		};
+		context.getSource().sendFailure(Component.translatableWithFallback(error.key(), error.fallback()));
+		return 0;
+	}
+
+	private static int spawnSpecificNether(
+		final CommandContext<CommandSourceStack> context,
+		final NetherShowcaseSpawner.ShowcaseArchetype archetype,
+		final int requestedCount
+	) {
+		NetherShowcaseSpawner.SpawnResult result = NetherShowcaseSpawner.spawnBatch(
+			context.getSource(),
+			archetype,
+			requestedCount
+		);
+		if (result.success()) {
+			int spawnedCount = result.spawned().size();
+			context.getSource().sendSuccess(
+				() -> Component.translatableWithFallback(
+					"mobsthinknow.command.spawn.success",
+					"Spawned %s × %s (%s).",
+					spawnedCount,
+					archetype.displayName(),
+					archetype.commandId()
+				),
+				true
+			);
+			return spawnedCount;
+		}
+		Component error = switch (result.failure()) {
+			case PEACEFUL -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn_all.peaceful",
+				"Peaceful difficulty removes hostile mobs; switch difficulty before using this command."
+			);
+			case NO_SPACE -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.no_space",
+				"No safe nearby space was found for all %s requested Nether mobs; nothing was spawned.",
+				requestedCount
+			);
+			case CREATE_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.create_failed",
+				"Preparing the requested batch of %s Nether mobs failed; nothing was spawned.",
+				requestedCount
+			);
+			case ADD_FAILED -> Component.translatableWithFallback(
+				"mobsthinknow.command.spawn.add_failed",
+				"Adding the requested batch of %s Nether mobs failed; the entire batch was rolled back.",
+				requestedCount
+			);
+			case NONE -> throw new IllegalStateException("Successful Nether spawn reached the failure branch.");
 		};
 		context.getSource().sendFailure(error);
 		return 0;

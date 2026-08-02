@@ -149,6 +149,14 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperMovingFuse = value))
 			.build());
 		creeperCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.creeper_squad_evacuation"),
+			config.creeperSquadEvacuation
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_squad_evacuation.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperSquadEvacuation = value))
+			.build());
+		creeperCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.creeper_wall_breaching"),
 			config.creeperWallBreaching
 		)
@@ -367,6 +375,98 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.giantZombieMeleeActions = value))
 			.build());
 
+		ConfigCategory netherCategory = builder.getOrCreateCategory(
+			Component.translatable("mobsthinknow.config.category.nether")
+		);
+		netherCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.nether_ai_enabled"),
+			config.netherAiEnabled
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.nether_ai_enabled.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.netherAiEnabled = value))
+			.build());
+		netherCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.piglin_formation_tactics"),
+			config.piglinFormationTactics
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.piglin_formation_tactics.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.piglinFormationTactics = value))
+			.build());
+		netherCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.blaze_combat_tactics"),
+			config.blazeCombatTactics
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.blaze_combat_tactics.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.blazeCombatTactics = value))
+			.build());
+		netherCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.blaze_preferred_range"),
+			(int)Math.round(config.blazePreferredRange),
+			(int)MobsThinkNowConfig.MINIMUM_BLAZE_PREFERRED_RANGE,
+			(int)MobsThinkNowConfig.MAXIMUM_BLAZE_PREFERRED_RANGE
+		)
+			.setDefaultValue((int)MobsThinkNowConfig.DEFAULT_BLAZE_PREFERRED_RANGE)
+			.setTooltip(Component.translatable("mobsthinknow.config.blaze_preferred_range.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.blazePreferredRange = value))
+			.build());
+		netherCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.nether_prediction_strength"),
+			(int)Math.round(config.netherPredictionStrength * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_NETHER_PREDICTION_STRENGTH * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.nether_prediction_strength.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.netherPredictionStrength = value / 100.0))
+			.build());
+		netherCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.ghast_artillery_tactics"),
+			config.ghastArtilleryTactics
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.ghast_artillery_tactics.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.ghastArtilleryTactics = value))
+			.build());
+		netherCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.hoglin_charge_tactics"),
+			config.hoglinChargeTactics
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.hoglin_charge_tactics.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.hoglinChargeTactics = value))
+			.build());
+		netherCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.hoglin_charge_speed"),
+			(int)Math.round(config.hoglinChargeSpeed * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MINIMUM_HOGLIN_CHARGE_SPEED * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_HOGLIN_CHARGE_SPEED * 100.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_HOGLIN_CHARGE_SPEED * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.hoglin_charge_speed.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.hoglinChargeSpeed = value / 100.0))
+			.build());
+		netherCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.magma_cube_predictive_pounce"),
+			config.magmaCubePredictivePounce
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.magma_cube_predictive_pounce.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.magmaCubePredictivePounce = value))
+			.build());
+		netherCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.magma_cube_pounce_speed"),
+			(int)Math.round(config.magmaCubePounceSpeed * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MINIMUM_MAGMA_CUBE_POUNCE_SPEED * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_MAGMA_CUBE_POUNCE_SPEED * 100.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_MAGMA_CUBE_POUNCE_SPEED * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.magma_cube_pounce_speed.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.magmaCubePounceSpeed = value / 100.0))
+			.build());
+
 		// Mod Menu 位于客户端；这段提示避免玩家误以为它可以直接修改远程服务器规则。
 		squadCategory.addEntry(entries.startTextDescription(
 			Component.translatable("mobsthinknow.config.server_authority_note")
@@ -388,6 +488,22 @@ public final class MobsThinkNowConfigScreen {
 			.setDefaultValue(true)
 			.setTooltip(Component.translatable("mobsthinknow.config.squad_visual_effects.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadVisualEffects = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.zombie_profession_skins"),
+			config.zombieProfessionSkins
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.zombie_profession_skins.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.zombieProfessionSkins = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.zombie_body_language"),
+			config.zombieBodyLanguage
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.zombie_body_language.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.zombieBodyLanguage = value))
 			.build());
 		squadCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.squad_role_name_tags"),
@@ -579,6 +695,82 @@ public final class MobsThinkNowConfigScreen {
 			.setDefaultValue(true)
 			.setTooltip(Component.translatable("mobsthinknow.config.weapon_combat_tactics.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.weaponCombatTactics = value))
+			.build());
+		armedCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.sword_feints"),
+			config.swordFeints
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.sword_feints.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.swordFeints = value))
+			.build());
+		armedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.sword_feint_minimum_intelligence"),
+			config.swordFeintMinimumIntelligence,
+			1,
+			10
+		)
+			.setDefaultValue(MobsThinkNowConfig.DEFAULT_SWORD_FEINT_MINIMUM_INTELLIGENCE)
+			.setTooltip(Component.translatable("mobsthinknow.config.sword_feint_minimum_intelligence.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.swordFeintMinimumIntelligence = value))
+			.build());
+		armedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.sword_feint_chance"),
+			(int)Math.round(config.swordFeintChance * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SWORD_FEINT_CHANCE * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.sword_feint_chance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.swordFeintChance = value / 100.0))
+			.build());
+		armedCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.shield_bashes"),
+			config.shieldBashes
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.shield_bashes.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.shieldBashes = value))
+			.build());
+		armedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.shield_bash_minimum_intelligence"),
+			config.shieldBashMinimumIntelligence,
+			1,
+			10
+		)
+			.setDefaultValue(MobsThinkNowConfig.DEFAULT_SHIELD_BASH_MINIMUM_INTELLIGENCE)
+			.setTooltip(Component.translatable("mobsthinknow.config.shield_bash_minimum_intelligence.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.shieldBashMinimumIntelligence = value))
+			.build());
+		armedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.shield_bash_chance"),
+			(int)Math.round(config.shieldBashChance * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SHIELD_BASH_CHANCE * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.shield_bash_chance.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.shieldBashChance = value / 100.0))
+			.build());
+		armedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.shield_bash_damage"),
+			(int)Math.round(config.shieldBashDamage * 10.0),
+			0,
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_SHIELD_BASH_DAMAGE * 10.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SHIELD_BASH_DAMAGE * 10.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.shield_bash_damage.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.shieldBashDamage = value / 10.0))
+			.build());
+		armedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.shield_bash_knockback"),
+			(int)Math.round(config.shieldBashKnockback * 100.0),
+			0,
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_SHIELD_BASH_KNOCKBACK * 100.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SHIELD_BASH_KNOCKBACK * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.shield_bash_knockback.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.shieldBashKnockback = value / 100.0))
 			.build());
 		armedCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.spear_air_assault"),

@@ -27,6 +27,10 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong ENGINEER_WATER_DEPLOYMENTS = new AtomicLong();
 	private static final AtomicLong ENGINEER_LAVA_DEPLOYMENTS = new AtomicLong();
 	private static final AtomicLong ENGINEER_IGNITIONS = new AtomicLong();
+	private static final AtomicLong SWORD_FEINTS = new AtomicLong();
+	private static final AtomicLong AXE_WINDUPS = new AtomicLong();
+	private static final AtomicLong SHIELD_BASHES = new AtomicLong();
+	private static final AtomicLong SHIELD_BASH_HITS = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -119,6 +123,22 @@ public final class SmartZombieMetrics {
 		ENGINEER_IGNITIONS.incrementAndGet();
 	}
 
+	public static void swordFeint() {
+		SWORD_FEINTS.incrementAndGet();
+	}
+
+	public static void axeWindup() {
+		AXE_WINDUPS.incrementAndGet();
+	}
+
+	public static void shieldBash() {
+		SHIELD_BASHES.incrementAndGet();
+	}
+
+	public static void shieldBashHit() {
+		SHIELD_BASH_HITS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -143,7 +163,11 @@ public final class SmartZombieMetrics {
 			ENGINEER_TNT_CHARGES.get(),
 			ENGINEER_WATER_DEPLOYMENTS.get(),
 			ENGINEER_LAVA_DEPLOYMENTS.get(),
-			ENGINEER_IGNITIONS.get()
+			ENGINEER_IGNITIONS.get(),
+			SWORD_FEINTS.get(),
+			AXE_WINDUPS.get(),
+			SHIELD_BASHES.get(),
+			SHIELD_BASH_HITS.get()
 		);
 	}
 
@@ -170,7 +194,11 @@ public final class SmartZombieMetrics {
 		long engineerTntCharges,
 		long engineerWaterDeployments,
 		long engineerLavaDeployments,
-		long engineerIgnitions
+		long engineerIgnitions,
+		long swordFeints,
+		long axeWindups,
+		long shieldBashes,
+		long shieldBashHits
 	) {
 	}
 }

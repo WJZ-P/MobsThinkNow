@@ -8,6 +8,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidCarrierState;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieShieldDesign;
+import com.wjz.mobsthinknow.ai.zombie.ZombieProfessionProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -254,6 +255,7 @@ public final class ZombieShowcaseSpawner {
 			}
 		}
 
+		ZombieProfessionProfile.assignFromLoadout(zombie);
 		zombie.setCustomName(archetype.displayName());
 		ZombieIntelligence.set(zombie, archetype.intelligence());
 		zombie.setCustomNameVisible(true);
@@ -273,7 +275,8 @@ public final class ZombieShowcaseSpawner {
 	/** 以 enum 顺序映射到三行阵型，确保命令每次给出相同的观察布局。 */
 	public enum ShowcaseArchetype {
 		UNARMED("mobsthinknow.showcase.unarmed", "Unarmed Zombie", ChatFormatting.GRAY, 3),
-		SWORDSMAN("mobsthinknow.showcase.swordsman", "Zombie Swordsman", ChatFormatting.AQUA, 6),
+		// 高于默认佯攻门槛，/mtn spawn swordsman 可直接用于测试“假挥骗盾”。
+		SWORDSMAN("mobsthinknow.showcase.swordsman", "Zombie Swordsman", ChatFormatting.AQUA, 8),
 		AXEMAN("mobsthinknow.showcase.axeman", "Zombie Axeman", ChatFormatting.RED, 7),
 		SWORD_SHIELD("mobsthinknow.showcase.sword_shield", "Sword-and-Shield Zombie", ChatFormatting.BLUE, 7),
 		AXE_SHIELD("mobsthinknow.showcase.axe_shield", "Axe-and-Shield Zombie", ChatFormatting.DARK_RED, 8),

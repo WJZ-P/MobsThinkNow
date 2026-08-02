@@ -14,8 +14,11 @@ import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonCrossbowAttackGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.skeleton.SquadSkeletonHurtByTargetGoal;
 import com.wjz.mobsthinknow.ai.giant.GiantRiderBoardingGoal;
+import com.wjz.mobsthinknow.ai.skeleton.MountedSkeletonCombat;
+import com.wjz.mobsthinknow.ai.skeleton.MountedSkeletonTargetGoal;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -87,8 +90,28 @@ public abstract class AbstractSkeletonMixin extends Monster implements SkeletonI
 		}
 		// 只替换 AbstractSkeleton 自己注册的精确原版类，不移除其他模组添加的 HurtByTargetGoal 子类。
 		this.targetSelector.removeAllGoals(goal -> goal.getClass() == HurtByTargetGoal.class);
+		// 受管理坐骑统一提供共享目标；既修复巨人头顶高度，也避免蜘蛛乘客运行自己的无效导航。
+		this.targetSelector.addGoal(0, new MountedSkeletonTargetGoal(skeleton));
+		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(skeleton));
 		this.targetSelector.addGoal(1, new SquadSkeletonHurtByTargetGoal(skeleton));
 		this.goalSelector.addGoal(2, new GiantRiderBoardingGoal(skeleton));
+	}
+
+	/**
+	 * 原版 AbstractSkeleton.rideTick 会在 AI tick 结束后再次把身体朝向覆盖成载具朝向。
+	 * 射手正在瞄准时把头、身体和主旋转恢复到目标方向，避免箭射向下方时模型仍直视巨人前方。
+	 */
+	@Inject(method = "rideTick", at = @At("TAIL"))
+	private void mobsthinknow$faceSharedTargetWhileMounted(final CallbackInfo callbackInfo) {
+		AbstractSkeleton skeleton = (AbstractSkeleton)(Object)this;
+		LivingEntity target = MountedSkeletonCombat.sharedTarget(skeleton);
+		if (target == null) {
+			return;
+		}
+		skeleton.lookAt(target, 360.0F, 90.0F);
+		float yaw = skeleton.getYRot();
+		skeleton.setYBodyRot(yaw);
+		skeleton.setYHeadRot(yaw);
 	}
 
 	/**

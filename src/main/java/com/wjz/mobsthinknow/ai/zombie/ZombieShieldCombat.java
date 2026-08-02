@@ -1,6 +1,10 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -10,7 +14,8 @@ import net.minecraft.world.entity.monster.zombie.Zombie;
  *
  * <p>盾牌始终优先于进攻：进入六格交战带后先举盾，只有贴身且武器冷却完成时才会
  * 打开一次短攻击窗口。成功格挡不会在同一 tick 瞬间反击，而是继续举盾随机等待 2～4 tick，
- * 随后明确放下盾牌再出手。挥击后同样保留 2～4 tick 的无盾恢复间隙，再回到守势；目标
+ * 随后明确放下盾牌再出手。高智力个体可把这次反击替换为带独立命中帧的副手盾击；
+ * 挥击后同样保留 2～4 tick 的无盾恢复间隙，再回到守势；目标
  * 临时退开时仍保持举盾追近，而不是放下盾牌盲目贴脸。</p>
  */
 final class ZombieShieldCombat {
@@ -21,6 +26,9 @@ final class ZombieShieldCombat {
 	private static final int MINIMUM_COUNTER_DELAY_TICKS = 2;
 	private static final int MAXIMUM_COUNTER_DELAY_TICKS = 4;
 	private static final int STRIKE_WINDOW_TICKS = 10;
+	private static final int SHIELD_BASH_DURATION_TICKS = 14;
+	private static final int SHIELD_BASH_HIT_OFFSET_TICKS = 5;
+	private static final double SHIELD_BASH_REACH_SQUARED = 3.0 * 3.0;
 	private static final long ATTACK_SIGNAL_MAX_AGE_TICKS = 20L;
 
 	private final Zombie zombie;
@@ -29,8 +37,11 @@ final class ZombieShieldCombat {
 	private long guardDeadline = Long.MIN_VALUE;
 	private long counterStrikeAt = Long.MIN_VALUE;
 	private long strikeDeadline = Long.MIN_VALUE;
+	private long bashHitAt = Long.MIN_VALUE;
 	private long nextStrikeAt;
 	private boolean counterPending;
+	private boolean bashPending;
+	private boolean bashHitApplied;
 
 	ZombieShieldCombat(final Zombie zombie) {
 		this.zombie = zombie;
@@ -65,7 +76,11 @@ final class ZombieShieldCombat {
 			return;
 		}
 
-		this.captureSuccessfulBlock(target, now);
+		this.captureSuccessfulBlock(target, config, now);
+		if (this.phase == Phase.BASHING) {
+			this.tickBash(target, config, now);
+			return;
+		}
 		if (this.phase == Phase.STRIKING || this.phase == Phase.RECOVERING) {
 			// 攻击窗口和攻击后的恢复间隙都强制放盾，避免同一 tick 内“挥剑后立刻重举”被客户端合并掉。
 			this.lowerShield();
@@ -98,7 +113,11 @@ final class ZombieShieldCombat {
 			this.guardDeadline,
 			weaponReady
 		)) {
-			this.beginStrike(now);
+			if (this.counterPending && this.bashPending) {
+				this.beginBash(now);
+			} else {
+				this.beginStrike(now);
+			}
 		}
 	}
 
@@ -122,12 +141,13 @@ final class ZombieShieldCombat {
 	}
 
 	boolean holdsPosition() {
-		return this.phase == Phase.GUARDING;
+		return this.phase == Phase.GUARDING || this.phase == Phase.BASHING;
 	}
 
 	boolean blocksAttack() {
 		return this.phase == Phase.APPROACHING
 			|| this.phase == Phase.GUARDING
+			|| this.phase == Phase.BASHING
 			|| this.phase == Phase.RECOVERING;
 	}
 
@@ -153,7 +173,11 @@ final class ZombieShieldCombat {
 			&& !ZombieArmory.isShieldDisabled(this.zombie);
 	}
 
-	private void captureSuccessfulBlock(final LivingEntity target, final long now) {
+	private void captureSuccessfulBlock(
+		final LivingEntity target,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
 		ZombieShieldMemory.BlockSignal signal = ZombieShieldMemory.consume(this.zombie);
 		if (signal == null
 			|| signal.attacker().getId() != target.getId()
@@ -164,6 +188,13 @@ final class ZombieShieldCombat {
 			return;
 		}
 		this.counterPending = true;
+		this.bashPending = shouldScheduleBash(
+			config.shieldBashes,
+			ZombieIntelligence.get(this.zombie),
+			config.shieldBashMinimumIntelligence,
+			this.zombie.getRandom().nextDouble(),
+			config.shieldBashChance
+		);
 		// 从真实格挡发生的 tick 起算，而不是从 AI 下一次消费信号时起算，确保视觉延迟严格为 2～4 tick。
 		this.counterStrikeAt = signal.gameTime() + this.randomCounterDelay();
 	}
@@ -174,19 +205,103 @@ final class ZombieShieldCombat {
 		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = Long.MIN_VALUE;
 		this.counterPending = false;
+		this.bashPending = false;
+		this.bashHitApplied = false;
 		this.raiseShield();
 	}
 
 	private void beginStrike(final long now) {
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SHIELD_BASH);
 		this.lowerShield();
 		this.phase = Phase.STRIKING;
 		this.guardDeadline = Long.MIN_VALUE;
 		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = now + STRIKE_WINDOW_TICKS;
 		this.counterPending = false;
+		this.bashPending = false;
+	}
+
+	private void beginBash(final long now) {
+		this.lowerShield();
+		this.phase = Phase.BASHING;
+		this.guardDeadline = Long.MIN_VALUE;
+		this.counterStrikeAt = Long.MIN_VALUE;
+		this.bashHitAt = now + SHIELD_BASH_HIT_OFFSET_TICKS;
+		this.strikeDeadline = now + SHIELD_BASH_DURATION_TICKS;
+		this.nextStrikeAt = now + ZombieWeaponCombat.attackCooldownTicks(this.zombie.getMainHandItem());
+		this.counterPending = false;
+		this.bashPending = false;
+		this.bashHitApplied = false;
+		this.zombie.getNavigation().stop();
+		this.zombie.setAggressive(false);
+		ZombieBodyLanguage.play(this.zombie, ZombieBodyAction.SHIELD_BASH);
+		SmartZombieMetrics.shieldBash();
+	}
+
+	private void tickBash(
+		final LivingEntity target,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		this.lowerShield();
+		this.zombie.getNavigation().stop();
+		this.zombie.setAggressive(false);
+		this.zombie.getLookControl().setLookAt(target, 40.0F, 40.0F);
+		if (!this.bashHitApplied && now >= this.bashHitAt) {
+			this.bashHitApplied = true;
+			this.performBashHit(target, config);
+		}
+		if (now >= this.strikeDeadline) {
+			ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SHIELD_BASH);
+			this.resumeDefense(target, now);
+		}
+	}
+
+	private void performBashHit(final LivingEntity target, final MobsThinkNowConfig config) {
+		if (!(this.zombie.level() instanceof ServerLevel level)
+			|| !target.isAlive()
+			|| this.zombie.distanceToSqr(target) > SHIELD_BASH_REACH_SQUARED
+			|| !this.zombie.getSensing().hasLineOfSight(target)) {
+			return;
+		}
+
+		this.zombie.swing(InteractionHand.OFF_HAND);
+		target.hurtServer(
+			level,
+			this.zombie.damageSources().mobAttack(this.zombie),
+			(float)config.shieldBashDamage
+		);
+		target.knockback(
+			config.shieldBashKnockback,
+			this.zombie.getX() - target.getX(),
+			this.zombie.getZ() - target.getZ()
+		);
+		SmartZombieMetrics.shieldBashHit();
+		level.playSound(
+			null,
+			this.zombie.getX(),
+			this.zombie.getY(),
+			this.zombie.getZ(),
+			SoundEvents.SHIELD_BLOCK.value(),
+			SoundSource.HOSTILE,
+			0.9F,
+			0.78F + this.zombie.getRandom().nextFloat() * 0.12F
+		);
+		level.sendParticles(
+			ParticleTypes.SWEEP_ATTACK,
+			target.getX(),
+			target.getY(0.55),
+			target.getZ(),
+			1,
+			0.1,
+			0.1,
+			0.1,
+			0.0
+		);
 	}
 
 	private void beginRecovery(final long now) {
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SHIELD_BASH);
 		this.lowerShield();
 		this.phase = Phase.RECOVERING;
 		this.guardDeadline = Long.MIN_VALUE;
@@ -194,10 +309,16 @@ final class ZombieShieldCombat {
 		// 复用同一 2～4 tick 分布，让客户端至少看到数帧明确的“已放盾、正在收招”状态。
 		this.strikeDeadline = now + this.randomCounterDelay();
 		this.counterPending = false;
+		this.bashPending = false;
+		this.bashHitApplied = false;
 	}
 
 	private void resumeDefense(final LivingEntity target, final long now) {
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SHIELD_BASH);
 		this.counterPending = false;
+		this.bashPending = false;
+		this.bashHitApplied = false;
+		this.bashHitAt = Long.MIN_VALUE;
 		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = Long.MIN_VALUE;
 		this.raiseShield();
@@ -212,13 +333,17 @@ final class ZombieShieldCombat {
 	}
 
 	private void deactivate() {
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SHIELD_BASH);
 		this.lowerShield();
 		this.phase = Phase.INACTIVE;
 		this.targetId = Integer.MIN_VALUE;
 		this.guardDeadline = Long.MIN_VALUE;
 		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = Long.MIN_VALUE;
+		this.bashHitAt = Long.MIN_VALUE;
 		this.counterPending = false;
+		this.bashPending = false;
+		this.bashHitApplied = false;
 		ZombieShieldMemory.discard(this.zombie);
 	}
 
@@ -281,10 +406,24 @@ final class ZombieShieldCombat {
 		return MINIMUM_COUNTER_DELAY_TICKS + zeroBasedRoll;
 	}
 
+	static boolean shouldScheduleBash(
+		final boolean enabled,
+		final int intelligence,
+		final int minimumIntelligence,
+		final double randomRoll,
+		final double chance
+	) {
+		return enabled
+			&& intelligence >= minimumIntelligence
+			&& randomRoll >= 0.0
+			&& randomRoll < chance;
+	}
+
 	private enum Phase {
 		INACTIVE,
 		APPROACHING,
 		GUARDING,
+		BASHING,
 		STRIKING,
 		RECOVERING
 	}

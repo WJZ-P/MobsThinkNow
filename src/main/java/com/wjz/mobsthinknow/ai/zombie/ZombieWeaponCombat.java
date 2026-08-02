@@ -28,8 +28,8 @@ import net.minecraft.world.phys.Vec3;
  * <ul>
  *     <li>从主手物品属性计算玩家同口径的 {@code ceil(20 / attackSpeed)} 冷却；</li>
  *     <li>冷却期间维持约 2.8 格的环绕距离，而不是继续贴住目标碰撞箱；</li>
- *     <li>剑在冷却完成后直接近身普通挥击；</li>
- *     <li>斧在有空间时先建立起跳距离，只允许下落阶段命中并获得 1.5 倍暴击；
+ *     <li>高智力剑士面对举盾目标时可执行零伤害佯攻，目标放盾后才提交真实攻击；</li>
+ *     <li>斧在有空间时先建立起跳距离并执行 8 tick 可读前摇，只允许下落阶段命中并获得 1.5 倍暴击；
  *     地形持续不允许起跳时才退化为普通地面挥击，避免狭窄空间彻底失去攻击能力。</li>
  * </ul>
  *
@@ -41,11 +41,20 @@ final class ZombieWeaponCombat {
 	private static final int MINIMUM_ATTACK_COOLDOWN_TICKS = 5;
 	private static final int MAXIMUM_ATTACK_COOLDOWN_TICKS = 60;
 	private static final double SPACING_RADIUS = 2.8;
+	private static final double SWORD_FEINT_MAXIMUM_DISTANCE_SQUARED = 4.2 * 4.2;
+	private static final int SWORD_FEINT_COMMIT_TICK = 6;
+	private static final int SWORD_FEINT_LUNGE_TICK = 3;
+	private static final int SWORD_FEINT_BACKSTEP_TICK = 7;
+	private static final int SWORD_FEINT_RETRY_TICKS = 24;
+	private static final int SWORD_FEINT_FAILED_RECOVERY_TICKS = 6;
+	private static final double SWORD_FEINT_LUNGE_SPEED = 0.12;
+	private static final double SWORD_FEINT_BACKSTEP_SPEED = 0.18;
 	private static final double AXE_LEAP_MINIMUM_DISTANCE_SQUARED = 1.8 * 1.8;
 	private static final double AXE_LEAP_MAXIMUM_DISTANCE_SQUARED = 3.3 * 3.3;
 	private static final double AXE_LEAP_MAXIMUM_VERTICAL_DIFFERENCE = 1.25;
 	private static final double AXE_LEAP_HORIZONTAL_SPEED = 0.34;
 	private static final int AXE_PREPARATION_TIMEOUT_TICKS = 30;
+	private static final int AXE_WINDUP_TICKS = 8;
 	private static final int AXE_LEAP_TIMEOUT_TICKS = 20;
 	private static final int TAKEOFF_GRACE_TICKS = 3;
 	private static final double DESCENDING_SPEED_THRESHOLD = -0.02;
@@ -63,10 +72,15 @@ final class ZombieWeaponCombat {
 	private WeaponClass weaponClass = WeaponClass.NONE;
 	private int targetId = Integer.MIN_VALUE;
 	private long nextAttackAt;
+	private long swordFeintStartedAt = Long.MIN_VALUE;
+	private long nextSwordFeintAt;
 	private long axePreparationDeadline = Long.MIN_VALUE;
+	private long axeWindupStartedAt = Long.MIN_VALUE;
 	private long axeLeapStartedAt = Long.MIN_VALUE;
 	private long nextSpacingPathAt;
 	private boolean clockwise;
+	private boolean swordFeintLungeApplied;
+	private boolean swordFeintBackstepApplied;
 
 	ZombieWeaponCombat(final Zombie zombie) {
 		this.zombie = zombie;
@@ -87,15 +101,21 @@ final class ZombieWeaponCombat {
 
 		long now = this.zombie.level().getGameTime();
 		if (this.weaponClass != currentWeapon || this.targetId != target.getId()) {
+			this.clearOwnedBodyActions();
 			this.weaponClass = currentWeapon;
 			this.targetId = target.getId();
+			this.swordFeintStartedAt = Long.MIN_VALUE;
+			this.nextSwordFeintAt = now;
 			this.axePreparationDeadline = Long.MIN_VALUE;
+			this.axeWindupStartedAt = Long.MIN_VALUE;
 			this.axeLeapStartedAt = Long.MIN_VALUE;
 			this.nextSpacingPathAt = now;
 		}
 
 		// 不用目标墙后的实时坐标做周旋；失去视线后继续服从控制器的最后目击/小队命令。
 		if (!this.zombie.getSensing().hasLineOfSight(target)) {
+			this.cancelSwordFeint();
+			this.cancelAxeWindup();
 			return true;
 		}
 
@@ -106,12 +126,24 @@ final class ZombieWeaponCombat {
 		}
 
 		if (this.weaponClass == WeaponClass.SWORD) {
+			if (this.isSwordFeintActive()) {
+				return this.tickSwordFeint(target, config, now);
+			}
+			if (this.shouldStartSwordFeint(target, config, now)) {
+				this.beginSwordFeint(target, now);
+				return false;
+			}
 			this.ensureReadyStrikeApproach(target, now);
 			return true;
 		}
 
+		if (this.isAxeWindupActive()) {
+			return this.tickAxeWindup(target, config, now);
+		}
+
 		if (this.isAxeLeapActive()) {
 			if (this.shouldAbortLeap(now)) {
+				ZombieBodyLanguage.stopPersistent(this.zombie, ZombieBodyAction.AXE_LEAP);
 				this.axeLeapStartedAt = Long.MIN_VALUE;
 			} else {
 				this.guideLeap(target);
@@ -132,8 +164,8 @@ final class ZombieWeaponCombat {
 		}
 
 		if (this.canStartLeap(target)) {
-			this.startLeap(target, now);
-			return true;
+			this.beginAxeWindup(target, now);
+			return false;
 		}
 
 		this.circleTarget(target, config, now, SPACING_RADIUS);
@@ -169,7 +201,7 @@ final class ZombieWeaponCombat {
 	/** 自定义武器冷却取代原版固定 20 tick；斧手还必须处于跳劈下落窗或超时降级窗。 */
 	boolean canPerformAttack(final LivingEntity target) {
 		long now = this.zombie.level().getGameTime();
-		if (now < this.nextAttackAt) {
+		if (now < this.nextAttackAt || this.isSwordFeintActive() || this.isAxeWindupActive()) {
 			return false;
 		}
 		if (this.weaponClass != WeaponClass.AXE) {
@@ -200,7 +232,10 @@ final class ZombieWeaponCombat {
 	void onAttackPerformed(final LivingEntity target) {
 		long now = this.zombie.level().getGameTime();
 		this.nextAttackAt = now + attackCooldownTicks(this.zombie.getMainHandItem());
+		this.cancelSwordFeint();
 		this.axePreparationDeadline = Long.MIN_VALUE;
+		this.cancelAxeWindup();
+		ZombieBodyLanguage.stopPersistent(this.zombie, ZombieBodyAction.AXE_LEAP);
 		this.axeLeapStartedAt = Long.MIN_VALUE;
 		this.nextSpacingPathAt = now;
 		this.clockwise = !this.clockwise;
@@ -262,8 +297,161 @@ final class ZombieWeaponCombat {
 	}
 
 	private void resetTransientState() {
+		this.cancelSwordFeint();
 		this.axePreparationDeadline = Long.MIN_VALUE;
+		this.cancelAxeWindup();
+		ZombieBodyLanguage.stopPersistent(this.zombie, ZombieBodyAction.AXE_LEAP);
 		this.axeLeapStartedAt = Long.MIN_VALUE;
+	}
+
+	private boolean shouldStartSwordFeint(
+		final LivingEntity target,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		if (now < this.nextSwordFeintAt) {
+			return false;
+		}
+		this.nextSwordFeintAt = now + SWORD_FEINT_RETRY_TICKS;
+		return shouldStartSwordFeint(
+			config.swordFeints,
+			ZombieIntelligence.get(this.zombie),
+			config.swordFeintMinimumIntelligence,
+			target.isBlocking(),
+			this.zombie.distanceToSqr(target),
+			this.zombie.getRandom().nextDouble(),
+			config.swordFeintChance
+		);
+	}
+
+	private void beginSwordFeint(final LivingEntity target, final long now) {
+		this.zombie.getNavigation().stop();
+		this.zombie.stopUsingItem();
+		this.zombie.setAggressive(false);
+		this.zombie.getLookControl().setLookAt(target, 35.0F, 35.0F);
+		this.swordFeintStartedAt = now;
+		this.swordFeintLungeApplied = false;
+		this.swordFeintBackstepApplied = false;
+		ZombieBodyLanguage.play(this.zombie, ZombieBodyAction.SWORD_FEINT);
+		SmartZombieMetrics.swordFeint();
+	}
+
+	/**
+	 * 佯攻期间本层完全接管移动，且从不调用真实挥击。目标在可读前摇后主动放盾，才立刻把控制权
+	 * 交回近战 Goal；目标坚持格挡则剑士后撤半步并进入短恢复，避免每 tick 重抽概率。
+	 */
+	private boolean tickSwordFeint(
+		final LivingEntity target,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		long elapsed = now - this.swordFeintStartedAt;
+		if (!target.isAlive() || !this.zombie.getSensing().hasLineOfSight(target)) {
+			this.cancelSwordFeint();
+			return true;
+		}
+
+		this.zombie.getNavigation().stop();
+		this.zombie.setAggressive(false);
+		this.zombie.getLookControl().setLookAt(target, 35.0F, 35.0F);
+		Vec3 towardTarget = horizontalUnit(target.position().subtract(this.zombie.position()));
+		if (!this.swordFeintLungeApplied && elapsed >= SWORD_FEINT_LUNGE_TICK) {
+			this.addHorizontalImpulse(towardTarget, SWORD_FEINT_LUNGE_SPEED);
+			this.zombie.playSound(SoundEvents.PLAYER_ATTACK_NODAMAGE, 0.65F, 0.90F);
+			this.swordFeintLungeApplied = true;
+		}
+		if (!this.swordFeintBackstepApplied && elapsed >= SWORD_FEINT_BACKSTEP_TICK) {
+			this.addHorizontalImpulse(towardTarget.scale(-1.0), SWORD_FEINT_BACKSTEP_SPEED);
+			this.swordFeintBackstepApplied = true;
+		}
+
+		if (elapsed >= SWORD_FEINT_COMMIT_TICK && !target.isBlocking()) {
+			this.cancelSwordFeint();
+			this.zombie.setAggressive(true);
+			this.ensureReadyStrikeApproach(target, now);
+			return true;
+		}
+		if (elapsed < ZombieBodyAction.SWORD_FEINT.durationTicks()) {
+			return false;
+		}
+
+		this.cancelSwordFeint();
+		this.nextAttackAt = now + SWORD_FEINT_FAILED_RECOVERY_TICKS;
+		this.circleTarget(target, config, now, SPACING_RADIUS);
+		return false;
+	}
+
+	private boolean isSwordFeintActive() {
+		return this.swordFeintStartedAt != Long.MIN_VALUE;
+	}
+
+	private void cancelSwordFeint() {
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SWORD_FEINT);
+		this.swordFeintStartedAt = Long.MIN_VALUE;
+		this.swordFeintLungeApplied = false;
+		this.swordFeintBackstepApplied = false;
+	}
+
+	private boolean isAxeWindupActive() {
+		return this.axeWindupStartedAt != Long.MIN_VALUE;
+	}
+
+	private void beginAxeWindup(final LivingEntity target, final long now) {
+		if (this.zombie.isUsingItem()) {
+			this.zombie.stopUsingItem();
+		}
+		this.zombie.getNavigation().stop();
+		this.zombie.setAggressive(false);
+		this.zombie.getLookControl().setLookAt(target, 35.0F, 35.0F);
+		this.axeWindupStartedAt = now;
+		this.zombie.playSound(SoundEvents.ZOMBIE_STEP, 0.55F, 0.72F);
+		ZombieBodyLanguage.play(this.zombie, ZombieBodyAction.AXE_WINDUP);
+		SmartZombieMetrics.axeWindup();
+	}
+
+	/** @return 是否把控制权交回原版 Goal；真正起跳后允许其继续转向，但命中仍被下降窗口约束。 */
+	private boolean tickAxeWindup(
+		final LivingEntity target,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		this.zombie.getNavigation().stop();
+		this.zombie.setAggressive(false);
+		this.zombie.getLookControl().setLookAt(target, 35.0F, 35.0F);
+		if (now - this.axeWindupStartedAt < AXE_WINDUP_TICKS) {
+			return false;
+		}
+
+		this.cancelAxeWindup();
+		if (!this.canAttemptLeap(target) || !this.canStartLeap(target)) {
+			if (now >= this.axePreparationDeadline) {
+				return true;
+			}
+			this.circleTarget(target, config, now, SPACING_RADIUS);
+			return false;
+		}
+		this.startLeap(target, now);
+		return true;
+	}
+
+	private void cancelAxeWindup() {
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.AXE_WINDUP);
+		this.axeWindupStartedAt = Long.MIN_VALUE;
+	}
+
+	private void clearOwnedBodyActions() {
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SWORD_FEINT);
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.AXE_WINDUP);
+		ZombieBodyLanguage.stopPersistent(this.zombie, ZombieBodyAction.AXE_LEAP);
+	}
+
+	private void addHorizontalImpulse(final Vec3 direction, final double speed) {
+		Vec3 movement = this.zombie.getDeltaMovement();
+		this.zombie.setDeltaMovement(
+			movement.x * 0.35 + direction.x * speed,
+			movement.y,
+			movement.z * 0.35 + direction.z * speed
+		);
 	}
 
 	/**
@@ -334,6 +522,7 @@ final class ZombieWeaponCombat {
 			direction.z * AXE_LEAP_HORIZONTAL_SPEED
 		);
 		this.axeLeapStartedAt = now;
+		ZombieBodyLanguage.startPersistent(this.zombie, ZombieBodyAction.AXE_LEAP);
 	}
 
 	/** 空中只做轻微航向修正，保留真正的抛物线和玩家可读的闪避窗口。 */
@@ -443,6 +632,23 @@ final class ZombieWeaponCombat {
 		double x = first.x - second.x;
 		double z = first.z - second.z;
 		return x * x + z * z;
+	}
+
+	static boolean shouldStartSwordFeint(
+		final boolean enabled,
+		final int intelligence,
+		final int minimumIntelligence,
+		final boolean targetBlocking,
+		final double distanceSquared,
+		final double randomRoll,
+		final double chance
+	) {
+		return enabled
+			&& intelligence >= minimumIntelligence
+			&& targetBlocking
+			&& distanceSquared <= SWORD_FEINT_MAXIMUM_DISTANCE_SQUARED
+			&& randomRoll >= 0.0
+			&& randomRoll < chance;
 	}
 
 	private static boolean isHandledWeapon(final WeaponClass weaponClass) {

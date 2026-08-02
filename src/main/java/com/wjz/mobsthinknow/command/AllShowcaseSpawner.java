@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * 为无参数 {@code /mtn spawnall} 生成当前全部智能 AI 战术预设。
- * 二十九个根实体统一预检、统一准备并事务式加入世界；所有坐骑、射手和载荷随根实体加入。
+ * 所有根实体统一预检、统一准备并事务式加入世界；坐骑、射手和载荷随根实体加入。
  */
 public final class AllShowcaseSpawner {
 	public static final int ZOMBIE_ARCHETYPES = ZombieShowcaseSpawner.ShowcaseArchetype.values().length;
@@ -22,12 +22,14 @@ public final class AllShowcaseSpawner {
 	public static final int SPIDER_ARCHETYPES = SpiderShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int ENDERMAN_ARCHETYPES = EndermanShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int GIANT_ARCHETYPES = GiantShowcaseSpawner.ShowcaseArchetype.values().length;
+	public static final int NETHER_ARCHETYPES = NetherShowcaseSpawner.ShowcaseArchetype.values().length;
 	public static final int ARCHETYPE_COUNT = ZOMBIE_ARCHETYPES
 		+ SKELETON_ARCHETYPES
 		+ CREEPER_ARCHETYPES
 		+ SPIDER_ARCHETYPES
 		+ ENDERMAN_ARCHETYPES
-		+ GIANT_ARCHETYPES;
+		+ GIANT_ARCHETYPES
+		+ NETHER_ARCHETYPES;
 
 	private AllShowcaseSpawner() {
 	}
@@ -153,6 +155,18 @@ public final class AllShowcaseSpawner {
 					);
 					return prepared == null ? null : prepared.giant();
 				}
+			));
+		}
+		for (NetherShowcaseSpawner.ShowcaseArchetype archetype
+			: NetherShowcaseSpawner.ShowcaseArchetype.values()) {
+			specs.add(new SpawnSpec(
+				archetype.entityType(),
+				(level, feet, faceToward) -> NetherShowcaseSpawner.createMob(
+					level,
+					feet,
+					faceToward,
+					archetype
+				)
 			));
 		}
 		return List.copyOf(specs);

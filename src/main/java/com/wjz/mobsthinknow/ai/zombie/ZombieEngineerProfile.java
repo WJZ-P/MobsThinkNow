@@ -33,6 +33,7 @@ public final class ZombieEngineerProfile {
 			// 所有工程兵都可能投放水；允许原版导航穿过自己制造的水流，避免回收事务被自身阻断。
 			zombie.getNavigation().setCanFloat(true);
 		}
+		ZombieProfessionProfile.assignFromLoadout(zombie);
 	}
 
 	/**

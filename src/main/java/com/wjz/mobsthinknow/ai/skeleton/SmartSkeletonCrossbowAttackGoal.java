@@ -29,6 +29,8 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 	private int repathCooldown;
 	private int strafeDirection = 1;
 	private int strafeSwitchTicks;
+	private int friendlyBlockedTicks;
+	private boolean mountedMode;
 
 	public SmartSkeletonCrossbowAttackGoal(final AbstractSkeleton skeleton) {
 		this.skeleton = skeleton;
@@ -43,17 +45,19 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 
 	@Override
 	public boolean canContinueToUse() {
-		return this.canUse();
+		return this.canUse() && this.mountedMode == this.usesMountedMode();
 	}
 
 	@Override
 	public void start() {
+		this.mountedMode = this.usesMountedMode();
 		ItemStack crossbow = crossbow();
 		this.state = CrossbowItem.isCharged(crossbow) ? CrossbowState.CHARGED : CrossbowState.UNCHARGED;
 		this.attackDelay = this.state == CrossbowState.CHARGED ? nextAttackDelay() : 0;
 		this.repathCooldown = 0;
 		this.strafeDirection = this.skeleton.getRandom().nextBoolean() ? 1 : -1;
 		this.strafeSwitchTicks = nextStrafeSwitch();
+		this.friendlyBlockedTicks = 0;
 		this.skeleton.setAggressive(true);
 	}
 
@@ -66,12 +70,23 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 		this.skeleton.setAggressive(false);
 		this.state = CrossbowState.UNCHARGED;
 		this.attackDelay = 0;
+		this.friendlyBlockedTicks = 0;
+		this.mountedMode = false;
+	}
+
+	@Override
+	public EnumSet<Flag> getFlags() {
+		return this.usesMountedMode() ? EnumSet.of(Flag.LOOK) : super.getFlags();
 	}
 
 	@Override
 	public void tick() {
 		LivingEntity target = this.skeleton.getTarget();
 		if (target == null || !target.isAlive()) {
+			return;
+		}
+		if (MountedSkeletonCombat.isManagedRider(this.skeleton)) {
+			this.tickFromMount(target);
 			return;
 		}
 
@@ -99,6 +114,19 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 		this.skeleton.getLookControl().setLookAt(target, 30.0F, 30.0F);
 		this.moveForCombat(target, movement, intelligence, distanceSquared, preferredRange);
 		this.tickCrossbow(target, hasLineOfSight, distanceSquared, intelligence);
+	}
+
+	/** 载具负责接敌和走位；乘员弩手保持瞄准并继续完整的装填、延迟、发射状态机。 */
+	private void tickFromMount(final LivingEntity target) {
+		this.skeleton.getNavigation().stop();
+		this.faceTarget(target);
+		boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
+		this.tickCrossbow(
+			target,
+			hasLineOfSight,
+			this.skeleton.distanceToSqr(target),
+			SkeletonIntelligence.get(this.skeleton)
+		);
 	}
 
 	@Override
@@ -202,6 +230,15 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 				if (!hasLineOfSight || (explosive && distanceSquared < MINIMUM_FIREWORK_DISTANCE_SQUARED)) {
 					return;
 				}
+				if (!SkeletonShotSafety.hasClearShot(this.skeleton, target, explosive)) {
+					if (++this.friendlyBlockedTicks >= 8) {
+						// 弩保持已装填状态；地面射手换侧寻找窗口，乘员则等待载具带离遮挡线。
+						this.strafeDirection = -this.strafeDirection;
+						this.friendlyBlockedTicks = 0;
+					}
+					return;
+				}
+				this.friendlyBlockedTicks = 0;
 				InteractionHand hand = ProjectileUtil.getWeaponHoldingHand(this.skeleton, Items.CROSSBOW);
 				float power = explosive ? 1.6F : 3.15F;
 				float uncertainty = Math.max(
@@ -242,6 +279,10 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 
 	private int nextStrafeSwitch() {
 		return 16 + this.skeleton.getRandom().nextInt(16);
+	}
+
+	private boolean usesMountedMode() {
+		return MountedSkeletonCombat.sharedTarget(this.skeleton) != null;
 	}
 
 	private enum CrossbowState {

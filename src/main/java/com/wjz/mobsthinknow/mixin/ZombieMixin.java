@@ -10,6 +10,8 @@ import com.wjz.mobsthinknow.ai.zombie.SmartZombieSpearUseGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieAirAssault;
 import com.wjz.mobsthinknow.ai.zombie.ZombieAirAssaultStatusAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyActionAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventoryAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerAccess;
@@ -27,6 +29,9 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieIndividualTraits;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceAccess;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
+import com.wjz.mobsthinknow.ai.zombie.ZombieProfession;
+import com.wjz.mobsthinknow.ai.zombie.ZombieProfessionAccess;
+import com.wjz.mobsthinknow.ai.zombie.ZombieProfessionProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpearAirAssaultGoal;
 import com.wjz.mobsthinknow.ai.zombie.ZombieTerrainTacticsGoal;
@@ -38,9 +43,13 @@ import com.wjz.mobsthinknow.ai.giant.GiantZombieProfile;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieSpawnAccess;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
@@ -74,9 +83,20 @@ public abstract class ZombieMixin extends Monster implements
 	ZombieFluidCarrierAccess,
 	ZombieFlightAccess,
 	ZombieAirAssaultStatusAccess,
+	ZombieProfessionAccess,
+	ZombieBodyActionAccess,
 	GiantZombieSpawnAccess {
 	@Unique
 	private static final String mobsthinknow$INTELLIGENCE_TAG = "MobsThinkNowIntelligence";
+	@Unique
+	private static final EntityDataAccessor<Byte> mobsthinknow$PROFESSION_ID =
+		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.BYTE);
+	@Unique
+	private static final EntityDataAccessor<Byte> mobsthinknow$BODY_ACTION_ID =
+		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.BYTE);
+	@Unique
+	private static final EntityDataAccessor<Long> mobsthinknow$BODY_ACTION_STARTED_AT =
+		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.LONG);
 
 	/** 0 只表示“尚未生成”，对外可见的合法智力值始终是 1～10。 */
 	@Unique
@@ -108,6 +128,16 @@ public abstract class ZombieMixin extends Monster implements
 		super(type, level);
 	}
 
+	@Inject(method = "defineSynchedData", at = @At("TAIL"))
+	private void mobsthinknow$defineProfessionData(
+		final SynchedEntityData.Builder builder,
+		final CallbackInfo callbackInfo
+	) {
+		builder.define(mobsthinknow$PROFESSION_ID, ZombieProfession.VANILLA.id());
+		builder.define(mobsthinknow$BODY_ACTION_ID, ZombieBodyAction.NONE.id());
+		builder.define(mobsthinknow$BODY_ACTION_STARTED_AT, 0L);
+	}
+
 	/** 只替换僵尸的节点分类器，导航、A* 与 MoveControl 仍沿用原版实现。 */
 	@Override
 	protected PathNavigation createNavigation(final Level level) {
@@ -130,6 +160,7 @@ public abstract class ZombieMixin extends Monster implements
 			this.targetSelector.removeAllGoals(goal -> goal.getClass() == HurtByTargetGoal.class);
 			this.targetSelector.addGoal(1, new SquadHurtByTargetGoal(zombie));
 		}
+		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(zombie));
 		if (zombie.getType() == EntityType.DROWNED) {
 			this.goalSelector.addGoal(0, new SquadPreparationGoal(zombie, 1.0));
 		}
@@ -200,6 +231,7 @@ public abstract class ZombieMixin extends Monster implements
 		ZombieEngineerEquipment.saveTemporaryEquipment((Zombie)(Object)this, output);
 		ZombieVoiceProfile.save((Zombie)(Object)this, output);
 		ZombieSpecialEquipment.save((Zombie)(Object)this, output);
+		ZombieProfessionProfile.save((Zombie)(Object)this, output);
 		// 自动保存若恰好发生在进食换手的 1～2 秒内，额外保存真正的武器/盾牌供读档恢复。
 		ZombieFoodEquipment.saveTemporaryEquipment((Zombie)(Object)this, output);
 	}
@@ -221,6 +253,7 @@ public abstract class ZombieMixin extends Monster implements
 		ZombieEngineerProfile.load(zombie, input);
 		ZombieVoiceProfile.load(zombie, input);
 		ZombieSpecialEquipment.load(zombie, input);
+		ZombieProfessionProfile.load(zombie, input);
 		if (OverworldUndeadFamilies.isZombieFamily(zombie)) {
 			ZombieIntelligenceName.apply(zombie, this.mobsthinknow$getIntelligence());
 		}
@@ -268,6 +301,8 @@ public abstract class ZombieMixin extends Monster implements
 		ZombieAirAssault.equipForSpawn(zombie, difficulty.getDifficulty(), this.random, config);
 		// 最后掷工程兵身份；水/岩浆桶变体会并入工程兵，武装兵和空袭兵仍保持独立。
 		ZombieEngineerProfile.maybeAssignOnSpawn(zombie, difficulty, this.random, config);
+		// 装备和工程兵身份都已冻结，此时生成一次持久且同步到客户端的职业皮肤编号。
+		ZombieProfessionProfile.assignFromLoadout(zombie);
 		if (GiantZombieProfile.shouldReplace(
 			difficulty.getDifficulty(),
 			spawnReason,
@@ -353,6 +388,36 @@ public abstract class ZombieMixin extends Monster implements
 	@Override
 	public void mobsthinknow$setFluidCarrierState(final ZombieFluidCarrierState state) {
 		this.mobsthinknow$fluidCarrierState = state == null ? ZombieFluidCarrierState.NONE : state;
+	}
+
+	@Override
+	public ZombieProfession mobsthinknow$getProfession() {
+		return ZombieProfession.fromId(this.entityData.get(mobsthinknow$PROFESSION_ID));
+	}
+
+	@Override
+	public void mobsthinknow$setProfession(final ZombieProfession profession) {
+		this.entityData.set(
+			mobsthinknow$PROFESSION_ID,
+			(profession == null ? ZombieProfession.VANILLA : profession).id()
+		);
+	}
+
+	@Override
+	public ZombieBodyAction mobsthinknow$getBodyAction() {
+		return ZombieBodyAction.fromId(this.entityData.get(mobsthinknow$BODY_ACTION_ID));
+	}
+
+	@Override
+	public long mobsthinknow$getBodyActionStartedAt() {
+		return this.entityData.get(mobsthinknow$BODY_ACTION_STARTED_AT);
+	}
+
+	@Override
+	public void mobsthinknow$setBodyAction(final ZombieBodyAction action, final long startedAt) {
+		ZombieBodyAction safeAction = action == null ? ZombieBodyAction.NONE : action;
+		this.entityData.set(mobsthinknow$BODY_ACTION_ID, safeAction.id());
+		this.entityData.set(mobsthinknow$BODY_ACTION_STARTED_AT, startedAt);
 	}
 
 	@Override

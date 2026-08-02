@@ -173,6 +173,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 		this.zombie.getNavigation().stop();
 		this.zombie.stopUsingItem();
 		this.zombie.setItemSlot(EquipmentSlot.MAINHAND, equipped);
+		ZombieProfessionProfile.assignFromLoadout(this.zombie);
 		this.zombie.setGuaranteedDrop(EquipmentSlot.MAINHAND);
 		this.zombie.setPersistenceRequired();
 		if (!current.isEmpty()) {

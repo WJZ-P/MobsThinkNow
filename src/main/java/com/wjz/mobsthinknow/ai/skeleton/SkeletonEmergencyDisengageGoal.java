@@ -51,6 +51,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 		MobsThinkNowConfig config = ConfigManager.get();
 		if (!isEnabled(config)
 			|| !this.skeleton.isAlive()
+			|| MountedSkeletonCombat.isManagedRider(this.skeleton)
 			|| !this.isHoldingRangedWeapon()
 			|| this.skeleton.level().getGameTime() < this.nextAllowedStartAt) {
 			return false;
@@ -81,6 +82,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 		return isEnabled(config)
 			&& this.elapsedTicks < MAXIMUM_DISENGAGE_TICKS
 			&& this.skeleton.isAlive()
+			&& !MountedSkeletonCombat.isManagedRider(this.skeleton)
 			&& this.isHoldingRangedWeapon()
 			&& currentThreat != null
 			&& isValidThreat(currentThreat)
