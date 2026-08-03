@@ -27,11 +27,15 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.creeperFlanking);
 		assertEquals(true, config.creeperMovingFuse);
 		assertEquals(true, config.creeperSquadEvacuation);
+		assertEquals(true, config.creeperBlastReservations);
 		assertEquals(true, config.zombieProfessionSkins);
 		assertEquals(true, config.zombieBodyLanguage);
 		assertEquals(4, config.zombieAnimationBlendTicks);
 		assertEquals(true, config.dynamicSquadReplanning);
 		assertEquals(true, config.observableTargetTactics);
+		assertEquals(true, config.squadSharedDangerMemory);
+		assertEquals(true, config.squadFiringLaneReservations);
+		assertEquals(true, config.squadThreatDistribution);
 		assertEquals(true, config.swordFeints);
 		assertEquals(7, config.swordFeintMinimumIntelligence);
 		assertEquals(0.35, config.swordFeintChance);
