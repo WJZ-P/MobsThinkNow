@@ -341,4 +341,39 @@ class ZombieBodyAnimationTest {
 		assertEquals(0.0F, salute.leftArm().weight(), EPSILON);
 		assertTrue(salute.head().xRot() < -0.15F);
 	}
+
+	@Test
+	void transitionBlendClampsToExactEndpoints() {
+		ZombieBodyAnimation.BodyPose from = ZombieBodyAnimation.sample(
+			ZombieBodyAction.COMMAND_LEFT,
+			8.0F,
+			8.0F
+		);
+		ZombieBodyAnimation.BodyPose to = ZombieBodyAnimation.sample(
+			ZombieBodyAction.NOD,
+			3.0F,
+			3.0F
+		);
+
+		assertEquals(from, ZombieBodyAnimation.blend(from, to, -1.0F));
+		assertEquals(to, ZombieBodyAnimation.blend(from, to, 2.0F));
+	}
+
+	@Test
+	void transitionBlendInterpolatesWeightedRotationsWithoutAngleSnap() {
+		ZombieBodyAnimation.PartPose weighted = new ZombieBodyAnimation.PartPose(1.0F, 0.0F, 0.0F, 1.0F);
+		ZombieBodyAnimation.BodyPose from = repeatedPose(weighted);
+		ZombieBodyAnimation.BodyPose middle = ZombieBodyAnimation.blend(
+			from,
+			ZombieBodyAnimation.BodyPose.NONE,
+			0.5F
+		);
+
+		assertEquals(0.5F, middle.rightArm().weight(), EPSILON);
+		assertEquals(1.0F, middle.rightArm().xRot(), EPSILON);
+	}
+
+	private static ZombieBodyAnimation.BodyPose repeatedPose(final ZombieBodyAnimation.PartPose pose) {
+		return new ZombieBodyAnimation.BodyPose(pose, pose, pose, pose, pose, pose);
+	}
 }

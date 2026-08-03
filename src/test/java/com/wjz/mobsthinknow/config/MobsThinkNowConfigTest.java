@@ -18,6 +18,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.skeletonAiEnabled);
 		assertEquals(true, config.skeletonEmergencyDisengage);
 		assertEquals(true, config.skeletonCoverPeeking);
+		assertEquals(true, config.skeletonFiringLaneReposition);
 		assertEquals(true, config.skeletonProjectileDodging);
 		assertEquals(true, config.skeletonPredictiveAim);
 		assertEquals(10.0, config.skeletonPreferredRange);
@@ -28,6 +29,9 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.creeperSquadEvacuation);
 		assertEquals(true, config.zombieProfessionSkins);
 		assertEquals(true, config.zombieBodyLanguage);
+		assertEquals(4, config.zombieAnimationBlendTicks);
+		assertEquals(true, config.dynamicSquadReplanning);
+		assertEquals(true, config.observableTargetTactics);
 		assertEquals(true, config.swordFeints);
 		assertEquals(7, config.swordFeintMinimumIntelligence);
 		assertEquals(0.35, config.swordFeintChance);
@@ -43,6 +47,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.spiderPredictivePounce);
 		assertEquals(true, config.spiderHitAndRun);
 		assertEquals(true, config.spiderCreeperCoordination);
+		assertEquals(true, config.spiderTransportRouteAssessment);
 		assertEquals(8.0, config.spiderCreeperSearchRadius);
 		assertEquals(1.40, config.spiderCreeperCarrierSpeed);
 		assertEquals(true, config.endermanAiEnabled);
@@ -94,6 +99,7 @@ class MobsThinkNowConfigTest {
 		config.coordinationRadius = Double.POSITIVE_INFINITY;
 		config.formationRadius = 0.5;
 		config.tacticalSpeedModifier = Double.NaN;
+		config.zombieAnimationBlendTicks = 99;
 
 		config.validate();
 
@@ -108,6 +114,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(4.0, config.coordinationRadius);
 		assertEquals(2.0, config.formationRadius);
 		assertEquals(0.75, config.tacticalSpeedModifier);
+		assertEquals(8, config.zombieAnimationBlendTicks);
 	}
 
 	@Test
@@ -118,6 +125,16 @@ class MobsThinkNowConfigTest {
 		config.validate();
 
 		assertEquals(4, config.maximumCoordinatedZombies);
+	}
+
+	@Test
+	void animationBlendCanBeDisabledWithoutGoingNegative() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.zombieAnimationBlendTicks = -10;
+
+		config.validate();
+
+		assertEquals(0, config.zombieAnimationBlendTicks);
 	}
 
 	@Test

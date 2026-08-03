@@ -6,6 +6,7 @@
 	"environment": "*",
 	"entrypoints": {
 		"fabric-gametest": [
+			"com.wjz.mobsthinknow.ai.activity.TacticalActivityLeaseGameTests",
 			"com.wjz.mobsthinknow.gametest.MobsThinkNowGameTests",
 			"com.wjz.mobsthinknow.ai.skeleton.SkeletonRangedTacticsGameTests",
 			"com.wjz.mobsthinknow.ai.zombie.ZombieShieldCombatGameTests",

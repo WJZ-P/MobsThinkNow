@@ -136,6 +136,37 @@ public final class ZombieSocialTheatricsGameTests implements CustomTestMethodInv
 		helper.succeed();
 	}
 
+	@GameTest(maxTicks = 20)
+	public void bodyActionTransitionKeepsTheInterruptedPoseSnapshot(final GameTestHelper helper) {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 1, 2, 1);
+		zombie.setNoAi(true);
+		long now = helper.getLevel().getGameTime();
+		ZombieBodyActionAccess access = (ZombieBodyActionAccess)zombie;
+
+		access.mobsthinknow$setBodyAction(ZombieBodyAction.COMMAND, now);
+		access.mobsthinknow$setBodyAction(ZombieBodyAction.NOD, now + 5L);
+		helper.assertTrue(
+			access.mobsthinknow$getPreviousBodyAction() == ZombieBodyAction.COMMAND,
+			"Interrupted command was not retained as the previous pose."
+		);
+		helper.assertTrue(
+			access.mobsthinknow$getPreviousBodyActionElapsedTicks() == 5,
+			"Interrupted command elapsed time was not frozen at transition."
+		);
+		helper.assertTrue(
+			access.mobsthinknow$getBodyActionTransitionStartedAt() == now + 5L,
+			"Transition start tick was not synchronized."
+		);
+
+		access.mobsthinknow$setBodyAction(ZombieBodyAction.NONE, now + 7L);
+		helper.assertTrue(
+			access.mobsthinknow$getPreviousBodyAction() == ZombieBodyAction.NOD
+				&& access.mobsthinknow$getPreviousBodyActionElapsedTicks() == 2,
+			"Early action shutdown did not preserve the outgoing nod pose."
+		);
+		helper.succeed();
+	}
+
 	private static SquadTheatrics.RoleMember member(
 		final Zombie zombie,
 		final SquadRole role,

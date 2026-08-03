@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.spider;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.MountedSkeletonTargetGoal;
@@ -17,6 +18,7 @@ import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
@@ -84,7 +86,20 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		creeper.setSwellDir(1); // 模拟实体 tick 顺序使苦力怕提前一拍进入早期引信。
 
 		SpiderCreeperCarrierGoal goal = new SpiderCreeperCarrierGoal(spider);
-		helper.assertTrue(goal.canUse(), "Nearby spider and creeper did not reserve a transport pair.");
+		SpiderTransportRouteEvaluator.Assessment route = SpiderTransportRouteEvaluator.assess(
+			spider,
+			SpiderCombatMath.carrierDestination(target.position(), target.getDeltaMovement(), 10),
+			creeper.getBbHeight()
+		);
+		helper.assertTrue(
+			goal.canUse(),
+			"Nearby spider and creeper did not reserve a transport pair: route=" + route.status()
+				+ ",nodes=" + route.sampledNodes()
+				+ ",path=" + (route.path() == null ? "null" : route.path().canReach())
+				+ ",lease=" + TacticalActivityLease.snapshot(spider, helper.getLevel().getGameTime())
+				+ ",reserved=" + ((CreeperTransportAccess)creeper)
+					.mobsthinknow$isReservedForAnyCarrier(helper.getLevel().getGameTime())
+		);
 		goal.start();
 		double configuredCarrierMaximum = ConfigManager.get().spiderCreeperCarrierSpeed;
 		double actualCarrierMaximum = goal.carrierSpeedMaximum();
@@ -259,7 +274,20 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 				helper.succeed();
 			}
 			if (elapsed[0] >= 45) {
-				helper.assertTrue(false, "Squad spider did not complete the visible boarding sequence.");
+				Mob assigned = coordinator.assignedTransportPartnerFor(spider);
+				SpiderTransportRouteEvaluator.Assessment route = SpiderTransportRouteEvaluator.assess(
+					spider,
+					SpiderCombatMath.carrierDestination(target.position(), target.getDeltaMovement(), 10),
+					skeleton.getBbHeight()
+				);
+				helper.assertTrue(
+					false,
+					"Squad spider did not complete the visible boarding sequence: started=" + started[0]
+						+ ",assigned=" + (assigned == null ? "null" : assigned.getId())
+						+ ",route=" + route.status()
+						+ ",nodes=" + route.sampledNodes()
+						+ ",lease=" + TacticalActivityLease.snapshot(spider, now)
+				);
 			}
 		});
 	}
