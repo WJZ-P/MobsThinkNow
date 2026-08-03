@@ -3,12 +3,12 @@ package com.wjz.mobsthinknow.mixin.client;
 import com.wjz.mobsthinknow.ai.enderman.EndermanCreeperDeliveryGoal;
 import com.wjz.mobsthinknow.ai.enderman.EndermanProfessionProfile;
 import com.wjz.mobsthinknow.client.render.EndermanCarrierRenderStateAccess;
+import com.wjz.mobsthinknow.client.render.EndermanItemInHandLayer;
 import com.wjz.mobsthinknow.client.render.EndermanProfessionRenderStateAccess;
 import com.wjz.mobsthinknow.client.render.EndermanProfessionTextures;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.EndermanRenderer;
-import net.minecraft.client.renderer.entity.layers.ItemInHandLayer;
 import net.minecraft.client.renderer.entity.state.EndermanRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.InteractionHand;
@@ -31,7 +31,7 @@ public abstract class EndermanRendererMixin {
 		final CallbackInfo callbackInfo
 	) {
 		EndermanRenderer renderer = (EndermanRenderer)(Object)this;
-		((LivingEntityRendererLayerInvoker)renderer).mobsthinknow$invokeAddLayer(new ItemInHandLayer<>(renderer));
+		((LivingEntityRendererLayerInvoker)renderer).mobsthinknow$invokeAddLayer(new EndermanItemInHandLayer(renderer));
 	}
 
 	@Inject(method = "extractRenderState", at = @At("TAIL"))
