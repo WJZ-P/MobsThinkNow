@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.spider;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.spider.SpiderCombatMath.ApproachMode;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -19,6 +21,8 @@ import org.jspecify.annotations.Nullable;
 public final class SmartSpiderCombatGoal extends MeleeAttackGoal {
 	private final Spider spider;
 	private final int stableSide;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.MELEE);
 	private boolean smartMode;
 	private int repathCooldown;
 	private int attackCooldown;
@@ -38,7 +42,9 @@ public final class SmartSpiderCombatGoal extends MeleeAttackGoal {
 		if (!this.smartMode) {
 			return !this.spider.isVehicle() && super.canUse();
 		}
-		return !this.spider.isVehicle() && isValidTarget(this.spider.getTarget());
+		return !this.spider.isVehicle()
+			&& isValidTarget(this.spider.getTarget())
+			&& this.activityLease.canAcquire(this.spider, this.spider.level().getGameTime());
 	}
 
 	@Override
@@ -54,7 +60,10 @@ public final class SmartSpiderCombatGoal extends MeleeAttackGoal {
 			}
 			return !this.spider.isVehicle() && super.canContinueToUse();
 		}
-		return smartAiEnabled() && !this.spider.isVehicle() && isValidTarget(this.spider.getTarget());
+		return smartAiEnabled()
+			&& !this.spider.isVehicle()
+			&& isValidTarget(this.spider.getTarget())
+			&& this.activityLease.owns(this.spider, this.spider.level().getGameTime());
 	}
 
 	@Override
@@ -63,6 +72,7 @@ public final class SmartSpiderCombatGoal extends MeleeAttackGoal {
 			super.start();
 			return;
 		}
+		this.activityLease.acquire(this.spider, this.spider.level().getGameTime());
 		this.repathCooldown = 0;
 		this.attackCooldown = 0;
 		this.repositionTicks = 0;
@@ -81,12 +91,16 @@ public final class SmartSpiderCombatGoal extends MeleeAttackGoal {
 		this.spider.setAggressive(false);
 		this.repositionTicks = 0;
 		this.smartMode = false;
+		this.activityLease.release(this.spider);
 	}
 
 	@Override
 	public void tick() {
 		if (!this.smartMode) {
 			super.tick();
+			return;
+		}
+		if (!this.activityLease.renew(this.spider, this.spider.level().getGameTime())) {
 			return;
 		}
 		LivingEntity target = this.spider.getTarget();

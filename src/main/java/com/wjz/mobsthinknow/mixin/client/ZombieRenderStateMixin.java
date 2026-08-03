@@ -45,6 +45,12 @@ public abstract class ZombieRenderStateMixin implements
 	private ZombieBodyAction mobsthinknow$bodyAction = ZombieBodyAction.NONE;
 	@Unique
 	private float mobsthinknow$bodyActionElapsedTicks;
+	@Unique
+	private ZombieBodyAction mobsthinknow$previousBodyAction = ZombieBodyAction.NONE;
+	@Unique
+	private float mobsthinknow$previousBodyActionElapsedTicks;
+	@Unique
+	private float mobsthinknow$bodyActionTransitionElapsedTicks;
 
 	@Override
 	public void mobsthinknow$setZombieProfession(final ZombieProfession profession) {
@@ -57,9 +63,18 @@ public abstract class ZombieRenderStateMixin implements
 	}
 
 	@Override
-	public void mobsthinknow$setBodyActionState(final ZombieBodyAction action, final float elapsedTicks) {
+	public void mobsthinknow$setBodyActionState(
+		final ZombieBodyAction action,
+		final float elapsedTicks,
+		final ZombieBodyAction previousAction,
+		final float previousElapsedTicks,
+		final float transitionElapsedTicks
+	) {
 		this.mobsthinknow$bodyAction = action == null ? ZombieBodyAction.NONE : action;
 		this.mobsthinknow$bodyActionElapsedTicks = Math.max(0.0F, elapsedTicks);
+		this.mobsthinknow$previousBodyAction = previousAction == null ? ZombieBodyAction.NONE : previousAction;
+		this.mobsthinknow$previousBodyActionElapsedTicks = Math.max(0.0F, previousElapsedTicks);
+		this.mobsthinknow$bodyActionTransitionElapsedTicks = Math.max(0.0F, transitionElapsedTicks);
 	}
 
 	@Override
@@ -70,6 +85,21 @@ public abstract class ZombieRenderStateMixin implements
 	@Override
 	public float mobsthinknow$getBodyActionElapsedTicks() {
 		return this.mobsthinknow$bodyActionElapsedTicks;
+	}
+
+	@Override
+	public ZombieBodyAction mobsthinknow$getPreviousBodyAction() {
+		return this.mobsthinknow$previousBodyAction;
+	}
+
+	@Override
+	public float mobsthinknow$getPreviousBodyActionElapsedTicks() {
+		return this.mobsthinknow$previousBodyActionElapsedTicks;
+	}
+
+	@Override
+	public float mobsthinknow$getBodyActionTransitionElapsedTicks() {
+		return this.mobsthinknow$bodyActionTransitionElapsedTicks;
 	}
 
 	@Override

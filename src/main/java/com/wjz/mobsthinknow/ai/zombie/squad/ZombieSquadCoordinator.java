@@ -10,6 +10,8 @@ import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBodyLanguage;
 import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerProfile;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
@@ -20,6 +22,7 @@ import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
@@ -30,6 +33,7 @@ import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
@@ -39,6 +43,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
@@ -63,6 +68,9 @@ public final class ZombieSquadCoordinator {
 	private static final int MINIMUM_SURVIVING_SQUAD_SIZE = 2;
 	private static final double ORDER_REACHED_DISTANCE_SQUARED = 4.0;
 	private static final double MINIMUM_HORIZONTAL_LENGTH_SQUARED = 1.0E-6;
+	private static final Direction[] TACTIC_CARDINAL_DIRECTIONS = {
+		Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST
+	};
 	private static final Identifier SQUAD_SPEED_MODIFIER_ID =
 		Identifier.fromNamespaceAndPath(MobsThinkNow.MOD_ID, "squad_speed_bonus");
 	private static final Map<ServerLevel, ZombieSquadCoordinator> COORDINATORS = new IdentityHashMap<>();
@@ -242,6 +250,7 @@ public final class ZombieSquadCoordinator {
 			member.target = target;
 			member.lastSeenPosition = null;
 			member.lastSeenFacing = null;
+			member.lastSeenVelocity = null;
 			member.lastSeenAt = Long.MIN_VALUE;
 		}
 
@@ -252,6 +261,7 @@ public final class ZombieSquadCoordinator {
 			member.lastSeenAt = lastSeenAt;
 			if (hasLineOfSight) {
 				member.lastSeenFacing = target.getLookAngle();
+				member.lastSeenVelocity = target.getDeltaMovement();
 			}
 		}
 
@@ -305,11 +315,92 @@ public final class ZombieSquadCoordinator {
 			squad.planEpoch,
 			squad.state,
 			squad.assaultPlan,
+			squad.observedTargetTactic,
 			role,
 			destination,
 			focusPosition,
 			sharedMemoryIsFresh
 		);
+	}
+
+	/**
+	 * 成员在执行当前战斗阵位时上报真实的 {@code Navigation#moveTo=false}。同一计划必须连续失败
+	 * 两次才触发有界改令，且每名成员有 40～80 tick 的确定性冷却，避免坏地形造成 A* 风暴。
+	 */
+	public boolean reportRouteFailure(
+		final Mob mob,
+		final int observedPlanEpoch,
+		final Vec3 failedDestination
+	) {
+		MobsThinkNowConfig config = ConfigManager.get();
+		if (!config.dynamicSquadReplanning) {
+			return false;
+		}
+		MemberRecord member = this.members.get(mob.getId());
+		ZombieSquad squad = member == null ? null : this.squads.get(member.squadId);
+		if (squad == null || squad.state != SquadState.ENGAGING || squad.planEpoch != observedPlanEpoch) {
+			return false;
+		}
+		SquadOrder order = squad.orders.get(mob.getId());
+		if (order == null
+			|| order.destination == null
+			|| order.destination.distanceToSqr(failedDestination) > 1.0
+			|| mob.position().distanceToSqr(failedDestination) <= ORDER_REACHED_DISTANCE_SQUARED) {
+			return false;
+		}
+
+		long now = mob.level().getGameTime();
+		int cooldown = 40 + Math.floorMod((int)(squad.id ^ mob.getId() ^ observedPlanEpoch), 41);
+		SquadRouteFailureTracker.Decision decision = member.routeFailures.recordFailure(
+			observedPlanEpoch,
+			failedDestination,
+			now,
+			cooldown
+		);
+		SmartZombieMetrics.combatRouteFailure();
+		if (decision != SquadRouteFailureTracker.Decision.REPLAN) {
+			if (decision == SquadRouteFailureTracker.Decision.COOLDOWN) {
+				SmartZombieMetrics.combatReplanSuppressed();
+			}
+			return false;
+		}
+
+		Vec3 targetPosition = squad.sharedLastSeenPosition;
+		if (targetPosition == null) {
+			return false;
+		}
+		Vec3 fallback = targetPosition.subtract(this.memberCentroid(squad));
+		Vec3 forward = horizontalUnit(squad.sharedTargetFacing, fallback);
+		Vec3 lateral = new Vec3(-forward.z, 0.0, forward.x);
+		List<SquadBriefingRoutePlanner.Candidate> alternatives = this.briefingFallbacks(
+			squad,
+			member,
+			order.role,
+			null,
+			targetPosition,
+			forward,
+			lateral,
+			config
+		);
+		SquadBriefingRoutePlanner.Result reroute = SquadBriefingRoutePlanner.resolve(
+			order.role,
+			null,
+			alternatives,
+			destination -> this.canReachBriefingDestination(mob, destination)
+		);
+		SmartZombieMetrics.combatRouteChecks(reroute.pathChecks());
+
+		SquadRole assignedRole = reroute.resolvedDestination() == null
+			? SquadRole.PRESSURER
+			: reroute.assignedRole();
+		Vec3 assignedDestination = reroute.resolvedDestination();
+		squad.roles.put(mob.getId(), assignedRole);
+		squad.orders.put(mob.getId(), new SquadOrder(assignedRole, assignedDestination));
+		squad.planEpoch++;
+		member.routeFailures.reset();
+		this.publishFieldRecommand(squad, member, order.role);
+		SmartZombieMetrics.combatReplan();
+		return true;
 	}
 
 	private Vec3 socialFocusPosition(
@@ -383,11 +474,120 @@ public final class ZombieSquadCoordinator {
 			squad.id,
 			squad.state,
 			squad.assaultPlan,
+			squad.observedTargetTactic,
 			squad.leaderId,
 			squad.term,
 			squad.planEpoch,
 			squad.memberIds.size()
 		);
+	}
+
+	private void updateObservedTargetTactics(
+		final ZombieSquad squad,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		if (!config.observableTargetTactics || !(squad.target instanceof Player player)) {
+			squad.tacticMemory.clear();
+			if (squad.observedTargetTactic != ObservedTargetTactic.NONE) {
+				this.applyObservedTactic(squad, ObservedTargetTactic.NONE);
+			}
+			return;
+		}
+
+		boolean visible = false;
+		for (int memberId : squad.memberIds) {
+			MemberRecord member = this.members.get(memberId);
+			if (member != null
+				&& member.hasLineOfSight
+				&& member.lastSeenAt >= now - config.decisionIntervalTicks * 2L) {
+				visible = true;
+				break;
+			}
+		}
+		SquadTacticMemory.Update update;
+		if (!visible) {
+			update = squad.tacticMemory.age(now);
+		} else {
+			EnumSet<ObservedTargetTactic> signals = EnumSet.noneOf(ObservedTargetTactic.class);
+			Vec3 centroid = this.memberCentroid(squad);
+			Vec3 targetPosition = player.position();
+			if (targetPosition.y - centroid.y >= 2.5) {
+				signals.add(ObservedTargetTactic.HIGH_GROUND);
+			}
+			if (player.isBlocking()) {
+				signals.add(ObservedTargetTactic.SHIELDING);
+			}
+			Vec3 away = new Vec3(targetPosition.x - centroid.x, 0.0, targetPosition.z - centroid.z);
+			Vec3 velocity = clampHorizontal(player.getDeltaMovement(), 0.5);
+			if (away.horizontalDistanceSqr() >= 36.0
+				&& away.horizontalDistanceSqr() > MINIMUM_HORIZONTAL_LENGTH_SQUARED
+				&& velocity.dot(away.normalize()) >= 0.045) {
+				signals.add(ObservedTargetTactic.KITING);
+			}
+
+			BlockPos feet = player.blockPosition();
+			int blockedSides = 0;
+			for (Direction direction : TACTIC_CARDINAL_DIRECTIONS) {
+				BlockPos side = feet.relative(direction);
+				if (player.level().getBlockState(side).blocksMotion()
+					|| player.level().getBlockState(side.above()).blocksMotion()) {
+					blockedSides++;
+				}
+			}
+			if (blockedSides >= 2) {
+				signals.add(ObservedTargetTactic.CHOKEPOINT);
+			}
+			if (player.level().getFluidState(feet).is(FluidTags.WATER)) {
+				signals.add(ObservedTargetTactic.WATER_DEFENSE);
+			}
+			update = squad.tacticMemory.observe(signals, now);
+		}
+
+		if (update.changed()) {
+			this.applyObservedTactic(squad, update.primary());
+		}
+	}
+
+	private void applyObservedTactic(
+		final ZombieSquad squad,
+		final ObservedTargetTactic tactic
+	) {
+		MemberRecord leader = this.members.get(squad.leaderId);
+		int intelligence = leader == null ? 1 : intelligenceOf(leader.mob);
+		SquadAssaultPlan previousPlan = squad.assaultPlan;
+		squad.observedTargetTactic = tactic;
+		squad.assaultPlan = SquadAdaptiveAssaultPlanner.adapt(
+			squad.baseAssaultPlan,
+			tactic,
+			squad.composition,
+			intelligence
+		);
+		squad.planEpoch++;
+		SmartZombieMetrics.targetTacticChanged();
+		if (previousPlan != squad.assaultPlan) {
+			SmartZombieMetrics.assaultPlanChosen(squad.assaultPlan);
+		}
+	}
+
+	private void publishFieldRecommand(
+		final ZombieSquad squad,
+		final MemberRecord reporter,
+		final SquadRole failedRole
+	) {
+		if (reporter.mob instanceof Zombie zombie) {
+			ZombieBodyLanguage.play(zombie, ZombieBodyAction.SHAKE_HEAD);
+		}
+		MemberRecord leader = this.members.get(squad.leaderId);
+		if (leader == null || !(leader.mob instanceof Zombie zombieLeader)) {
+			return;
+		}
+		ZombieBodyAction command = failedRole == SquadRole.FLANK_LEFT
+			? ZombieBodyAction.COMMAND_LEFT
+			: failedRole == SquadRole.FLANK_RIGHT
+				? ZombieBodyAction.COMMAND_RIGHT
+				: ZombieBodyAction.COMMAND;
+		ZombieBodyLanguage.play(zombieLeader, command);
 	}
 
 	/**
@@ -769,6 +969,7 @@ public final class ZombieSquadCoordinator {
 			}
 			case ENGAGING -> {
 				if (now >= squad.nextPlanRefreshAt) {
+					this.updateObservedTargetTactics(squad, config, now);
 					this.refreshCombatOrders(squad, config, true, false, now);
 					squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 				}
@@ -851,7 +1052,14 @@ public final class ZombieSquadCoordinator {
 		}
 		this.rebuildTransportAssignments(squad, ordered);
 		SquadAssaultPlan previousPlan = squad.assaultPlan;
-		squad.assaultPlan = SquadAssaultPlanner.choose(this.compositionOf(ordered), intelligence);
+		squad.composition = this.compositionOf(ordered);
+		squad.baseAssaultPlan = SquadAssaultPlanner.choose(squad.composition, intelligence);
+		squad.assaultPlan = SquadAdaptiveAssaultPlanner.adapt(
+			squad.baseAssaultPlan,
+			squad.observedTargetTactic,
+			squad.composition,
+			intelligence
+		);
 		if (squad.assaultPlan != previousPlan || squad.planEpoch == 0) {
 			SmartZombieMetrics.assaultPlanChosen(squad.assaultPlan);
 		}
@@ -1063,6 +1271,11 @@ public final class ZombieSquadCoordinator {
 		Vec3 targetPosition = squad.sharedLastSeenPosition;
 		if (targetPosition == null) {
 			return;
+		}
+		if (squad.observedTargetTactic == ObservedTargetTactic.KITING
+			&& squad.sharedTargetVelocity != null) {
+			// 只使用队员最后一次有视线时写入的速度；墙后的实时移动不会被读取。
+			targetPosition = targetPosition.add(clampHorizontal(squad.sharedTargetVelocity, 0.35).scale(3.0));
 		}
 		Vec3 fallback = targetPosition.subtract(this.memberCentroid(squad));
 		Vec3 forward = horizontalUnit(squad.sharedTargetFacing, fallback);
@@ -1463,6 +1676,9 @@ public final class ZombieSquadCoordinator {
 			if (member.lastSeenFacing != null) {
 				squad.sharedTargetFacing = member.lastSeenFacing;
 			}
+			if (member.lastSeenVelocity != null) {
+				squad.sharedTargetVelocity = member.lastSeenVelocity;
+			}
 		}
 	}
 
@@ -1686,6 +1902,14 @@ public final class ZombieSquadCoordinator {
 		return horizontal.normalize();
 	}
 
+	private static Vec3 clampHorizontal(final Vec3 vector, final double maximumLength) {
+		Vec3 horizontal = new Vec3(vector.x, 0.0, vector.z);
+		double maximumSquared = maximumLength * maximumLength;
+		return horizontal.lengthSqr() <= maximumSquared
+			? horizontal
+			: horizontal.normalize().scale(maximumLength);
+	}
+
 	private static boolean isMemoryFresh(
 		final @Nullable Vec3 position,
 		final long observedAt,
@@ -1783,6 +2007,7 @@ public final class ZombieSquadCoordinator {
 		long squadId,
 		SquadState state,
 		SquadAssaultPlan assaultPlan,
+		ObservedTargetTactic observedTargetTactic,
 		int leaderEntityId,
 		int term,
 		int planEpoch,
@@ -1797,8 +2022,10 @@ public final class ZombieSquadCoordinator {
 		private boolean hasLineOfSight;
 		private @Nullable Vec3 lastSeenPosition;
 		private @Nullable Vec3 lastSeenFacing;
+		private @Nullable Vec3 lastSeenVelocity;
 		private long lastSeenAt = Long.MIN_VALUE;
 		private long squadId;
+		private final SquadRouteFailureTracker routeFailures = new SquadRouteFailureTracker();
 
 		private MemberRecord(final Mob mob) {
 			this.mob = mob;
@@ -1821,7 +2048,11 @@ public final class ZombieSquadCoordinator {
 		private int term;
 		private int planEpoch;
 		private SquadState state = SquadState.FORMING;
+		private SquadAssaultPlan baseAssaultPlan = SquadAssaultPlan.SWARM;
 		private SquadAssaultPlan assaultPlan = SquadAssaultPlan.SWARM;
+		private SquadComposition composition = new SquadComposition(0, 0, 0, 0, 0, 0);
+		private final SquadTacticMemory tacticMemory = new SquadTacticMemory();
+		private ObservedTargetTactic observedTargetTactic = ObservedTargetTactic.NONE;
 		private long stateStartedAt;
 		private long stateDeadline;
 		private long nextPlanRefreshAt;
@@ -1829,6 +2060,7 @@ public final class ZombieSquadCoordinator {
 		private Vec3 rallyPoint = Vec3.ZERO;
 		private @Nullable Vec3 sharedLastSeenPosition;
 		private @Nullable Vec3 sharedTargetFacing;
+		private @Nullable Vec3 sharedTargetVelocity;
 		private long sharedLastSeenAt = Long.MIN_VALUE;
 
 		private ZombieSquad(final long id, final LivingEntity target) {

@@ -93,6 +93,14 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonCoverPeeking = value))
 			.build());
 		skeletonCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.skeleton_firing_lane_reposition"),
+			config.skeletonFiringLaneReposition
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.skeleton_firing_lane_reposition.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.skeletonFiringLaneReposition = value))
+			.build());
+		skeletonCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.skeleton_projectile_dodging"),
 			config.skeletonProjectileDodging
 		)
@@ -219,6 +227,14 @@ public final class MobsThinkNowConfigScreen {
 			.setDefaultValue(true)
 			.setTooltip(Component.translatable("mobsthinknow.config.spider_creeper_coordination.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderCreeperCoordination = value))
+			.build());
+		spiderCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.spider_transport_route_assessment"),
+			config.spiderTransportRouteAssessment
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_transport_route_assessment.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderTransportRouteAssessment = value))
 			.build());
 		spiderCategory.addEntry(entries.startIntSlider(
 			Component.translatable("mobsthinknow.config.spider_creeper_search_radius"),
@@ -489,6 +505,22 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.maximum_coordinated_zombies.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.maximumCoordinatedZombies = value))
 			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.dynamic_squad_replanning"),
+			config.dynamicSquadReplanning
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.dynamic_squad_replanning.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.dynamicSquadReplanning = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.observable_target_tactics"),
+			config.observableTargetTactics
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.observable_target_tactics.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.observableTargetTactics = value))
+			.build());
 		squadCategory.addEntry(entries.startIntSlider(
 			Component.translatable("mobsthinknow.config.briefing_ticks"),
 			config.briefingTicks,
@@ -532,6 +564,16 @@ public final class MobsThinkNowConfigScreen {
 			.setDefaultValue(true)
 			.setTooltip(Component.translatable("mobsthinknow.config.zombie_body_language.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.zombieBodyLanguage = value))
+			.build());
+		squadCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.zombie_animation_blend_ticks"),
+			config.zombieAnimationBlendTicks,
+			0,
+			8
+		)
+			.setDefaultValue(4)
+			.setTooltip(Component.translatable("mobsthinknow.config.zombie_animation_blend_ticks.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.zombieAnimationBlendTicks = value))
 			.build());
 		squadCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.squad_role_name_tags"),

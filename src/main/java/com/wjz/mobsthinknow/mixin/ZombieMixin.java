@@ -102,6 +102,15 @@ public abstract class ZombieMixin extends Monster implements
 	private static final EntityDataAccessor<Long> mobsthinknow$BODY_ACTION_STARTED_AT =
 		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.LONG);
 	@Unique
+	private static final EntityDataAccessor<Byte> mobsthinknow$PREVIOUS_BODY_ACTION_ID =
+		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.BYTE);
+	@Unique
+	private static final EntityDataAccessor<Integer> mobsthinknow$PREVIOUS_BODY_ACTION_ELAPSED =
+		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.INT);
+	@Unique
+	private static final EntityDataAccessor<Long> mobsthinknow$BODY_ACTION_TRANSITION_STARTED_AT =
+		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.LONG);
+	@Unique
 	private static final EntityDataAccessor<Byte> mobsthinknow$NETHER_PROFESSION_ID =
 		SynchedEntityData.defineId(Zombie.class, EntityDataSerializers.BYTE);
 
@@ -143,6 +152,9 @@ public abstract class ZombieMixin extends Monster implements
 		builder.define(mobsthinknow$PROFESSION_ID, ZombieProfession.VANILLA.id());
 		builder.define(mobsthinknow$BODY_ACTION_ID, ZombieBodyAction.NONE.id());
 		builder.define(mobsthinknow$BODY_ACTION_STARTED_AT, 0L);
+		builder.define(mobsthinknow$PREVIOUS_BODY_ACTION_ID, ZombieBodyAction.NONE.id());
+		builder.define(mobsthinknow$PREVIOUS_BODY_ACTION_ELAPSED, 0);
+		builder.define(mobsthinknow$BODY_ACTION_TRANSITION_STARTED_AT, 0L);
 		// 只有僵尸猪灵会使用该槽；其余僵尸保持 NONE，但共享父类只增加一个同步字节。
 		builder.define(mobsthinknow$NETHER_PROFESSION_ID, NetherProfession.NONE.id());
 	}
@@ -441,8 +453,31 @@ public abstract class ZombieMixin extends Monster implements
 	}
 
 	@Override
+	public ZombieBodyAction mobsthinknow$getPreviousBodyAction() {
+		return ZombieBodyAction.fromId(this.entityData.get(mobsthinknow$PREVIOUS_BODY_ACTION_ID));
+	}
+
+	@Override
+	public int mobsthinknow$getPreviousBodyActionElapsedTicks() {
+		return this.entityData.get(mobsthinknow$PREVIOUS_BODY_ACTION_ELAPSED);
+	}
+
+	@Override
+	public long mobsthinknow$getBodyActionTransitionStartedAt() {
+		return this.entityData.get(mobsthinknow$BODY_ACTION_TRANSITION_STARTED_AT);
+	}
+
+	@Override
 	public void mobsthinknow$setBodyAction(final ZombieBodyAction action, final long startedAt) {
 		ZombieBodyAction safeAction = action == null ? ZombieBodyAction.NONE : action;
+		ZombieBodyAction current = this.mobsthinknow$getBodyAction();
+		if (current != safeAction) {
+			long currentStartedAt = this.mobsthinknow$getBodyActionStartedAt();
+			long elapsed = Math.max(0L, Math.min(200L, startedAt - currentStartedAt));
+			this.entityData.set(mobsthinknow$PREVIOUS_BODY_ACTION_ID, current.id());
+			this.entityData.set(mobsthinknow$PREVIOUS_BODY_ACTION_ELAPSED, (int)elapsed);
+			this.entityData.set(mobsthinknow$BODY_ACTION_TRANSITION_STARTED_AT, startedAt);
+		}
 		this.entityData.set(mobsthinknow$BODY_ACTION_ID, safeAction.id());
 		this.entityData.set(mobsthinknow$BODY_ACTION_STARTED_AT, startedAt);
 	}

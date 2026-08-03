@@ -45,10 +45,13 @@ public abstract class AbstractZombieRendererMixin {
 		((ZombieProfessionRenderStateAccess)state).mobsthinknow$setZombieProfession(
 			ZombieProfessionProfile.get(zombie)
 		);
-		ZombieBodyLanguage.Snapshot action = ZombieBodyLanguage.snapshot(zombie, partialTick);
+		ZombieBodyLanguage.TransitionSnapshot action = ZombieBodyLanguage.transitionSnapshot(zombie, partialTick);
 		((ZombieBodyActionRenderStateAccess)state).mobsthinknow$setBodyActionState(
 			action.action(),
-			action.elapsedTicks()
+			action.elapsedTicks(),
+			action.previousAction(),
+			action.previousElapsedTicks(),
+			action.transitionElapsedTicks()
 		);
 	}
 

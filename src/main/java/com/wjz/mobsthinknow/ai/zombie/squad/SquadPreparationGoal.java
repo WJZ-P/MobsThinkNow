@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import java.util.EnumSet;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
@@ -14,6 +16,8 @@ public final class SquadPreparationGoal extends Goal {
 	private static final double ORDER_REACHED_DISTANCE_SQUARED = 2.25;
 	private final Mob mob;
 	private final double speedModifier;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.SQUAD_PREPARATION);
 	private @Nullable SquadDirective directive;
 
 	public SquadPreparationGoal(final Mob mob, final double speedModifier) {
@@ -25,17 +29,20 @@ public final class SquadPreparationGoal extends Goal {
 	@Override
 	public boolean canUse() {
 		this.directive = this.readPreparationDirective();
-		return this.directive != null;
+		return this.directive != null
+			&& this.activityLease.canAcquire(this.mob, this.mob.level().getGameTime());
 	}
 
 	@Override
 	public boolean canContinueToUse() {
 		this.directive = this.readPreparationDirective();
-		return this.directive != null;
+		return this.directive != null
+			&& this.activityLease.owns(this.mob, this.mob.level().getGameTime());
 	}
 
 	@Override
 	public void start() {
+		this.activityLease.acquire(this.mob, this.mob.level().getGameTime());
 		this.mob.setAggressive(false);
 		this.tick();
 	}
@@ -45,10 +52,14 @@ public final class SquadPreparationGoal extends Goal {
 		this.mob.getNavigation().stop();
 		this.mob.setAggressive(this.mob.getTarget() != null);
 		this.directive = null;
+		this.activityLease.release(this.mob);
 	}
 
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.mob, this.mob.level().getGameTime())) {
+			return;
+		}
 		SquadDirective current = this.directive;
 		LivingEntity target = this.mob.getTarget();
 		if (current == null || target == null) {

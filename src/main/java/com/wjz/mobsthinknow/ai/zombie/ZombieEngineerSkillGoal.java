@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -91,6 +93,8 @@ public final class ZombieEngineerSkillGoal extends Goal {
 
 	private final Zombie zombie;
 	private final SkillDecision skillDecision;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.ENGINEERING);
 	private Phase phase = Phase.IDLE;
 	private @Nullable Skill selectedSkill;
 	private @Nullable LivingEntity combatTarget;
@@ -133,7 +137,8 @@ public final class ZombieEngineerSkillGoal extends Goal {
 
 		ZombieFluidCarrierState carrierState = ZombieSpecialEquipment.state(this.zombie);
 		if (carrierState.isEngineerDeployment()) {
-			return this.preparePersistedFluidTransaction(carrierState);
+			return this.preparePersistedFluidTransaction(carrierState)
+				&& this.activityLease.canAcquire(this.zombie, level.getGameTime());
 		}
 		// 真实桶兵已经开始的救火/骚扰事务仍由 ZombieFluidTacticsGoal 回收，不能并发抢走 MOVE/LOOK。
 		if (carrierState.isDeployed()) {
@@ -204,13 +209,16 @@ public final class ZombieEngineerSkillGoal extends Goal {
 		} else if (chosen == Skill.LAVA_CONTROL) {
 			this.fluidPlan = lavaPlan;
 		}
-		return true;
+		return this.activityLease.canAcquire(this.zombie, now);
 	}
 
 	@Override
 	public boolean canContinueToUse() {
 		if (!this.zombie.isAlive() || !(this.zombie.level() instanceof ServerLevel level)
 			|| this.phase == Phase.IDLE || this.phase == Phase.DONE) {
+			return false;
+		}
+		if (!this.activityLease.owns(this.zombie, level.getGameTime())) {
 			return false;
 		}
 		if (this.phase == Phase.FLUID_HOLD || this.phase == Phase.RETRIEVING_FLUID) {
@@ -246,6 +254,7 @@ public final class ZombieEngineerSkillGoal extends Goal {
 
 	@Override
 	public void start() {
+		this.activityLease.acquire(this.zombie, this.zombie.level().getGameTime());
 		this.zombie.getNavigation().stop();
 		this.zombie.stopUsingItem();
 		this.zombie.setAggressive(false);
@@ -300,6 +309,9 @@ public final class ZombieEngineerSkillGoal extends Goal {
 
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.zombie, this.zombie.level().getGameTime())) {
+			return;
+		}
 		this.zombie.setAggressive(false);
 		switch (this.phase) {
 			case MOVING_TO_TNT_SITE -> this.tickMovingToTnt();
@@ -337,6 +349,7 @@ public final class ZombieEngineerSkillGoal extends Goal {
 		this.nextPathRefreshAt = 0L;
 		this.placedTnt = false;
 		this.primedTnt = false;
+		this.activityLease.release(this.zombie);
 	}
 
 	@Override

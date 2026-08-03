@@ -68,6 +68,23 @@ public final class ZombieBodyLanguage {
 			: Snapshot.NONE;
 	}
 
+	/** 客户端渲染使用的当前/上一动作和交叉淡化时间，不改变服务端动作仲裁。 */
+	public static TransitionSnapshot transitionSnapshot(final Zombie zombie, final float partialTick) {
+		ZombieBodyActionAccess access = access(zombie);
+		Snapshot current = snapshot(zombie, partialTick);
+		float transitionElapsed = Math.max(
+			0.0F,
+			zombie.level().getGameTime() + partialTick - access.mobsthinknow$getBodyActionTransitionStartedAt()
+		);
+		return new TransitionSnapshot(
+			current.action(),
+			current.elapsedTicks(),
+			access.mobsthinknow$getPreviousBodyAction(),
+			access.mobsthinknow$getPreviousBodyActionElapsedTicks() + transitionElapsed,
+			transitionElapsed
+		);
+	}
+
 	private static void set(final Zombie zombie, final ZombieBodyAction action) {
 		access(zombie).mobsthinknow$setBodyAction(action, zombie.level().getGameTime());
 	}
@@ -78,5 +95,14 @@ public final class ZombieBodyLanguage {
 
 	public record Snapshot(ZombieBodyAction action, float elapsedTicks) {
 		public static final Snapshot NONE = new Snapshot(ZombieBodyAction.NONE, 0.0F);
+	}
+
+	public record TransitionSnapshot(
+		ZombieBodyAction action,
+		float elapsedTicks,
+		ZombieBodyAction previousAction,
+		float previousElapsedTicks,
+		float transitionElapsedTicks
+	) {
 	}
 }

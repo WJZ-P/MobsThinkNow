@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.utility.EscapePathing;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -33,6 +35,8 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 	private static final float FALLBACK_SIDEWAYS = 0.35F;
 
 	private final AbstractSkeleton skeleton;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.EMERGENCY_DISENGAGE);
 	private @Nullable LivingEntity threat;
 	private @Nullable Vec3 escapeDestination;
 	private int elapsedTicks;
@@ -71,7 +75,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 		}
 
 		this.threat = target;
-		return true;
+		return this.activityLease.canAcquire(this.skeleton, this.skeleton.level().getGameTime());
 	}
 
 	@Override
@@ -80,6 +84,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 		LivingEntity currentThreat = this.threat;
 		int intelligence = SkeletonIntelligence.get(this.skeleton);
 		return isEnabled(config)
+			&& this.activityLease.owns(this.skeleton, this.skeleton.level().getGameTime())
 			&& this.elapsedTicks < MAXIMUM_DISENGAGE_TICKS
 			&& this.skeleton.isAlive()
 			&& !MountedSkeletonCombat.isManagedRider(this.skeleton)
@@ -96,6 +101,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 
 	@Override
 	public void start() {
+		this.activityLease.acquire(this.skeleton, this.skeleton.level().getGameTime());
 		this.elapsedTicks = 0;
 		this.pathRefreshCooldown = 0;
 		this.sideDirection = this.skeleton.getRandom().nextBoolean() ? 1 : -1;
@@ -109,6 +115,9 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.skeleton, this.skeleton.level().getGameTime())) {
+			return;
+		}
 		LivingEntity currentThreat = this.threat;
 		if (currentThreat == null) {
 			return;
@@ -172,6 +181,7 @@ public final class SkeletonEmergencyDisengageGoal extends Goal {
 		this.escapeDestination = null;
 		this.elapsedTicks = 0;
 		this.pathRefreshCooldown = 0;
+		this.activityLease.release(this.skeleton);
 	}
 
 	@Override

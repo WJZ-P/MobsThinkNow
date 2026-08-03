@@ -16,6 +16,7 @@ public record SquadDirective(
 	int planEpoch,
 	SquadState state,
 	SquadAssaultPlan assaultPlan,
+	ObservedTargetTactic observedTargetTactic,
 	SquadRole role,
 	@Nullable Vec3 destination,
 	@Nullable Vec3 focusPosition,

@@ -278,6 +278,13 @@ final class ZombieTacticalController {
 				if (this.squadDirective == null) {
 					this.alternateFlank = !this.alternateFlank;
 					this.nextDecisionAt = now + 2L;
+				} else if (this.squadDirective.state() == SquadState.ENGAGING
+					&& this.zombie.level() instanceof ServerLevel serverLevel) {
+					ZombieSquadCoordinator.forLevel(serverLevel).reportRouteFailure(
+						this.zombie,
+						this.squadDirective.planEpoch(),
+						this.destination
+					);
 				}
 				SmartZombieMetrics.failedPath();
 			}

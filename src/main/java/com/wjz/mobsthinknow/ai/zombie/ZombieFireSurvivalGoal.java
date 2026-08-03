@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -60,6 +62,8 @@ public final class ZombieFireSurvivalGoal extends Goal {
 
 	private final Zombie zombie;
 	private final Activation activation;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.FIRE_SURVIVAL);
 	private EscapeMode mode = EscapeMode.NONE;
 	private @Nullable Path shadePath;
 	private @Nullable Path waterEntryPath;
@@ -116,16 +120,16 @@ public final class ZombieFireSurvivalGoal extends Goal {
 
 		if (this.canDeployOwnWater(level)) {
 			this.mode = EscapeMode.SELF_WATER;
-			return true;
+			return this.activityLease.canAcquire(this.zombie, level.getGameTime());
 		}
 		if (burning && this.prepareWaterEscape(level, false)) {
 			this.mode = EscapeMode.WATER;
-			return true;
+			return this.activityLease.canAcquire(this.zombie, level.getGameTime());
 		}
 		if (sunlightDanger) {
 			this.mode = EscapeMode.SHADE;
 			this.prepareShadeEscape(level, false);
-			return true;
+			return this.activityLease.canAcquire(this.zombie, level.getGameTime());
 		}
 
 		// 夜间等非日晒火焰若找不到水，不霸占 MOVE/LOOK；小队水桶兵仍可依据上面的求援赶来。
@@ -140,17 +144,20 @@ public final class ZombieFireSurvivalGoal extends Goal {
 			return false;
 		}
 		if (this.zombie.isOnFire()) {
-			return this.activation != Activation.SUNLIGHT_ONLY;
+			return this.activation != Activation.SUNLIGHT_ONLY
+				&& this.activityLease.owns(this.zombie, level.getGameTime());
 		}
 		if (this.activation == Activation.FIRE_ONLY) {
 			return false;
 		}
 		return !ZombieCombatUrgency.wasRecentlyAttacked(this.zombie)
+			&& this.activityLease.owns(this.zombie, level.getGameTime())
 			&& ZombieSunlightRules.requiresEscape(this.zombie, level);
 	}
 
 	@Override
 	public void start() {
+		this.activityLease.acquire(this.zombie, this.zombie.level().getGameTime());
 		this.zombie.getNavigation().stop();
 		this.zombie.stopUsingItem();
 		this.zombie.setAggressive(false);
@@ -175,6 +182,9 @@ public final class ZombieFireSurvivalGoal extends Goal {
 
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.zombie, this.zombie.level().getGameTime())) {
+			return;
+		}
 		this.zombie.setAggressive(false);
 		ServerLevel level = (ServerLevel)this.zombie.level();
 		if (this.zombie.isOnFire() && this.zombie.isInWaterOrRain()) {
@@ -217,6 +227,7 @@ public final class ZombieFireSurvivalGoal extends Goal {
 		this.clearWaterPlan();
 		this.nextPathRefreshAt = 0L;
 		this.waterDeployed = false;
+		this.activityLease.release(this.zombie);
 	}
 
 	@Override

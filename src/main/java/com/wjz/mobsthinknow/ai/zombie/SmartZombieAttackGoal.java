@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.world.InteractionHand;
@@ -11,6 +13,8 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 	private final Zombie zombie;
 	private final ZombieTacticalController controller;
 	private final ZombieWeaponCombat weaponCombat;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.MELEE);
 
 	public SmartZombieAttackGoal(final Zombie zombie, final double speedModifier, final boolean trackTarget) {
 		super(zombie, speedModifier, trackTarget);
@@ -38,7 +42,9 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 		}
 
 		this.controller.observe(target);
-		return this.controller.hasTrackableTarget() && super.canUse();
+		return this.controller.hasTrackableTarget()
+			&& super.canUse()
+			&& this.activityLease.canAcquire(this.zombie, this.zombie.level().getGameTime());
 	}
 
 	/**
@@ -62,14 +68,24 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 		this.controller.observe(target);
 		MobsThinkNowConfig config = ConfigManager.get();
 		return this.controller.hasTrackableTarget()
+			&& this.activityLease.owns(this.zombie, this.zombie.level().getGameTime())
 			&& (super.canContinueToUse()
 				|| this.controller.hasTacticalIntent()
 				|| this.weaponCombat.hasTacticalIntent(config));
 	}
 
+	@Override
+	public void start() {
+		this.activityLease.acquire(this.zombie, this.zombie.level().getGameTime());
+		super.start();
+	}
+
 	/** 每个 AI tick 先执行战术命令；只有需要正面追击或挥击时才调用原版 tick。 */
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.zombie, this.zombie.level().getGameTime())) {
+			return;
+		}
 		LivingEntity target = this.zombie.getTarget();
 		if (target == null) {
 			return;
@@ -92,6 +108,7 @@ public final class SmartZombieAttackGoal extends ZombieAttackGoal {
 		super.stop();
 		this.weaponCombat.stop();
 		this.controller.stop();
+		this.activityLease.release(this.zombie);
 	}
 
 	/** 盾牌正面包抄尚未完成时禁止过早挥击，避免侧翼又被拉回玩家正前方。 */

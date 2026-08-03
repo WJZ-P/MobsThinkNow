@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.spider;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.world.entity.EntitySelector;
@@ -15,6 +17,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class SmartSpiderPounceGoal extends LeapAtTargetGoal {
 	private final Spider spider;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.POUNCE);
 	private boolean smartMode;
 	private @Nullable LivingEntity target;
 	private long nextPounceTick;
@@ -38,6 +42,7 @@ public final class SmartSpiderPounceGoal extends LeapAtTargetGoal {
 		}
 		this.target = currentTarget;
 		return ConfigManager.get().spiderPredictivePounce
+			&& this.activityLease.canAcquire(this.spider, this.spider.level().getGameTime())
 			&& SpiderCombatMath.canPredictivePounce(
 				SpiderIntelligence.get(this.spider),
 				this.spider.getSensing().hasLineOfSight(currentTarget),
@@ -51,7 +56,10 @@ public final class SmartSpiderPounceGoal extends LeapAtTargetGoal {
 		if (!this.smartMode) {
 			return !smartAiEnabled() && super.canContinueToUse();
 		}
-		return smartAiEnabled() && this.spider.isAlive() && !this.spider.onGround();
+		return smartAiEnabled()
+			&& this.spider.isAlive()
+			&& !this.spider.onGround()
+			&& this.activityLease.owns(this.spider, this.spider.level().getGameTime());
 	}
 
 	@Override
@@ -60,6 +68,7 @@ public final class SmartSpiderPounceGoal extends LeapAtTargetGoal {
 			super.start();
 			return;
 		}
+		this.activityLease.acquire(this.spider, this.spider.level().getGameTime());
 		LivingEntity currentTarget = this.target;
 		if (!isValidTarget(currentTarget)) {
 			return;
@@ -88,6 +97,16 @@ public final class SmartSpiderPounceGoal extends LeapAtTargetGoal {
 		}
 		this.target = null;
 		this.smartMode = false;
+		this.activityLease.release(this.spider);
+	}
+
+	@Override
+	public void tick() {
+		if (!this.smartMode) {
+			super.tick();
+			return;
+		}
+		this.activityLease.renew(this.spider, this.spider.level().getGameTime());
 	}
 
 	private static boolean isValidTarget(final @Nullable LivingEntity target) {

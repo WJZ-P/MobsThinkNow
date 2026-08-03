@@ -4,6 +4,7 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
 import com.wjz.mobsthinknow.ai.enderman.SmartEndermanMetrics;
@@ -375,7 +376,7 @@ public final class MtnCommands {
 		SmartEndermanMetrics.Snapshot endermanMetrics = SmartEndermanMetrics.snapshot();
 		SmartGiantMetrics.Snapshot giantMetrics = SmartGiantMetrics.snapshot();
 		SmartNetherMetrics.Snapshot netherMetrics = SmartNetherMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, elections=%d, reelections=%d, candidateChecks=%d, assaultPlans=%d, crossfirePlans=%d, mountedBreachPlans=%d, combinedArmsPlans=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, swordFeints=%d, axeWindups=%d, shieldBashes=%d, shieldBashHits=%d, leaderSocialGestures=%d, memberSocialGestures=%d, briefingRouteChecks=%d, briefingRouteObjections=%d, briefingReplans=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d, creeperSquadEvacuations=%d"
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, activeActivities=%d, elections=%d, reelections=%d, candidateChecks=%d, assaultPlans=%d, crossfirePlans=%d, mountedBreachPlans=%d, combinedArmsPlans=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, swordFeints=%d, axeWindups=%d, shieldBashes=%d, shieldBashHits=%d, leaderSocialGestures=%d, memberSocialGestures=%d, briefingRouteChecks=%d, briefingRouteObjections=%d, briefingReplans=%d, combatRouteFailures=%d, combatRouteChecks=%d, combatReplans=%d, combatReplanSuppressed=%d, targetTacticChanges=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, friendlyShotsHeld=%d, explosiveShotsHeld=%d, firingLaneReplans=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d, creeperSquadEvacuations=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -385,6 +386,7 @@ public final class MtnCommands {
 				metrics.searchDecisions(),
 				metrics.failedPaths(),
 				ZombieSquadCoordinator.activeSquadCount(),
+				TacticalActivityLease.activeLeaseCount(context.getSource().getLevel().getGameTime()),
 				metrics.leaderElections(),
 				metrics.leaderReelections(),
 				metrics.squadCandidateChecks(),
@@ -413,6 +415,11 @@ public final class MtnCommands {
 				metrics.briefingRouteChecks(),
 				metrics.briefingRouteObjections(),
 				metrics.briefingReplans(),
+				metrics.combatRouteFailures(),
+				metrics.combatRouteChecks(),
+				metrics.combatReplans(),
+				metrics.combatReplanSuppressed(),
+				metrics.targetTacticChanges(),
 				config.skeletonAiEnabled,
 				skeletonMetrics.installedGoals(),
 				skeletonMetrics.installedEmergencyGoals(),
@@ -425,6 +432,9 @@ public final class MtnCommands {
 				skeletonMetrics.predictiveShots(),
 				skeletonMetrics.crossbowShots(),
 				skeletonMetrics.fireworkCrossbowShots(),
+				skeletonMetrics.friendlyShotsHeld(),
+				skeletonMetrics.explosiveShotsHeld(),
+				skeletonMetrics.firingLaneReplans(),
 				config.creeperAiEnabled,
 				creeperMetrics.installedGoals(),
 				creeperMetrics.flanks(),
@@ -434,7 +444,7 @@ public final class MtnCommands {
 				creeperMetrics.abortedFuses(),
 				creeperMetrics.squadEvacuations()
 			);
-		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d, spiderBreachStaging=%d, spiderMobileFireSupport=%d"
+		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d, spiderBreachStaging=%d, spiderMobileFireSupport=%d, spiderRouteChecks=%d, spiderRouteRejections=%d, spiderSafeDismounts=%d"
 			.formatted(
 				config.spiderAiEnabled,
 				spiderMetrics.installedGoals(),
@@ -446,7 +456,10 @@ public final class MtnCommands {
 				spiderMetrics.creepersMounted(),
 				spiderMetrics.deliveryFuses(),
 				spiderMetrics.coordinatedBreachStaging(),
-				spiderMetrics.mobileFireSupportMoves()
+				spiderMetrics.mobileFireSupportMoves(),
+				spiderMetrics.transportRouteChecks(),
+				spiderMetrics.transportRouteRejections(),
+				spiderMetrics.transportSafeDismounts()
 			);
 		message += ", endermanAI=%s, endermanGoals=%d, endermanCarrierSearches=%d, endermanCandidateChecks=%d, endermanPayloadsPickedUp=%d, endermanDeliveryTeleports=%d, endermanPayloadsIgnited=%d, endermanCombatTeleports=%d, endermanShieldBlocks=%d, endermanShieldCounterHits=%d, endermanSpearCharges=%d, endermanProfessionHits=%d"
 			.formatted(

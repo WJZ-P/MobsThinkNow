@@ -6,5 +6,11 @@ public interface ZombieBodyActionAccess {
 
 	long mobsthinknow$getBodyActionStartedAt();
 
+	ZombieBodyAction mobsthinknow$getPreviousBodyAction();
+
+	int mobsthinknow$getPreviousBodyActionElapsedTicks();
+
+	long mobsthinknow$getBodyActionTransitionStartedAt();
+
 	void mobsthinknow$setBodyAction(ZombieBodyAction action, long startedAt);
 }

@@ -19,6 +19,28 @@ public final class ZombieBodyAnimation {
 	}
 
 	/**
+	 * 在两个已经采样的姿势之间做平滑交叉淡化。旋转先乘各自权重再插值，避免从低权重动作切换时
+	 * 产生“角度已经跳到新关键帧、权重却还没跟上”的一帧抽动。
+	 */
+	public static BodyPose blend(final BodyPose from, final BodyPose to, final float progress) {
+		if (progress <= 0.0F) {
+			return from;
+		}
+		if (progress >= 1.0F) {
+			return to;
+		}
+		float amount = smooth(progress);
+		return new BodyPose(
+			blend(from.rightArm(), to.rightArm(), amount),
+			blend(from.leftArm(), to.leftArm(), amount),
+			blend(from.body(), to.body(), amount),
+			blend(from.rightLeg(), to.rightLeg(), amount),
+			blend(from.leftLeg(), to.leftLeg(), amount),
+			blend(from.head(), to.head(), amount)
+		);
+	}
+
+	/**
 	 * @param actionArmRight {@code true} 表示动作使用右臂；盾击会传入副手，工程操作会传入实际工具手
 	 */
 	public static BodyPose sample(
@@ -534,6 +556,20 @@ public final class ZombieBodyAnimation {
 
 	private static PartPose mirror(final PartPose pose) {
 		return new PartPose(pose.xRot(), -pose.yRot(), -pose.zRot(), pose.weight());
+	}
+
+	private static PartPose blend(final PartPose from, final PartPose to, final float amount) {
+		float weight = from.weight() + (to.weight() - from.weight()) * amount;
+		if (weight <= 1.0E-5F) {
+			return PartPose.NONE;
+		}
+		float weightedX = from.xRot() * from.weight()
+			+ (to.xRot() * to.weight() - from.xRot() * from.weight()) * amount;
+		float weightedY = from.yRot() * from.weight()
+			+ (to.yRot() * to.weight() - from.yRot() * from.weight()) * amount;
+		float weightedZ = from.zRot() * from.weight()
+			+ (to.zRot() * to.weight() - from.zRot() * from.weight()) * amount;
+		return new PartPose(weightedX / weight, weightedY / weight, weightedZ / weight, weight);
 	}
 
 	private static float smooth(final float value) {

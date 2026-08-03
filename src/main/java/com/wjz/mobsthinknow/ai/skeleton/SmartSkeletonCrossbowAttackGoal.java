@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -14,6 +16,8 @@ import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ChargedProjectiles;
+import net.minecraft.world.phys.Vec3;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 骷髅家族共用的弩战状态机：在射程外接近、射程内侧移、近身时保持瞄准拉扯，完成真实装填后
@@ -22,8 +26,12 @@ import net.minecraft.world.item.component.ChargedProjectiles;
 public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 	private static final double MOVE_SPEED = 1.0;
 	private static final double MINIMUM_FIREWORK_DISTANCE_SQUARED = 36.0;
+	private static final int FIRING_LANE_TRAVEL_TIMEOUT_TICKS = 32;
+	private static final double FIRING_LANE_REACHED_DISTANCE_SQUARED = 0.85 * 0.85;
 
 	private final AbstractSkeleton skeleton;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.RANGED);
 	private CrossbowState state = CrossbowState.UNCHARGED;
 	private int attackDelay;
 	private int repathCooldown;
@@ -31,6 +39,8 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 	private int strafeSwitchTicks;
 	private int friendlyBlockedTicks;
 	private boolean mountedMode;
+	private @Nullable Vec3 firingLaneDestination;
+	private int firingLaneTicks;
 
 	public SmartSkeletonCrossbowAttackGoal(final AbstractSkeleton skeleton) {
 		this.skeleton = skeleton;
@@ -40,16 +50,22 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 	@Override
 	public boolean canUse() {
 		LivingEntity target = this.skeleton.getTarget();
-		return target != null && target.isAlive() && this.skeleton.isHolding(Items.CROSSBOW);
+		return target != null
+			&& target.isAlive()
+			&& this.skeleton.isHolding(Items.CROSSBOW)
+			&& this.activityLease.canAcquire(this.skeleton, this.skeleton.level().getGameTime());
 	}
 
 	@Override
 	public boolean canContinueToUse() {
-		return this.canUse() && this.mountedMode == this.usesMountedMode();
+		return this.canUse()
+			&& this.activityLease.owns(this.skeleton, this.skeleton.level().getGameTime())
+			&& this.mountedMode == this.usesMountedMode();
 	}
 
 	@Override
 	public void start() {
+		this.activityLease.acquire(this.skeleton, this.skeleton.level().getGameTime());
 		this.mountedMode = this.usesMountedMode();
 		ItemStack crossbow = crossbow();
 		this.state = CrossbowItem.isCharged(crossbow) ? CrossbowState.CHARGED : CrossbowState.UNCHARGED;
@@ -58,6 +74,8 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 		this.strafeDirection = this.skeleton.getRandom().nextBoolean() ? 1 : -1;
 		this.strafeSwitchTicks = nextStrafeSwitch();
 		this.friendlyBlockedTicks = 0;
+		this.firingLaneDestination = null;
+		this.firingLaneTicks = 0;
 		this.skeleton.setAggressive(true);
 	}
 
@@ -72,6 +90,9 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 		this.attackDelay = 0;
 		this.friendlyBlockedTicks = 0;
 		this.mountedMode = false;
+		this.firingLaneDestination = null;
+		this.firingLaneTicks = 0;
+		this.activityLease.release(this.skeleton);
 	}
 
 	@Override
@@ -81,6 +102,9 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.skeleton, this.skeleton.level().getGameTime())) {
+			return;
+		}
 		LivingEntity target = this.skeleton.getTarget();
 		if (target == null || !target.isAlive()) {
 			return;
@@ -112,6 +136,9 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 			false
 		);
 		this.skeleton.getLookControl().setLookAt(target, 30.0F, 30.0F);
+		if (this.tickFiringLane(target, movement)) {
+			return;
+		}
 		this.moveForCombat(target, movement, intelligence, distanceSquared, preferredRange);
 		this.tickCrossbow(target, hasLineOfSight, distanceSquared, intelligence);
 	}
@@ -230,10 +257,14 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 				if (!hasLineOfSight || (explosive && distanceSquared < MINIMUM_FIREWORK_DISTANCE_SQUARED)) {
 					return;
 				}
-				if (!SkeletonShotSafety.hasClearShot(this.skeleton, target, explosive)) {
+				SkeletonShotSafety.Assessment safety = SkeletonShotSafety.assess(this.skeleton, target, explosive);
+				if (safety.status() != SkeletonShotSafety.Status.CLEAR) {
 					if (++this.friendlyBlockedTicks >= 8) {
-						// 弩保持已装填状态；地面射手换侧寻找窗口，乘员则等待载具带离遮挡线。
-						this.strafeDirection = -this.strafeDirection;
+						// 弩保持已装填状态；地面射手先找真实侧射位，乘员则等待载具带离遮挡线。
+						SmartSkeletonMetrics.friendlyShotHeld(explosive);
+						if (!this.tryStartFiringLane(target, explosive)) {
+							this.strafeDirection = -this.strafeDirection;
+						}
 						this.friendlyBlockedTicks = 0;
 					}
 					return;
@@ -263,6 +294,50 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 
 	private ItemStack crossbow() {
 		return this.skeleton.getItemInHand(ProjectileUtil.getWeaponHoldingHand(this.skeleton, Items.CROSSBOW));
+	}
+
+	private boolean tryStartFiringLane(final LivingEntity target, final boolean explosive) {
+		if (!ConfigManager.get().skeletonFiringLaneReposition
+			|| SkeletonIntelligence.get(this.skeleton) < 4
+			|| this.usesMountedMode()) {
+			return false;
+		}
+		SkeletonShotSafety.FiringLane lane = SkeletonShotSafety.findFiringLane(
+			this.skeleton,
+			target,
+			explosive,
+			this.strafeDirection
+		);
+		if (lane == null || !this.skeleton.getNavigation().moveTo(lane.path(), 1.12)) {
+			return false;
+		}
+		this.firingLaneDestination = lane.destination();
+		this.firingLaneTicks = 0;
+		this.strafeDirection = lane.side();
+		SmartSkeletonMetrics.firingLaneReplan();
+		return true;
+	}
+
+	private boolean tickFiringLane(final LivingEntity target, final MovementMode movement) {
+		Vec3 destination = this.firingLaneDestination;
+		if (destination == null) {
+			return false;
+		}
+		if (movement == MovementMode.KITE || movement == MovementMode.DODGE) {
+			this.firingLaneDestination = null;
+			this.skeleton.getNavigation().stop();
+			return false;
+		}
+		this.faceTarget(target);
+		if (this.skeleton.position().distanceToSqr(destination) <= FIRING_LANE_REACHED_DISTANCE_SQUARED
+			|| this.skeleton.getNavigation().isDone()
+			|| ++this.firingLaneTicks > FIRING_LANE_TRAVEL_TIMEOUT_TICKS) {
+			this.firingLaneDestination = null;
+			this.firingLaneTicks = 0;
+			this.skeleton.getNavigation().stop();
+			return false;
+		}
+		return true;
 	}
 
 	private void faceTarget(final LivingEntity target) {

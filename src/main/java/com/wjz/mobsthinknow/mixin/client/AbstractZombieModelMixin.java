@@ -78,19 +78,38 @@ public abstract class AbstractZombieModelMixin {
 
 		ZombieBodyActionRenderStateAccess actionState = (ZombieBodyActionRenderStateAccess)state;
 		ZombieBodyAction action = actionState.mobsthinknow$getBodyAction();
-		if (action != ZombieBodyAction.NONE && state.attackTime <= 0.01F) {
-			mobsthinknow$applyZombiePose(
-				model,
-				ZombieBodyAnimation.sample(
+		if (state.attackTime <= 0.01F) {
+			int blendTicks = ConfigManager.get().zombieAnimationBlendTicks;
+			ZombieBodyAction previous = actionState.mobsthinknow$getPreviousBodyAction();
+			float transitionElapsed = actionState.mobsthinknow$getBodyActionTransitionElapsedTicks();
+			if (blendTicks > 0 && previous != action && transitionElapsed < blendTicks) {
+				ZombieBodyAnimation.BodyPose previousPose = mobsthinknow$sampleBodyAction(
+					state,
+					previous,
+					actionState.mobsthinknow$getPreviousBodyActionElapsedTicks()
+				);
+				ZombieBodyAnimation.BodyPose currentPose = mobsthinknow$sampleBodyAction(
+					state,
 					action,
-					actionState.mobsthinknow$getBodyActionElapsedTicks(),
-					state.ageInTicks,
-					mobsthinknow$actionArmIsRight(state, action),
-					!state.rightHandItemStack.isEmpty(),
-					!state.leftHandItemStack.isEmpty()
-				)
-			);
-			return;
+					actionState.mobsthinknow$getBodyActionElapsedTicks()
+				);
+				mobsthinknow$applyZombiePose(
+					model,
+					ZombieBodyAnimation.blend(previousPose, currentPose, transitionElapsed / blendTicks)
+				);
+				return;
+			}
+			if (action != ZombieBodyAction.NONE) {
+				mobsthinknow$applyZombiePose(
+					model,
+					mobsthinknow$sampleBodyAction(
+						state,
+						action,
+						actionState.mobsthinknow$getBodyActionElapsedTicks()
+					)
+				);
+				return;
+			}
 		}
 
 		if (!state.isAggressive || state.attackTime > 0.01F || state.getMainHandItemStack().isEmpty()) {
@@ -105,6 +124,22 @@ public abstract class AbstractZombieModelMixin {
 				state.ageInTicks,
 				state.walkAnimationSpeed
 			)
+		);
+	}
+
+	@Unique
+	private static ZombieBodyAnimation.BodyPose mobsthinknow$sampleBodyAction(
+		final ZombieRenderState state,
+		final ZombieBodyAction action,
+		final float elapsedTicks
+	) {
+		return ZombieBodyAnimation.sample(
+			action,
+			elapsedTicks,
+			state.ageInTicks,
+			mobsthinknow$actionArmIsRight(state, action),
+			!state.rightHandItemStack.isEmpty(),
+			!state.leftHandItemStack.isEmpty()
 		);
 	}
 

@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.utility.EscapePathing;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -30,6 +32,8 @@ public final class ReactiveRetreatGoal extends Goal {
 	private static final int RETREAT_VERTICAL_SEARCH = 4;
 	private static final long RETREAT_PATH_REFRESH_TICKS = 8L;
 	private final Zombie zombie;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.RETREAT);
 	private @Nullable LivingEntity attacker;
 	private @Nullable Vec3 retreatDestination;
 	private long retreatDeadline;
@@ -63,13 +67,14 @@ public final class ReactiveRetreatGoal extends Goal {
 			this.attacker = null;
 			return false;
 		}
-		return true;
+		return this.activityLease.canAcquire(this.zombie, this.zombie.level().getGameTime());
 	}
 
 	@Override
 	public boolean canContinueToUse() {
 		MobsThinkNowConfig config = ConfigManager.get();
 		return isEnabled(config)
+			&& this.activityLease.owns(this.zombie, this.zombie.level().getGameTime())
 			&& this.zombie.isAlive()
 			&& this.attacker != null
 			&& this.attacker.isAlive()
@@ -86,6 +91,7 @@ public final class ReactiveRetreatGoal extends Goal {
 	public void start() {
 		MobsThinkNowConfig config = ConfigManager.get();
 		long now = this.zombie.level().getGameTime();
+		this.activityLease.acquire(this.zombie, now);
 		this.retreatDeadline = now + config.retreatMaximumTicks;
 		this.retreatDestination = null;
 		this.nextPathUpdateAt = now;
@@ -114,6 +120,9 @@ public final class ReactiveRetreatGoal extends Goal {
 	public void tick() {
 		MobsThinkNowConfig config = ConfigManager.get();
 		long now = this.zombie.level().getGameTime();
+		if (!this.activityLease.renew(this.zombie, now)) {
+			return;
+		}
 		LivingEntity freshAttacker = this.captureFreshRetreatAttack(config);
 		if (freshAttacker != null) {
 			// 逃跑中又受击：更新真正威胁与逃跑方向，但绝不延长从 start() 算起的硬时限。
@@ -153,6 +162,7 @@ public final class ReactiveRetreatGoal extends Goal {
 		this.retreatDeadline = 0L;
 		this.nextWaterScreenAttemptAt = 0L;
 		ZombieBodyLanguage.stopPersistent(this.zombie, ZombieBodyAction.RETREAT);
+		this.activityLease.release(this.zombie);
 	}
 
 	@Override

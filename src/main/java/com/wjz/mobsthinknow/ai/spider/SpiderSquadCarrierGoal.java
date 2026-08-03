@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.spider;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
@@ -37,6 +39,8 @@ public final class SpiderSquadCarrierGoal extends Goal {
 	private static final int MAXIMUM_BOARDING_TICKS = 9;
 	private static final int BOARDING_RETRY_TICKS = 8;
 	private final Spider spider;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.CARRIER_DELIVERY);
 	private @Nullable Mob passenger;
 	private @Nullable LivingEntity target;
 	private int boardingTicks;
@@ -46,6 +50,8 @@ public final class SpiderSquadCarrierGoal extends Goal {
 	private boolean boarding;
 	private boolean mobileFireSupportActive;
 	private double carrierSpeedSample = Double.NaN;
+	private int routeFailureStreak;
+	private long nextTransportAttemptAt;
 
 	public SpiderSquadCarrierGoal(final Spider spider) {
 		this.spider = spider;
@@ -55,6 +61,9 @@ public final class SpiderSquadCarrierGoal extends Goal {
 	@Override
 	public boolean canUse() {
 		if (!enabled() || !this.spider.isAlive() || !(this.spider.level() instanceof ServerLevel level)) {
+			return false;
+		}
+		if (level.getGameTime() < this.nextTransportAttemptAt) {
 			return false;
 		}
 		Mob mounted = this.mountedSupportedPassenger();
@@ -72,10 +81,14 @@ public final class SpiderSquadCarrierGoal extends Goal {
 		if (!isValidTarget(selectedTarget) || !this.isAvailable(assigned, mounted)) {
 			return false;
 		}
+		if (mounted == null && !this.preflightRouteIsUsable(selectedTarget, assigned)) {
+			this.nextTransportAttemptAt = level.getGameTime() + 40L;
+			return false;
+		}
 		this.passenger = assigned;
 		this.target = selectedTarget;
 		this.ensureCarrierSpeedSample();
-		return true;
+		return this.activityLease.canAcquire(this.spider, level.getGameTime());
 	}
 
 	@Override
@@ -83,6 +96,9 @@ public final class SpiderSquadCarrierGoal extends Goal {
 		Mob current = this.passenger;
 		if (!enabled() || current == null || !current.isAlive() || !isValidTarget(this.target)
 			|| !(this.spider.level() instanceof ServerLevel level)) {
+			return false;
+		}
+		if (!this.activityLease.owns(this.spider, level.getGameTime())) {
 			return false;
 		}
 		Mob assigned = ZombieSquadCoordinator.forLevel(level).assignedTransportPartnerFor(this.spider);
@@ -98,9 +114,11 @@ public final class SpiderSquadCarrierGoal extends Goal {
 
 	@Override
 	public void start() {
+		this.activityLease.acquire(this.spider, this.spider.level().getGameTime());
 		this.repathCooldown = 0;
 		this.attackCooldown = 0;
 		this.mobileFireSupportActive = false;
+		this.routeFailureStreak = 0;
 		this.spider.setAggressive(true);
 		Mob current = this.passenger;
 		if (current != null && current.getVehicle() != this.spider
@@ -130,10 +148,14 @@ public final class SpiderSquadCarrierGoal extends Goal {
 		this.resetBoarding();
 		this.spider.getNavigation().stop();
 		this.spider.setAggressive(false);
+		this.activityLease.release(this.spider);
 	}
 
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.spider, this.spider.level().getGameTime())) {
+			return;
+		}
 		Mob current = this.passenger;
 		LivingEntity currentTarget = this.target;
 		if (current == null || !current.isAlive() || !isValidTarget(currentTarget)) {
@@ -267,6 +289,22 @@ public final class SpiderSquadCarrierGoal extends Goal {
 				intelligence,
 				this.spider.level().getDifficulty().getId()
 			);
+			if (ConfigManager.get().spiderTransportRouteAssessment) {
+				SmartSpiderMetrics.transportRouteCheck();
+				SpiderTransportRouteEvaluator.Assessment route = SpiderTransportRouteEvaluator.assess(
+					this.spider,
+					destination,
+					current.getBbHeight()
+				);
+				if (!route.usable()) {
+					SmartSpiderMetrics.transportRouteRejected();
+					if (++this.routeFailureStreak >= 2 && this.abortBlockedRoute(current, route.status())) {
+						return;
+					}
+				} else {
+					this.routeFailureStreak = 0;
+				}
+			}
 			if (!this.spider.getNavigation().moveTo(destination.x, destination.y, destination.z, speed)
 				&& !mobileFireSupport) {
 				this.spider.getNavigation().moveTo(currentTarget, speed);
@@ -291,6 +329,46 @@ public final class SpiderSquadCarrierGoal extends Goal {
 			return null;
 		}
 		return ZombieSquadCoordinator.forLevel(level).carrierStagingPointFor(this.spider);
+	}
+
+	private boolean preflightRouteIsUsable(final LivingEntity selectedTarget, final Mob payload) {
+		if (!ConfigManager.get().spiderTransportRouteAssessment) {
+			return true;
+		}
+		Vec3 destination = SpiderCombatMath.carrierDestination(
+			selectedTarget.position(),
+			selectedTarget.getDeltaMovement(),
+			Math.max(SpiderIntelligence.get(this.spider), intelligenceOf(payload))
+		);
+		SmartSpiderMetrics.transportRouteCheck();
+		SpiderTransportRouteEvaluator.Assessment route = SpiderTransportRouteEvaluator.assess(
+			this.spider,
+			destination,
+			payload.getBbHeight()
+		);
+		if (!route.usable()) {
+			SmartSpiderMetrics.transportRouteRejected();
+		}
+		return route.usable();
+	}
+
+	private boolean abortBlockedRoute(
+		final Mob current,
+		final SpiderTransportRouteEvaluator.Status status
+	) {
+		Vec3 safeDismount = SpiderTransportRouteEvaluator.findSafeDismount(this.spider, current);
+		if (safeDismount == null) {
+			return false;
+		}
+		current.stopRiding();
+		current.setPos(safeDismount.x, safeDismount.y, safeDismount.z);
+		transportAccess(this.spider).mobsthinknow$clearSquadPassenger();
+		this.passenger = null;
+		this.target = null;
+		this.nextTransportAttemptAt = this.spider.level().getGameTime() + 80L;
+		this.routeFailureStreak = 0;
+		SmartSpiderMetrics.transportSafeDismount(status);
+		return true;
 	}
 
 	private boolean isAvailable(final Mob candidate, final @Nullable Mob mounted) {

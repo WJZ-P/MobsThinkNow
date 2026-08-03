@@ -14,6 +14,9 @@ public final class SmartSpiderMetrics {
 	private static final AtomicLong DELIVERY_FUSES = new AtomicLong();
 	private static final AtomicLong COORDINATED_BREACH_STAGING = new AtomicLong();
 	private static final AtomicLong MOBILE_FIRE_SUPPORT_MOVES = new AtomicLong();
+	private static final AtomicLong TRANSPORT_ROUTE_CHECKS = new AtomicLong();
+	private static final AtomicLong TRANSPORT_ROUTE_REJECTIONS = new AtomicLong();
+	private static final AtomicLong TRANSPORT_SAFE_DISMOUNTS = new AtomicLong();
 
 	private SmartSpiderMetrics() {
 	}
@@ -58,6 +61,20 @@ public final class SmartSpiderMetrics {
 		MOBILE_FIRE_SUPPORT_MOVES.incrementAndGet();
 	}
 
+	public static void transportRouteCheck() {
+		TRANSPORT_ROUTE_CHECKS.incrementAndGet();
+	}
+
+	public static void transportRouteRejected() {
+		TRANSPORT_ROUTE_REJECTIONS.incrementAndGet();
+	}
+
+	public static void transportSafeDismount(final SpiderTransportRouteEvaluator.Status reason) {
+		if (reason != SpiderTransportRouteEvaluator.Status.CLEAR) {
+			TRANSPORT_SAFE_DISMOUNTS.incrementAndGet();
+		}
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -69,7 +86,10 @@ public final class SmartSpiderMetrics {
 			CREEPERS_MOUNTED.get(),
 			DELIVERY_FUSES.get(),
 			COORDINATED_BREACH_STAGING.get(),
-			MOBILE_FIRE_SUPPORT_MOVES.get()
+			MOBILE_FIRE_SUPPORT_MOVES.get(),
+			TRANSPORT_ROUTE_CHECKS.get(),
+			TRANSPORT_ROUTE_REJECTIONS.get(),
+			TRANSPORT_SAFE_DISMOUNTS.get()
 		);
 	}
 
@@ -83,7 +103,10 @@ public final class SmartSpiderMetrics {
 		long creepersMounted,
 		long deliveryFuses,
 		long coordinatedBreachStaging,
-		long mobileFireSupportMoves
+		long mobileFireSupportMoves,
+		long transportRouteChecks,
+		long transportRouteRejections,
+		long transportSafeDismounts
 	) {
 	}
 }

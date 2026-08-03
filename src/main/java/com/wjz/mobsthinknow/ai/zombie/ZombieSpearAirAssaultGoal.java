@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
@@ -85,6 +87,8 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 	private static final double[] LANDING_SEARCH_YAW_OFFSETS = {0.0, -35.0, 35.0};
 
 	private final Zombie zombie;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.AIR_ASSAULT);
 	private Phase phase = Phase.IDLE;
 	private @Nullable LivingEntity target;
 	private @Nullable BlockPos launchSite;
@@ -138,11 +142,14 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		LivingEntity currentTarget = validTarget(this.zombie.getTarget());
 		if (currentTarget != null && ZombieAirAssault.isFlightReady(this.zombie, config)) {
 			this.target = currentTarget;
-			return true;
+			return this.activityLease.canAcquire(this.zombie, this.now());
 		}
 		// 只接管已经真实进入滑翔的无目标实体。持鞘翅僵尸走台阶或普通跳跃时也会短暂
 		// onGround=false；旧判断把这种一个 tick 的离地误认成飞行，导致客户端姿态反复横置/站立。
-		return !this.isGroundedPoseSettling() && !touchingGround && this.zombie.isFallFlying();
+		return !this.isGroundedPoseSettling()
+			&& !touchingGround
+			&& this.zombie.isFallFlying()
+			&& this.activityLease.canAcquire(this.zombie, this.now());
 	}
 
 	@Override
@@ -151,6 +158,9 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		if (!ZombieAirAssault.isEnabled(config)
 			|| !ZombieAirAssault.isAirAssaultLoadout(this.zombie)
 			|| !this.zombie.isAlive()) {
+			return false;
+		}
+		if (!this.activityLease.owns(this.zombie, this.now())) {
 			return false;
 		}
 
@@ -172,6 +182,7 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 
 	@Override
 	public void start() {
+		this.activityLease.acquire(this.zombie, this.now());
 		this.target = validTarget(this.zombie.getTarget());
 		this.zombie.getNavigation().stop();
 		this.zombie.stopUsingItem();
@@ -194,6 +205,9 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.zombie, this.now())) {
+			return;
+		}
 		LivingEntity currentTarget = validTarget(this.zombie.getTarget());
 		if (currentTarget != null) {
 			this.target = currentTarget;
@@ -253,6 +267,7 @@ public final class ZombieSpearAirAssaultGoal extends Goal {
 		this.landingPoint = null;
 		this.landingDirection = null;
 		this.landingPointHasSupport = false;
+		this.activityLease.release(this.zombie);
 		this.attackAllowedAt = 0L;
 		this.orbitDeadline = 0L;
 		this.nextOrbitRocketAt = 0L;

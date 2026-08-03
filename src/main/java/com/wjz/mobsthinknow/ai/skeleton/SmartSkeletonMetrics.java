@@ -15,6 +15,9 @@ public final class SmartSkeletonMetrics {
 	private static final AtomicLong PREDICTIVE_SHOTS = new AtomicLong();
 	private static final AtomicLong CROSSBOW_SHOTS = new AtomicLong();
 	private static final AtomicLong FIREWORK_CROSSBOW_SHOTS = new AtomicLong();
+	private static final AtomicLong FRIENDLY_SHOTS_HELD = new AtomicLong();
+	private static final AtomicLong EXPLOSIVE_SHOTS_HELD = new AtomicLong();
+	private static final AtomicLong FIRING_LANE_REPLANS = new AtomicLong();
 
 	private SmartSkeletonMetrics() {
 	}
@@ -62,6 +65,17 @@ public final class SmartSkeletonMetrics {
 		}
 	}
 
+	public static void friendlyShotHeld(final boolean explosive) {
+		FRIENDLY_SHOTS_HELD.incrementAndGet();
+		if (explosive) {
+			EXPLOSIVE_SHOTS_HELD.incrementAndGet();
+		}
+	}
+
+	public static void firingLaneReplan() {
+		FIRING_LANE_REPLANS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -74,7 +88,10 @@ public final class SmartSkeletonMetrics {
 			SHOTS.get(),
 			PREDICTIVE_SHOTS.get(),
 			CROSSBOW_SHOTS.get(),
-			FIREWORK_CROSSBOW_SHOTS.get()
+			FIREWORK_CROSSBOW_SHOTS.get(),
+			FRIENDLY_SHOTS_HELD.get(),
+			EXPLOSIVE_SHOTS_HELD.get(),
+			FIRING_LANE_REPLANS.get()
 		);
 	}
 
@@ -89,7 +106,10 @@ public final class SmartSkeletonMetrics {
 		long shots,
 		long predictiveShots,
 		long crossbowShots,
-		long fireworkCrossbowShots
+		long fireworkCrossbowShots,
+		long friendlyShotsHeld,
+		long explosiveShotsHeld,
+		long firingLaneReplans
 	) {
 	}
 }

@@ -41,6 +41,11 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong BRIEFING_ROUTE_CHECKS = new AtomicLong();
 	private static final AtomicLong BRIEFING_ROUTE_OBJECTIONS = new AtomicLong();
 	private static final AtomicLong BRIEFING_REPLANS = new AtomicLong();
+	private static final AtomicLong COMBAT_ROUTE_FAILURES = new AtomicLong();
+	private static final AtomicLong COMBAT_ROUTE_CHECKS = new AtomicLong();
+	private static final AtomicLong COMBAT_REPLANS = new AtomicLong();
+	private static final AtomicLong COMBAT_REPLAN_SUPPRESSED = new AtomicLong();
+	private static final AtomicLong TARGET_TACTIC_CHANGES = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -182,6 +187,26 @@ public final class SmartZombieMetrics {
 		BRIEFING_REPLANS.incrementAndGet();
 	}
 
+	public static void combatRouteFailure() {
+		COMBAT_ROUTE_FAILURES.incrementAndGet();
+	}
+
+	public static void combatRouteChecks(final int checks) {
+		COMBAT_ROUTE_CHECKS.addAndGet(Math.max(0, checks));
+	}
+
+	public static void combatReplan() {
+		COMBAT_REPLANS.incrementAndGet();
+	}
+
+	public static void combatReplanSuppressed() {
+		COMBAT_REPLAN_SUPPRESSED.incrementAndGet();
+	}
+
+	public static void targetTacticChanged() {
+		TARGET_TACTIC_CHANGES.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -219,7 +244,12 @@ public final class SmartZombieMetrics {
 			MEMBER_SOCIAL_GESTURES.get(),
 			BRIEFING_ROUTE_CHECKS.get(),
 			BRIEFING_ROUTE_OBJECTIONS.get(),
-			BRIEFING_REPLANS.get()
+			BRIEFING_REPLANS.get(),
+			COMBAT_ROUTE_FAILURES.get(),
+			COMBAT_ROUTE_CHECKS.get(),
+			COMBAT_REPLANS.get(),
+			COMBAT_REPLAN_SUPPRESSED.get(),
+			TARGET_TACTIC_CHANGES.get()
 		);
 	}
 
@@ -259,7 +289,12 @@ public final class SmartZombieMetrics {
 		long memberSocialGestures,
 		long briefingRouteChecks,
 		long briefingRouteObjections,
-		long briefingReplans
+		long briefingReplans,
+		long combatRouteFailures,
+		long combatRouteChecks,
+		long combatReplans,
+		long combatReplanSuppressed,
+		long targetTacticChanges
 	) {
 	}
 }

@@ -99,6 +99,8 @@ public final class MobsThinkNowConfig {
 	public double skeletonFireworkCrossbowChance = DEFAULT_SKELETON_FIREWORK_CROSSBOW_CHANCE;
 	/** 搜索附近真实掩体，在遮蔽格蓄力后移动到相邻射界格探头射击并缩回。 */
 	public boolean skeletonCoverPeeking = true;
+	/** 同队友军连续挡住预测弹道时，地面射手有界寻找可达侧射位，而不是原地无限蓄力。 */
+	public boolean skeletonFiringLaneReposition = true;
 	/** 每三 tick 查询七格内来箭，并只对八 tick 内会穿过碰撞安全半径的箭执行侧闪。 */
 	public boolean skeletonProjectileDodging = true;
 	/** 保留原版散布，只在水平方向对移动目标加入有上限的速度提前量。 */
@@ -131,6 +133,8 @@ public final class MobsThinkNowConfig {
 	public double spiderCreeperSearchRadius = DEFAULT_SPIDER_CREEPER_SEARCH_RADIUS;
 	/** 合体运输的寻路速度上限；智力与难度决定个体从 1.15 向该上限插值。 */
 	public double spiderCreeperCarrierSpeed = DEFAULT_SPIDER_CREEPER_CARRIER_SPEED;
+	/** 载人前与投送改道时有界检查路径宽度、头顶净空和危险落差；失败会安全卸载并冷却。 */
+	public boolean spiderTransportRouteAssessment = true;
 	/** 普通末影人保留原版中立/凝视仇恨，只在已经敌对生存玩家后启用额外战术。 */
 	public boolean endermanAiEnabled = true;
 	/** 敌对玩家距离足够远时，末影人可抱取附近未起爆苦力怕并传送投放。 */
@@ -183,6 +187,8 @@ public final class MobsThinkNowConfig {
 	public boolean zombieProfessionSkins = true;
 	/** 客户端播放指挥、应声、怒吼、撤退冲刺以及剑/斧战备姿势。 */
 	public boolean zombieBodyLanguage = true;
+	/** 战术动作互相打断或提前结束时的客户端姿势交叉淡化 tick；0 表示立即切换。 */
+	public int zombieAnimationBlendTicks = 4;
 	public boolean squadRoleNameTags = true;
 	/** 每只普通僵尸是否获得随世界难度整体上移的速度、生命、伤害和追踪距离差异；固定声线属于表现层。 */
 	public boolean individualTraits = true;
@@ -262,6 +268,10 @@ public final class MobsThinkNowConfig {
 	public boolean fluidTactics = true;
 	/** 同一小队的僵尸互相误伤时不转移仇恨，继续合攻原目标。 */
 	public boolean squadIgnoreFriendlyFire = true;
+	/** 交战中同一阵位连续寻路失败时，首领有界检查替代路线并发布新计划版本。 */
+	public boolean dynamicSquadReplanning = true;
+	/** 只根据队员真实视线内的举盾、高地、拉扯、隘口和涉水证据调整总攻方案。 */
+	public boolean observableTargetTactics = true;
 	public int decisionIntervalTicks = 8;
 	public int targetMemoryTicks = 60;
 	public int maximumCoordinatedZombies = DEFAULT_MAXIMUM_COORDINATED_ZOMBIES;
@@ -312,6 +322,7 @@ public final class MobsThinkNowConfig {
 		this.flankSideDistance = clamp(this.flankSideDistance, 1.0, 6.0);
 		this.tacticalSpeedModifier = clamp(this.tacticalSpeedModifier, 0.75, 1.35);
 		this.squadSpeedBonus = clamp(this.squadSpeedBonus, 0.0, 0.5);
+		this.zombieAnimationBlendTicks = clamp(this.zombieAnimationBlendTicks, 0, 8);
 		this.retreatHealthThreshold = clamp(this.retreatHealthThreshold, 0.05, 0.5);
 		this.retreatHeavyHitThreshold = clamp(this.retreatHeavyHitThreshold, 0.05, 1.0);
 		this.retreatMaximumTicks = clamp(

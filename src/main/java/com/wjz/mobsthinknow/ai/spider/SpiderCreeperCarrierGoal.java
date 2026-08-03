@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.spider;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.creeper.CreeperCombatMath;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
@@ -44,6 +46,8 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 
 	private final Spider spider;
 	private final UUID spiderId;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.CARRIER_DELIVERY);
 	private @Nullable Creeper creeper;
 	private @Nullable LivingEntity target;
 	private Phase phase = Phase.IDLE;
@@ -59,6 +63,8 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 	private boolean coordinatedStagingReached;
 	private long coordinatedStagingDeadlineTick = Long.MIN_VALUE;
 	private double carrierSpeedRandomSample = Double.NaN;
+	private int routeFailureStreak;
+	private long nextTransportAttemptAt;
 
 	public SpiderCreeperCarrierGoal(final Spider spider) {
 		this.spider = spider;
@@ -84,16 +90,22 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			}
 			this.creeper = mounted;
 			this.target = preferredTarget(this.spider.getTarget(), mounted.getTarget());
-			return isValidTarget(this.target);
+			return isValidTarget(this.target)
+				&& this.activityLease.canAcquire(this.spider, this.spider.level().getGameTime());
 		}
 		if (this.spider.isVehicle()) {
 			return false;
 		}
 
 		long now = this.spider.level().getGameTime();
+		if (now < this.nextTransportAttemptAt) {
+			return false;
+		}
 		if (belongsToSquad) {
 			Mob activeAssignment = coordinator.activeTransportPartnerFor(this.spider);
-			return activeAssignment instanceof Creeper assigned && this.reserveAssignedCreeper(assigned, now);
+			return activeAssignment instanceof Creeper assigned
+				&& this.reserveAssignedCreeper(assigned, now)
+				&& this.activityLease.canAcquire(this.spider, now);
 		}
 		if (this.creeper != null && now > this.assemblyDeadlineTick) {
 			reservation(this.creeper).mobsthinknow$releaseSpiderReservation(this.spiderId);
@@ -106,7 +118,7 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			&& this.creeper.isAlive()
 			&& reservation(this.creeper).mobsthinknow$isReservedForSpider(this.spiderId, now)
 			&& isValidTarget(this.target)) {
-			return true;
+			return this.activityLease.canAcquire(this.spider, now);
 		}
 		this.creeper = null;
 		this.target = null;
@@ -116,12 +128,15 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 			return false;
 		}
 		this.nextSearchTick = now + 10L + this.spider.getRandom().nextInt(11);
-		return this.findAndReserveCreeper(now);
+		return this.findAndReserveCreeper(now) && this.activityLease.canAcquire(this.spider, now);
 	}
 
 	@Override
 	public boolean canContinueToUse() {
 		if (!transportEnabled() || !this.spider.isAlive() || !isValidTarget(this.target)) {
+			return false;
+		}
+		if (!this.activityLease.owns(this.spider, this.spider.level().getGameTime())) {
 			return false;
 		}
 		Creeper current = this.creeper;
@@ -148,6 +163,11 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		if (!isValidTarget(selectedTarget)
 			|| !compatibleTargets(this.spider.getTarget(), assigned.getTarget())
 			|| !this.isAvailable(assigned, now)) {
+			return false;
+		}
+		if (!this.preflightRouteIsUsable(selectedTarget, assigned)) {
+			// 小队分配也要遵守失败冷却，避免同一条不可行路线每 tick 重做路径搜索。
+			this.nextTransportAttemptAt = now + 40L;
 			return false;
 		}
 		CreeperTransportAccess access = reservation(assigned);
@@ -177,6 +197,7 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 
 	@Override
 	public void start() {
+		this.activityLease.acquire(this.spider, this.spider.level().getGameTime());
 		this.repathCooldown = 0;
 		this.boardingFailed = false;
 		this.phase = mountedCreeper() != null ? Phase.DELIVERING : Phase.ASSEMBLING;
@@ -210,10 +231,14 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		if (abandon) {
 			this.abandonTransport();
 		}
+		this.activityLease.release(this.spider);
 	}
 
 	@Override
 	public void tick() {
+		if (!this.activityLease.renew(this.spider, this.spider.level().getGameTime())) {
+			return;
+		}
 		Creeper current = this.creeper;
 		LivingEntity currentTarget = this.target;
 		if (current == null || !current.isAlive() || !isValidTarget(currentTarget)) {
@@ -298,6 +323,10 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 
 		LivingEntity selectedTarget = preferredTarget(spiderTarget, selected.getTarget());
 		if (!isValidTarget(selectedTarget)) {
+			return false;
+		}
+		if (!this.preflightRouteIsUsable(selectedTarget, selected)) {
+			this.nextTransportAttemptAt = now + 40L;
 			return false;
 		}
 		CreeperTransportAccess access = reservation(selected);
@@ -439,6 +468,7 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.phase = Phase.DELIVERING;
 		this.assemblyDeadlineTick = Long.MIN_VALUE;
 		this.fuseCommitted = current.getSwellDir() > 0;
+		this.routeFailureStreak = 0;
 		this.deliveryPounceUsed = false;
 		this.coordinatedStagingReached = false;
 		this.coordinatedStagingDeadlineTick = this.spider.level().getGameTime() + COORDINATED_STAGING_TIMEOUT_TICKS;
@@ -511,6 +541,16 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 				currentTarget.getDeltaMovement(),
 				combinedIntelligence
 			);
+			if (config.spiderTransportRouteAssessment) {
+				SpiderTransportRouteEvaluator.Assessment route = this.assessRoute(destination, current);
+				if (!route.usable()) {
+					if (this.handleBlockedDeliveryRoute(current, route.status())) {
+						return;
+					}
+				} else {
+					this.routeFailureStreak = 0;
+				}
+			}
 			if (!this.spider.getNavigation().moveTo(destination.x, destination.y, destination.z, speed)) {
 				this.spider.getNavigation().moveTo(currentTarget, speed);
 			}
@@ -579,6 +619,15 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.phase = Phase.DELIVERING;
 		if (--this.repathCooldown <= 0 || this.spider.getNavigation().isDone()) {
 			this.repathCooldown = 4;
+			if (ConfigManager.get().spiderTransportRouteAssessment) {
+				SpiderTransportRouteEvaluator.Assessment route = this.assessRoute(staging, current);
+				if (!route.usable()) {
+					SmartSpiderMetrics.transportRouteRejected();
+					this.coordinatedStagingReached = true;
+					this.repathCooldown = 0;
+					return false;
+				}
+			}
 			if (!this.spider.getNavigation().moveTo(staging.x, staging.y, staging.z, speed)) {
 				this.coordinatedStagingReached = true;
 				this.repathCooldown = 0;
@@ -614,6 +663,51 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		this.nextBoardingLeapTick = 0L;
 		this.carrierSpeedRandomSample = Double.NaN;
 		this.assemblyDeadlineTick = Long.MIN_VALUE;
+		this.routeFailureStreak = 0;
+	}
+
+	private boolean preflightRouteIsUsable(final LivingEntity selectedTarget, final Creeper payload) {
+		if (!ConfigManager.get().spiderTransportRouteAssessment) {
+			return true;
+		}
+		Vec3 destination = SpiderCombatMath.carrierDestination(
+			selectedTarget.position(),
+			selectedTarget.getDeltaMovement(),
+			Math.max(SpiderIntelligence.get(this.spider), CreeperIntelligence.get(payload))
+		);
+		SpiderTransportRouteEvaluator.Assessment route = this.assessRoute(destination, payload);
+		if (!route.usable()) {
+			SmartSpiderMetrics.transportRouteRejected();
+		}
+		return route.usable();
+	}
+
+	private SpiderTransportRouteEvaluator.Assessment assessRoute(final Vec3 destination, final Mob payload) {
+		SmartSpiderMetrics.transportRouteCheck();
+		return SpiderTransportRouteEvaluator.assess(this.spider, destination, payload.getBbHeight());
+	}
+
+	/** @return true 表示已安全卸载并结束本拍运输。 */
+	private boolean handleBlockedDeliveryRoute(
+		final Creeper current,
+		final SpiderTransportRouteEvaluator.Status status
+	) {
+		SmartSpiderMetrics.transportRouteRejected();
+		if (this.fuseCommitted || current.isIgnited() || ++this.routeFailureStreak < 2) {
+			return false;
+		}
+		Vec3 safeDismount = SpiderTransportRouteEvaluator.findSafeDismount(this.spider, current);
+		if (safeDismount == null) {
+			return false;
+		}
+		current.setSwellDir(-1);
+		current.stopRiding();
+		current.setPos(safeDismount.x, safeDismount.y, safeDismount.z);
+		this.nextTransportAttemptAt = this.spider.level().getGameTime() + 80L;
+		SmartSpiderMetrics.transportSafeDismount(status);
+		this.abandonTransport();
+		this.boardingFailed = true;
+		return true;
 	}
 
 	private void aimPayloadAtTarget(

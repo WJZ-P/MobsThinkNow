@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCoverPlanner.CoverPlan;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -41,9 +43,13 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	private static final int RETURN_TO_COVER_TIMEOUT_TICKS = 30;
 	private static final int MAXIMUM_COVER_PLAN_TICKS = 260;
 	private static final int FRIENDLY_BLOCK_CANCEL_TICKS = 12;
+	private static final int FIRING_LANE_TRAVEL_TIMEOUT_TICKS = 32;
+	private static final double FIRING_LANE_REACHED_DISTANCE_SQUARED = 0.85 * 0.85;
 
 	private final AbstractSkeleton skeleton;
 	private final double speedModifier;
+	private final TacticalActivityLease.Handle activityLease =
+		TacticalActivityLease.handle(TacticalActivity.RANGED);
 	/** 创建 Goal 时按具体变种读取的原版间隔；沼骸和干尸保持 50/70 tick 的慢射节奏。 */
 	private final int baseAttackInterval;
 	private boolean smartMode;
@@ -65,6 +71,8 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	private int coverShotsRemaining;
 	private int coverVisibleTicks;
 	private int friendlyBlockedTicks;
+	private @Nullable Vec3 firingLaneDestination;
+	private int firingLaneTicks;
 
 	public SmartSkeletonBowAttackGoal(
 		final AbstractSkeleton skeleton,
@@ -86,7 +94,10 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		}
 
 		LivingEntity target = this.skeleton.getTarget();
-		return target != null && target.isAlive() && this.isHoldingBow();
+		return target != null
+			&& target.isAlive()
+			&& this.isHoldingBow()
+			&& this.activityLease.canAcquire(this.skeleton, this.skeleton.level().getGameTime());
 	}
 
 	@Override
@@ -99,6 +110,9 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			return super.canContinueToUse();
 		}
 		if (!smartAiEnabled()) {
+			return false;
+		}
+		if (!this.activityLease.owns(this.skeleton, this.skeleton.level().getGameTime())) {
 			return false;
 		}
 		if (this.mountedMode != this.usesMountedMode()) {
@@ -117,6 +131,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		if (!this.smartMode) {
 			return;
 		}
+		this.activityLease.acquire(this.skeleton, this.skeleton.level().getGameTime());
 
 		this.attackTime = this.skeleton.getRandom().nextInt(9);
 		this.seeTime = 0;
@@ -128,6 +143,8 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.strafeSwitchTicks = nextStrafeWindow();
 		this.movementMode = MovementMode.APPROACH;
 		this.friendlyBlockedTicks = 0;
+		this.firingLaneDestination = null;
+		this.firingLaneTicks = 0;
 		// 同 tick 生成的一批骷髅按实体 ID 分摊到三拍内首搜，避免集群同时做 96 格几何检查。
 		this.coverSearchCooldown = Math.floorMod(this.skeleton.getId(), 3);
 		this.clearCoverState(false);
@@ -144,7 +161,10 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.dodgeTicks = 0;
 		this.movementMode = MovementMode.APPROACH;
 		this.friendlyBlockedTicks = 0;
+		this.firingLaneDestination = null;
+		this.firingLaneTicks = 0;
 		this.clearCoverState(false);
+		this.activityLease.release(this.skeleton);
 	}
 
 	@Override
@@ -160,6 +180,9 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	public void tick() {
 		if (!this.smartMode) {
 			super.tick();
+			return;
+		}
+		if (!this.activityLease.renew(this.skeleton, this.skeleton.level().getGameTime())) {
 			return;
 		}
 
@@ -195,6 +218,9 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			this.dodgeTicks > 0
 		);
 		this.skeleton.getLookControl().setLookAt(target, 30.0F, 30.0F);
+		if (this.tickFiringLane(target, selected)) {
+			return;
+		}
 		if (this.coverPhase != CoverPhase.INACTIVE
 			&& (!config.skeletonCoverPeeking
 				|| selected == MovementMode.DODGE
@@ -330,13 +356,17 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 
 			int usingTicks = this.skeleton.getTicksUsingItem();
 			if (hasLineOfSight && usingTicks >= BOW_DRAW_TICKS) {
-				if (SkeletonShotSafety.hasClearShot(this.skeleton, target, false)) {
+				SkeletonShotSafety.Assessment safety = SkeletonShotSafety.assess(this.skeleton, target, false);
+				if (safety.status() == SkeletonShotSafety.Status.CLEAR) {
 					this.fireArrow(target, usingTicks, false);
 				} else if (++this.friendlyBlockedTicks >= FRIENDLY_BLOCK_CANCEL_TICKS) {
-					// 队友持续占线时放下弓并换侧，避免无限蓄力或把箭硬塞进队友后背。
+					// 队友持续占线时放下弓；优先走向真实验证过的侧射位，找不到才退回简单换侧。
 					this.skeleton.stopUsingItem();
 					this.attackTime = Math.max(this.attackTime, 5);
-					this.strafeDirection = -this.strafeDirection;
+					SmartSkeletonMetrics.friendlyShotHeld(false);
+					if (!this.tryStartFiringLane(target, false)) {
+						this.strafeDirection = -this.strafeDirection;
+					}
 					this.friendlyBlockedTicks = 0;
 				}
 			}
@@ -370,6 +400,56 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 				return;
 			}
 		}
+	}
+
+	private boolean tryStartFiringLane(final LivingEntity target, final boolean explosive) {
+		MobsThinkNowConfig config = ConfigManager.get();
+		if (!config.skeletonFiringLaneReposition || SkeletonIntelligence.get(this.skeleton) < 4) {
+			return false;
+		}
+		SkeletonShotSafety.FiringLane lane = SkeletonShotSafety.findFiringLane(
+			this.skeleton,
+			target,
+			explosive,
+			this.strafeDirection
+		);
+		if (lane == null) {
+			return false;
+		}
+		// 清理旧掩体导航必须发生在提交侧射路径之前，否则 clearCoverState 会立即 stop 新路径。
+		this.clearCoverState(true);
+		if (!this.skeleton.getNavigation().moveTo(lane.path(), 1.12)) {
+			return false;
+		}
+		this.firingLaneDestination = lane.destination();
+		this.firingLaneTicks = 0;
+		this.strafeDirection = lane.side();
+		SmartSkeletonMetrics.firingLaneReplan();
+		return true;
+	}
+
+	private boolean tickFiringLane(final LivingEntity target, final MovementMode selected) {
+		Vec3 destination = this.firingLaneDestination;
+		if (destination == null) {
+			return false;
+		}
+		if (selected == MovementMode.KITE || selected == MovementMode.DODGE) {
+			this.firingLaneDestination = null;
+			this.skeleton.getNavigation().stop();
+			return false;
+		}
+		this.skeleton.stopUsingItem();
+		this.faceCombatTarget(target);
+		if (this.skeleton.position().distanceToSqr(destination) <= FIRING_LANE_REACHED_DISTANCE_SQUARED
+			|| this.skeleton.getNavigation().isDone()
+			|| ++this.firingLaneTicks > FIRING_LANE_TRAVEL_TIMEOUT_TICKS) {
+			this.firingLaneDestination = null;
+			this.firingLaneTicks = 0;
+			this.skeleton.getNavigation().stop();
+			this.attackTime = Math.max(this.attackTime, 2);
+			return false;
+		}
+		return true;
 	}
 
 	/**
