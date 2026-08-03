@@ -34,6 +34,7 @@ public final class SquadCreeperEvadeGoal extends Goal {
 
 	private final PathfinderMob mob;
 	private @Nullable Creeper threat;
+	private ZombieSquadCoordinator.@Nullable SquadBlastThreat blastThreat;
 	private @Nullable Vec3 evacuationDestination;
 	private long nextPathAt;
 	private long nextThreatRefreshAt;
@@ -52,25 +53,28 @@ public final class SquadCreeperEvadeGoal extends Goal {
 			|| hasCommittedBomb(this.mob)
 			|| !(this.mob.level() instanceof ServerLevel level)) {
 			this.threat = null;
+			this.blastThreat = null;
 			return false;
 		}
-		this.threat = ZombieSquadCoordinator.forLevel(level).nearestPrimedCreeperThreatFor(this.mob);
-		return this.threat != null;
+		this.blastThreat = ZombieSquadCoordinator.forLevel(level).nearestBlastThreatFor(this.mob);
+		this.threat = this.blastThreat == null ? null : this.blastThreat.creeper();
+		return this.blastThreat != null;
 	}
 
 	@Override
 	public boolean canContinueToUse() {
 		MobsThinkNowConfig config = ConfigManager.get();
-		Creeper current = this.threat;
+		ZombieSquadCoordinator.SquadBlastThreat current = this.blastThreat;
 		return isEnabled(config)
 			&& this.isEnabledForSpecies(config)
 			&& this.mob.isAlive()
 			&& !this.mob.isPassenger()
 			&& !hasCommittedBomb(this.mob)
-			&& isPrimed(current)
+			&& current != null
+			&& isPrimed(current.creeper())
 			&& CreeperBlastEvacuationMath.shouldContinue(
-				this.mob.distanceToSqr(current),
-				current.isPowered()
+				this.mob.position().distanceToSqr(current.center()),
+				current.powered()
 			);
 	}
 
@@ -92,9 +96,16 @@ public final class SquadCreeperEvadeGoal extends Goal {
 		long now = this.mob.level().getGameTime();
 		if (now >= this.nextThreatRefreshAt && this.mob.level() instanceof ServerLevel level) {
 			this.nextThreatRefreshAt = now + THREAT_REFRESH_TICKS;
-			Creeper refreshed = ZombieSquadCoordinator.forLevel(level).nearestPrimedCreeperThreatFor(this.mob);
-			if (refreshed != null && refreshed != this.threat) {
-				this.threat = refreshed;
+			ZombieSquadCoordinator.SquadBlastThreat refreshed = ZombieSquadCoordinator.forLevel(level)
+				.nearestBlastThreatFor(this.mob);
+			if (refreshed == null) {
+				this.blastThreat = null;
+				this.threat = null;
+			} else if (this.blastThreat == null
+				|| refreshed.creeper() != this.blastThreat.creeper()
+				|| refreshed.center().distanceToSqr(this.blastThreat.center()) > 1.0) {
+				this.blastThreat = refreshed;
+				this.threat = refreshed.creeper();
 				this.evacuationDestination = null;
 				this.nextPathAt = now;
 				this.mob.getNavigation().stop();
@@ -108,6 +119,7 @@ public final class SquadCreeperEvadeGoal extends Goal {
 		this.mob.getNavigation().stop();
 		this.mob.setAggressive(this.mob.getTarget() != null && this.mob.getTarget().isAlive());
 		this.threat = null;
+		this.blastThreat = null;
 		this.evacuationDestination = null;
 		this.nextPathAt = 0L;
 		this.nextThreatRefreshAt = 0L;
@@ -129,32 +141,35 @@ public final class SquadCreeperEvadeGoal extends Goal {
 	}
 
 	private void updateEscapePath(final long now) {
-		Creeper current = this.threat;
-		if (!isPrimed(current)) {
+		ZombieSquadCoordinator.SquadBlastThreat current = this.blastThreat;
+		if (current == null || !isPrimed(current.creeper())) {
 			return;
 		}
+		Creeper creeper = current.creeper();
+		Vec3 blastCenter = current.center();
 		boolean reachedDestination = this.evacuationDestination == null
 			|| this.mob.position().distanceToSqr(this.evacuationDestination) <= DESTINATION_REACHED_DISTANCE_SQUARED;
 		if (now < this.nextPathAt && !reachedDestination && !this.mob.getNavigation().isDone()) {
 			return;
 		}
 
-		double currentDistance = this.mob.distanceTo(current);
-		double pathStep = CreeperBlastEvacuationMath.pathStep(currentDistance, current.isPowered());
-		double speed = CreeperBlastEvacuationMath.evacuationSpeed(current.getSwelling(1.0F));
-		double currentDistanceSquared = this.mob.distanceToSqr(current);
+		double currentDistance = this.mob.position().distanceTo(blastCenter);
+		double pathStep = CreeperBlastEvacuationMath.pathStep(currentDistance, current.powered());
+		double speed = CreeperBlastEvacuationMath.evacuationSpeed(creeper.getSwelling(1.0F));
+		double currentDistanceSquared = this.mob.position().distanceToSqr(blastCenter);
 		Vec3 selectedDestination = null;
 		for (int attempt = 0; attempt < PATH_CANDIDATE_BUDGET; attempt++) {
 			// 先找能一次跑出安全圈的远点；空间不足时逐级缩短，先获得一段真实可走的逃生路径。
 			double partialStep = Math.max(MINIMUM_PARTIAL_PATH_STEP, pathStep - attempt * 1.25);
 			Vec3 candidate = EscapePathing.findDestinationAwayFrom(
 				this.mob,
-				current,
+				blastCenter,
+				creeper.getLookAngle(),
 				partialStep,
 				partialStep + 4.0,
 				VERTICAL_SEARCH
 			);
-			if (candidate.distanceToSqr(current.position())
+			if (candidate.distanceToSqr(blastCenter)
 				<= currentDistanceSquared + MINIMUM_DISTANCE_GAIN_SQUARED) {
 				continue;
 			}

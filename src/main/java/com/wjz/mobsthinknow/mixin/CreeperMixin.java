@@ -11,6 +11,7 @@ import com.wjz.mobsthinknow.ai.creeper.SmartCreeperSwellGoal;
 import com.wjz.mobsthinknow.ai.spider.CreeperTransportAccess;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadFriendlyFireGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadFiringLaneClearGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
@@ -68,6 +69,7 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(creeper));
 		this.goalSelector.addGoal(1, new SquadPreparationGoal(creeper, 1.12));
 		this.goalSelector.addGoal(2, new SmartCreeperSwellGoal(creeper, this.mobsthinknow$tacticalController));
+		this.goalSelector.addGoal(3, new SquadFiringLaneClearGoal(creeper, 1.18));
 		this.goalSelector.addGoal(4, new SmartCreeperApproachGoal(creeper, this.mobsthinknow$tacticalController));
 		boolean hasVanillaHurtByGoal = this.targetSelector.getAvailableGoals().stream()
 			.anyMatch(wrapped -> wrapped.getGoal().getClass() == HurtByTargetGoal.class);

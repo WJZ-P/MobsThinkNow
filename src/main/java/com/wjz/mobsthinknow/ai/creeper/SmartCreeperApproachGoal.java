@@ -4,6 +4,8 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperCombatMath.ApproachMode;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import com.wjz.mobsthinknow.ai.spider.SpiderCreeperCarrierGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
@@ -112,8 +114,24 @@ public final class SmartCreeperApproachGoal extends MeleeAttackGoal {
 		}
 		this.repathCooldown = CreeperCombatMath.repathTicks(intelligence);
 
+		Vec3 predictedBlastCenter = CreeperCombatMath.fuseDestination(
+			target.position(),
+			target.getDeltaMovement(),
+			0.0F,
+			intelligence
+		);
+		Vec3 queueStaging = this.creeper.level() instanceof ServerLevel level
+			? ZombieSquadCoordinator.forLevel(level).blastQueueStagingPointFor(
+				this.creeper,
+				target,
+				predictedBlastCenter
+			)
+			: null;
 		Vec3 destination;
-		if (!visible && this.controller.hasRecentSight(40) && this.controller.lastSeenPosition() != null) {
+		if (queueStaging != null) {
+			mode = this.controller.stableFlankSide() < 0 ? ApproachMode.FLANK_LEFT : ApproachMode.FLANK_RIGHT;
+			destination = queueStaging;
+		} else if (!visible && this.controller.hasRecentSight(40) && this.controller.lastSeenPosition() != null) {
 			mode = ApproachMode.DIRECT;
 			destination = this.controller.lastSeenPosition();
 		} else {
@@ -136,7 +154,7 @@ public final class SmartCreeperApproachGoal extends MeleeAttackGoal {
 			destination.z,
 			speed
 		);
-		if (!planned && mode.isFlanking()) {
+		if (!planned && queueStaging == null && mode.isFlanking()) {
 			mode = ApproachMode.INTERCEPT;
 			destination = CreeperCombatMath.approachDestination(
 				mode,
@@ -147,10 +165,12 @@ public final class SmartCreeperApproachGoal extends MeleeAttackGoal {
 			);
 			planned = this.creeper.getNavigation().moveTo(destination.x, destination.y, destination.z, speed);
 		}
-		if (!planned) {
+		if (!planned && queueStaging == null) {
 			mode = ApproachMode.DIRECT;
 			destination = target.position();
 			this.creeper.getNavigation().moveTo(target, speed);
+		} else if (!planned) {
+			this.creeper.getNavigation().stop();
 		}
 
 		this.controller.rememberApproach(mode, destination);

@@ -165,6 +165,14 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperSquadEvacuation = value))
 			.build());
 		creeperCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.creeper_blast_reservations"),
+			config.creeperBlastReservations
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_blast_reservations.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperBlastReservations = value))
+			.build());
+		creeperCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.creeper_wall_breaching"),
 			config.creeperWallBreaching
 		)
@@ -520,6 +528,30 @@ public final class MobsThinkNowConfigScreen {
 			.setDefaultValue(true)
 			.setTooltip(Component.translatable("mobsthinknow.config.observable_target_tactics.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.observableTargetTactics = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_shared_danger_memory"),
+			config.squadSharedDangerMemory
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_shared_danger_memory.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadSharedDangerMemory = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_firing_lane_reservations"),
+			config.squadFiringLaneReservations
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_firing_lane_reservations.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadFiringLaneReservations = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_threat_distribution"),
+			config.squadThreatDistribution
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_threat_distribution.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadThreatDistribution = value))
 			.build());
 		squadCategory.addEntry(entries.startIntSlider(
 			Component.translatable("mobsthinknow.config.briefing_ticks"),

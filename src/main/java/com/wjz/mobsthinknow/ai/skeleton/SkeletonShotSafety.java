@@ -134,7 +134,7 @@ public final class SkeletonShotSafety {
 		return Assessment.CLEAR;
 	}
 
-	static List<Vec3> trajectorySamples(final Vec3 start, final LivingEntity target) {
+	public static List<Vec3> trajectorySamples(final Vec3 start, final LivingEntity target) {
 		return trajectorySamples(start, target.getEyePosition(), target.getDeltaMovement());
 	}
 

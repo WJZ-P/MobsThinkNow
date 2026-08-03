@@ -3,8 +3,10 @@ package com.wjz.mobsthinknow.ai.creeper;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import com.wjz.mobsthinknow.ai.spider.SpiderCreeperCarrierGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import java.util.EnumSet;
 import net.minecraft.util.Mth;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -28,6 +30,8 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 	private boolean movingFuse;
 	private boolean breachFuse;
 	private boolean abortCounted;
+	private boolean reservationHeld;
+	private boolean reservationDenied;
 
 	public SmartCreeperSwellGoal(final Creeper creeper, final CreeperTacticalController controller) {
 		super(creeper);
@@ -52,7 +56,15 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 		if (!isValidTarget(currentTarget)) {
 			return false;
 		}
-		return shouldStart(currentTarget, ConfigManager.get());
+		if (!shouldStart(currentTarget, ConfigManager.get())) {
+			return false;
+		}
+		return !(this.creeper.level() instanceof ServerLevel level)
+			|| ZombieSquadCoordinator.forLevel(level).canReserveBlast(
+				this.creeper,
+				currentTarget,
+				this.predictedBlastCenter(currentTarget, 0.0F)
+			);
 	}
 
 	@Override
@@ -64,6 +76,9 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 			return !smartAiEnabled() && super.canUse();
 		}
 		if (!smartAiEnabled() || !this.creeper.isAlive()) {
+			return false;
+		}
+		if (this.reservationDenied) {
 			return false;
 		}
 		if (this.creeper.isIgnited()) {
@@ -84,7 +99,22 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 		this.repathCooldown = 0;
 		this.movingFuse = false;
 		this.abortCounted = false;
+		this.reservationHeld = false;
+		this.reservationDenied = false;
 		this.breachFuse = this.target != null && this.isBreachCandidate(this.target, ConfigManager.get());
+		if (this.target != null && this.creeper.level() instanceof ServerLevel level) {
+			boolean forced = this.creeper.isIgnited() || this.creeper.getSwellDir() > 0;
+			this.reservationHeld = ZombieSquadCoordinator.forLevel(level).tryReserveBlast(
+				this.creeper,
+				this.target,
+				this.predictedBlastCenter(this.target, 0.0F),
+				forced
+			);
+			if (!this.reservationHeld) {
+				this.reservationDenied = true;
+				return;
+			}
+		}
 		if (this.breachFuse) {
 			SmartCreeperMetrics.breachFuseStarted();
 		}
@@ -101,9 +131,11 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 			this.creeper.setSwellDir(-1);
 		}
 		this.creeper.getNavigation().stop();
+		this.releaseBlastReservation();
 		this.target = null;
 		this.movingFuse = false;
 		this.breachFuse = false;
+		this.reservationDenied = false;
 		this.smartMode = false;
 	}
 
@@ -130,6 +162,18 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 			SmartCreeperMetrics.breachFuseStarted();
 		}
 		float fuseProgress = Mth.clamp(this.creeper.getSwelling(1.0F), 0.0F, 1.0F);
+		Vec3 predictedCenter = this.predictedBlastCenter(currentTarget, fuseProgress);
+		if (this.creeper.level() instanceof ServerLevel level) {
+			ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(level);
+			if (!coordinator.renewBlastReservation(this.creeper, predictedCenter)
+				&& !coordinator.tryReserveBlast(this.creeper, currentTarget, predictedCenter, this.creeper.isIgnited())) {
+				this.creeper.setSwellDir(-1);
+				this.creeper.getNavigation().stop();
+				this.reservationDenied = true;
+				return;
+			}
+			this.reservationHeld = true;
+		}
 		double startDistance = CreeperCombatMath.fuseStartDistance(
 			config.creeperMaximumFuseStartDistance,
 			intelligence,
@@ -147,6 +191,7 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 		if (!committed) {
 			this.creeper.setSwellDir(-1);
 			this.creeper.getNavigation().stop();
+			this.releaseBlastReservation();
 			if (!this.abortCounted) {
 				this.abortCounted = true;
 				SmartCreeperMetrics.fuseAborted();
@@ -234,6 +279,22 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 			&& CreeperIntelligence.get(this.creeper) >= 8
 			&& this.controller.hasRecentSight(BREACH_MEMORY_TICKS)
 			&& CreeperBreachPlanner.hasBreachableBarrier(this.creeper, currentTarget);
+	}
+
+	private Vec3 predictedBlastCenter(final LivingEntity currentTarget, final float fuseProgress) {
+		return CreeperCombatMath.fuseDestination(
+			currentTarget.position(),
+			currentTarget.getDeltaMovement(),
+			fuseProgress,
+			CreeperIntelligence.get(this.creeper)
+		);
+	}
+
+	private void releaseBlastReservation() {
+		if (this.creeper.level() instanceof ServerLevel level && this.reservationHeld) {
+			ZombieSquadCoordinator.forLevel(level).releaseBlastReservation(this.creeper);
+		}
+		this.reservationHeld = false;
 	}
 
 	private static boolean isValidTarget(final @Nullable LivingEntity target) {

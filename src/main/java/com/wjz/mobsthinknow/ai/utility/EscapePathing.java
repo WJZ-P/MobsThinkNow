@@ -30,21 +30,43 @@ public final class EscapePathing {
 		final double maximumDistance,
 		final int verticalSearch
 	) {
+		return findDestinationAwayFrom(
+			mob,
+			threat.position(),
+			threat.getLookAngle(),
+			minimumDistance,
+			maximumDistance,
+			verticalSearch
+		);
+	}
+
+	/**
+	 * 从一个预测危险点撤离。爆炸预约会在苦力怕真正抵达前给出未来爆心，
+	 * 因此队友不必先朝苦力怕当前位置横移，再在引信末段临时改向。
+	 */
+	public static Vec3 findDestinationAwayFrom(
+		final PathfinderMob mob,
+		final Vec3 threatPosition,
+		final Vec3 fallbackDirection,
+		final double minimumDistance,
+		final double maximumDistance,
+		final int verticalSearch
+	) {
 		Vec3 candidate = LandRandomPos.getPosAway(
 			mob,
 			minimumDistance,
 			maximumDistance,
 			verticalSearch,
-			threat.position()
+			threatPosition
 		);
 		Vec3 away = horizontalAwayDirection(
 			mob.position(),
-			threat.position(),
-			threat.getLookAngle()
+			threatPosition,
+			fallbackDirection
 		);
-		double currentDistanceSquared = horizontalDistanceSquared(mob.position(), threat.position());
+		double currentDistanceSquared = horizontalDistanceSquared(mob.position(), threatPosition);
 		if (candidate != null
-			&& horizontalDistanceSquared(candidate, threat.position())
+			&& horizontalDistanceSquared(candidate, threatPosition)
 				> currentDistanceSquared + MINIMUM_HORIZONTAL_GAIN_SQUARED
 			&& pointsMeaningfullyAway(mob.position(), candidate, away)) {
 			return candidate;

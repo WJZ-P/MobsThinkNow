@@ -444,6 +444,22 @@ public final class MtnCommands {
 				creeperMetrics.abortedFuses(),
 				creeperMetrics.squadEvacuations()
 			);
+		message += ", sharedDangers=%d, dangersAvoided=%d, activeDangerCells=%d, secondaryThreats=%d, threatReassignments=%d, activeSecondaryTargets=%d, firingLanesReserved=%d, alliesClearedLanes=%d, activeFiringLanes=%d, blastReservations=%d, blastConflicts=%d, blastReleases=%d, activeBlastReservations=%d"
+			.formatted(
+				metrics.sharedDangersReported(),
+				metrics.sharedDangersAvoided(),
+				ZombieSquadCoordinator.activeDangerMemoryCount(),
+				metrics.secondaryThreatsObserved(),
+				metrics.threatAssignmentsChanged(),
+				ZombieSquadCoordinator.activeSecondaryTargetAssignments(),
+				skeletonMetrics.firingLanesReserved(),
+				skeletonMetrics.alliesClearedFiringLanes(),
+				ZombieSquadCoordinator.activeFiringLaneCount(),
+				creeperMetrics.blastReservationsAcquired(),
+				creeperMetrics.blastReservationConflicts(),
+				creeperMetrics.blastReservationsReleased(),
+				ZombieSquadCoordinator.activeBlastReservationCount()
+			);
 		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d, spiderBreachStaging=%d, spiderMobileFireSupport=%d, spiderRouteChecks=%d, spiderRouteRejections=%d, spiderSafeDismounts=%d"
 			.formatted(
 				config.spiderAiEnabled,

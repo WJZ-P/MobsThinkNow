@@ -3,10 +3,12 @@ package com.wjz.mobsthinknow.ai.skeleton;
 import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
 import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.EnumSet;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -93,6 +95,7 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 		this.firingLaneDestination = null;
 		this.firingLaneTicks = 0;
 		this.activityLease.release(this.skeleton);
+		this.releaseFiringLaneReservation();
 	}
 
 	@Override
@@ -119,6 +122,7 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 			if (this.state == CrossbowState.CHARGING) {
 				this.state = CrossbowState.UNCHARGED;
 			}
+			this.releaseFiringLaneReservation();
 			return;
 		}
 		this.skeleton.setAggressive(true);
@@ -128,6 +132,7 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 			intelligence
 		);
 		boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
+		this.updateFiringLaneReservation(target, hasLineOfSight);
 		double distanceSquared = this.skeleton.distanceToSqr(target);
 		MovementMode movement = SkeletonCombatMath.chooseMovement(
 			distanceSquared,
@@ -148,6 +153,7 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 		this.skeleton.getNavigation().stop();
 		this.faceTarget(target);
 		boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
+		this.updateFiringLaneReservation(target, hasLineOfSight);
 		this.tickCrossbow(
 			target,
 			hasLineOfSight,
@@ -286,6 +292,7 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 					target
 				);
 				SmartSkeletonMetrics.crossbowShot(explosive);
+				this.releaseFiringLaneReservation();
 				this.state = CrossbowState.UNCHARGED;
 				this.attackDelay = 10 + this.skeleton.getRandom().nextInt(9);
 			}
@@ -294,6 +301,33 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 
 	private ItemStack crossbow() {
 		return this.skeleton.getItemInHand(ProjectileUtil.getWeaponHoldingHand(this.skeleton, Items.CROSSBOW));
+	}
+
+	private void updateFiringLaneReservation(final LivingEntity target, final boolean hasLineOfSight) {
+		if (!(this.skeleton.level() instanceof ServerLevel level)) {
+			return;
+		}
+		ItemStack weapon = this.crossbow();
+		boolean preparingShot = this.state == CrossbowState.CHARGING || this.state == CrossbowState.CHARGED;
+		if (!hasLineOfSight || !preparingShot) {
+			ZombieSquadCoordinator.forLevel(level).releaseFiringLane(this.skeleton);
+			return;
+		}
+		ChargedProjectiles charged = weapon.getOrDefault(
+			DataComponents.CHARGED_PROJECTILES,
+			ChargedProjectiles.EMPTY
+		);
+		ZombieSquadCoordinator.forLevel(level).reserveFiringLane(
+			this.skeleton,
+			target,
+			charged.contains(Items.FIREWORK_ROCKET)
+		);
+	}
+
+	private void releaseFiringLaneReservation() {
+		if (this.skeleton.level() instanceof ServerLevel level) {
+			ZombieSquadCoordinator.forLevel(level).releaseFiringLane(this.skeleton);
+		}
 	}
 
 	private boolean tryStartFiringLane(final LivingEntity target, final boolean explosive) {

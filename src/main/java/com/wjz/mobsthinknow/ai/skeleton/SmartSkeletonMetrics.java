@@ -18,6 +18,8 @@ public final class SmartSkeletonMetrics {
 	private static final AtomicLong FRIENDLY_SHOTS_HELD = new AtomicLong();
 	private static final AtomicLong EXPLOSIVE_SHOTS_HELD = new AtomicLong();
 	private static final AtomicLong FIRING_LANE_REPLANS = new AtomicLong();
+	private static final AtomicLong FIRING_LANES_RESERVED = new AtomicLong();
+	private static final AtomicLong ALLIES_CLEARED_FIRING_LANES = new AtomicLong();
 
 	private SmartSkeletonMetrics() {
 	}
@@ -76,6 +78,14 @@ public final class SmartSkeletonMetrics {
 		FIRING_LANE_REPLANS.incrementAndGet();
 	}
 
+	public static void firingLaneReserved() {
+		FIRING_LANES_RESERVED.incrementAndGet();
+	}
+
+	public static void allyClearedFiringLane() {
+		ALLIES_CLEARED_FIRING_LANES.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -91,7 +101,9 @@ public final class SmartSkeletonMetrics {
 			FIREWORK_CROSSBOW_SHOTS.get(),
 			FRIENDLY_SHOTS_HELD.get(),
 			EXPLOSIVE_SHOTS_HELD.get(),
-			FIRING_LANE_REPLANS.get()
+			FIRING_LANE_REPLANS.get(),
+			FIRING_LANES_RESERVED.get(),
+			ALLIES_CLEARED_FIRING_LANES.get()
 		);
 	}
 
@@ -109,7 +121,9 @@ public final class SmartSkeletonMetrics {
 		long fireworkCrossbowShots,
 		long friendlyShotsHeld,
 		long explosiveShotsHeld,
-		long firingLaneReplans
+		long firingLaneReplans,
+		long firingLanesReserved,
+		long alliesClearedFiringLanes
 	) {
 	}
 }

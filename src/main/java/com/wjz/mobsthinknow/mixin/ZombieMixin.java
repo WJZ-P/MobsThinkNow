@@ -47,6 +47,7 @@ import com.wjz.mobsthinknow.ai.nether.NetherProfessionAccess;
 import com.wjz.mobsthinknow.ai.nether.NetherProfessionProfile;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadFiringLaneClearGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import net.minecraft.server.level.ServerLevel;
@@ -182,6 +183,7 @@ public abstract class ZombieMixin extends Monster implements
 			this.targetSelector.addGoal(1, new SquadHurtByTargetGoal(zombie));
 		}
 		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(zombie));
+		this.goalSelector.addGoal(2, new SquadFiringLaneClearGoal(zombie, 1.15));
 		if (zombie.getType() == EntityType.DROWNED) {
 			this.goalSelector.addGoal(0, new SquadPreparationGoal(zombie, 1.0));
 		}

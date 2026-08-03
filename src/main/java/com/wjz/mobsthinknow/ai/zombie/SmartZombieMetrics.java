@@ -46,6 +46,10 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong COMBAT_REPLANS = new AtomicLong();
 	private static final AtomicLong COMBAT_REPLAN_SUPPRESSED = new AtomicLong();
 	private static final AtomicLong TARGET_TACTIC_CHANGES = new AtomicLong();
+	private static final AtomicLong SHARED_DANGERS_REPORTED = new AtomicLong();
+	private static final AtomicLong SHARED_DANGERS_AVOIDED = new AtomicLong();
+	private static final AtomicLong SECONDARY_THREATS_OBSERVED = new AtomicLong();
+	private static final AtomicLong THREAT_ASSIGNMENTS_CHANGED = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -207,6 +211,22 @@ public final class SmartZombieMetrics {
 		TARGET_TACTIC_CHANGES.incrementAndGet();
 	}
 
+	public static void sharedDangerReported() {
+		SHARED_DANGERS_REPORTED.incrementAndGet();
+	}
+
+	public static void sharedDangerAvoided() {
+		SHARED_DANGERS_AVOIDED.incrementAndGet();
+	}
+
+	public static void secondaryThreatObserved() {
+		SECONDARY_THREATS_OBSERVED.incrementAndGet();
+	}
+
+	public static void threatAssignmentsChanged(final int members) {
+		THREAT_ASSIGNMENTS_CHANGED.addAndGet(Math.max(0, members));
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -249,7 +269,11 @@ public final class SmartZombieMetrics {
 			COMBAT_ROUTE_CHECKS.get(),
 			COMBAT_REPLANS.get(),
 			COMBAT_REPLAN_SUPPRESSED.get(),
-			TARGET_TACTIC_CHANGES.get()
+			TARGET_TACTIC_CHANGES.get(),
+			SHARED_DANGERS_REPORTED.get(),
+			SHARED_DANGERS_AVOIDED.get(),
+			SECONDARY_THREATS_OBSERVED.get(),
+			THREAT_ASSIGNMENTS_CHANGED.get()
 		);
 	}
 
@@ -294,7 +318,11 @@ public final class SmartZombieMetrics {
 		long combatRouteChecks,
 		long combatReplans,
 		long combatReplanSuppressed,
-		long targetTacticChanges
+		long targetTacticChanges,
+		long sharedDangersReported,
+		long sharedDangersAvoided,
+		long secondaryThreatsObserved,
+		long threatAssignmentsChanged
 	) {
 	}
 }

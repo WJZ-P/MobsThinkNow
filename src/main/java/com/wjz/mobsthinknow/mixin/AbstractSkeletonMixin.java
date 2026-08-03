@@ -24,6 +24,7 @@ import com.wjz.mobsthinknow.ai.nether.SmartNetherMetrics;
 import com.wjz.mobsthinknow.ai.nether.SmartNetherUndeadMeleeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadFiringLaneClearGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -127,6 +128,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements
 		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(skeleton));
 		this.targetSelector.addGoal(1, new SquadSkeletonHurtByTargetGoal(skeleton));
 		this.goalSelector.addGoal(2, new GiantRiderBoardingGoal(skeleton));
+		this.goalSelector.addGoal(3, new SquadFiringLaneClearGoal(skeleton, 1.12));
 	}
 
 	/**

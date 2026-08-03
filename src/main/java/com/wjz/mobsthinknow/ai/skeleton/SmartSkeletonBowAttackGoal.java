@@ -4,11 +4,13 @@ import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
 import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCoverPlanner.CoverPlan;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.EnumSet;
 import java.util.List;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
@@ -165,6 +167,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.firingLaneTicks = 0;
 		this.clearCoverState(false);
 		this.activityLease.release(this.skeleton);
+		this.releaseFiringLaneReservation();
 	}
 
 	@Override
@@ -199,6 +202,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		if (SkeletonSquadOrders.obeyPreparationOrder(this.skeleton, target, this.speedModifier)) {
 			this.attackTime = Math.max(this.attackTime, 5);
 			this.clearCoverState(false);
+			this.releaseFiringLaneReservation();
 			return;
 		}
 		int intelligence = SkeletonIntelligence.get(this.skeleton);
@@ -207,6 +211,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			intelligence
 		);
 		boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
+		this.updateFiringLaneReservation(target, hasLineOfSight);
 		updateSightMemory(hasLineOfSight);
 		updateProjectileThreat(config);
 
@@ -266,6 +271,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.movementMode = MovementMode.STRAFE;
 		this.faceCombatTarget(target);
 		boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
+		this.updateFiringLaneReservation(target, hasLineOfSight);
 		this.updateSightMemory(hasLineOfSight);
 		this.tickBow(target, hasLineOfSight);
 	}
@@ -698,6 +704,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 
 	private void fireArrow(final LivingEntity target, final int usingTicks, final boolean fromCover) {
 		this.friendlyBlockedTicks = 0;
+		this.releaseFiringLaneReservation();
 		this.faceCombatTarget(target);
 		this.skeleton.stopUsingItem();
 		this.skeleton.performRangedAttack(target, BowItem.getPowerForTime(usingTicks));
@@ -706,6 +713,24 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			SmartSkeletonMetrics.coverShot();
 		}
 		this.attackTime = nextAttackInterval();
+	}
+
+	private void updateFiringLaneReservation(final LivingEntity target, final boolean hasLineOfSight) {
+		if (!(this.skeleton.level() instanceof ServerLevel level)) {
+			return;
+		}
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(level);
+		if (hasLineOfSight && this.skeleton.isUsingItem()) {
+			coordinator.reserveFiringLane(this.skeleton, target, false);
+		} else {
+			coordinator.releaseFiringLane(this.skeleton);
+		}
+	}
+
+	private void releaseFiringLaneReservation() {
+		if (this.skeleton.level() instanceof ServerLevel level) {
+			ZombieSquadCoordinator.forLevel(level).releaseFiringLane(this.skeleton);
+		}
 	}
 
 	private void enterCoverPhase(final CoverPhase phase) {

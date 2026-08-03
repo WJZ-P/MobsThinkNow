@@ -115,6 +115,8 @@ public final class MobsThinkNowConfig {
 	public boolean creeperMovingFuse = true;
 	/** 同队苦力怕进入引信后，其他僵尸、骷髅、苦力怕与蜘蛛会退出真实爆炸伤害范围。 */
 	public boolean creeperSquadEvacuation = true;
+	/** 同队同一目标或重叠区域只允许一个普通引信提交；外部强制点燃仍会被完整记录。 */
+	public boolean creeperBlastReservations = true;
 	/** 高智力个体只对可被爆炸破坏的第一层软墙保留引信；同时服从 mobGriefing。 */
 	public boolean creeperWallBreaching = true;
 	/** IQ 10 普通个体的最远起爆距离；低智力按 3 格原版距离向该值插值，带电个体另加半格。 */
@@ -272,6 +274,12 @@ public final class MobsThinkNowConfig {
 	public boolean dynamicSquadReplanning = true;
 	/** 只根据队员真实视线内的举盾、高地、拉扯、隘口和涉水证据调整总攻方案。 */
 	public boolean observableTargetTactics = true;
+	/** 成员把真实失败节点写入最多 32 条的短期危险黑板，后续替代路径主动避开。 */
+	public boolean squadSharedDangerMemory = true;
+	/** 骷髅蓄力时发布短期弹道走廊，挡线成员在低优先级战斗阶段主动让路。 */
+	public boolean squadFiringLaneReservations = true;
+	/** 真实攻击者和可见新目标可吸引最多 40% 的合格成员，首领与多数成员保持主目标。 */
+	public boolean squadThreatDistribution = true;
 	public int decisionIntervalTicks = 8;
 	public int targetMemoryTicks = 60;
 	public int maximumCoordinatedZombies = DEFAULT_MAXIMUM_COORDINATED_ZOMBIES;
