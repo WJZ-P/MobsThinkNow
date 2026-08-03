@@ -74,12 +74,19 @@ flowchart TD
     StateMachine --> Composition["有界单队阵容快照"]
     Composition --> AssaultPlanner["首领 IQ + 阵容选择总攻方案"]
     AssaultPlanner --> Orders["带 term / planEpoch / assaultPlan 的成员命令"]
+    Blackboard --> VisibleEvidence["真实 LOS 下的玩家战术证据"]
+    VisibleEvidence --> TacticMemory["迟滞积分 + 100 tick 过期"]
+    TacticMemory --> AdaptivePlanner["阵容支持下调整总攻方案"]
+    AdaptivePlanner --> Orders
     AssaultPlanner --> Crossfire["骷髅交叉射界"]
     AssaultPlanner --> MountedBreach["蜘蛛侧后投送 / 移动火力平台"]
 
     Orders --> Controller["ZombieTacticalController"]
     Controller --> Navigation["原版导航器"]
     Controller --> Melee["原版 ZombieAttackGoal 追击与挥击"]
+    Controller --> RouteFailure["同 planEpoch 两次 moveTo=false"]
+    RouteFailure --> Recommand["常数后备路径 + 40～80 tick 冷却"]
+    Recommand --> Orders
     Controller --> ShieldUse["原版 startUsingItem(OFF_HAND)"]
     ShieldUse --> ShieldPose["client Mixin: ArmPose.BLOCK"]
     RetreatGoal -->|"MOVE / LOOK 抢占"| Navigation
@@ -91,6 +98,11 @@ flowchart TD
     FoodGoal -->|"仅可达食物存在时"| Navigation
     FoodGoal --> FoodUse["单份拾取 + 原版 useItem"]
     FoodUse --> FoodPose["client Mixin: 抬手咀嚼"]
+
+    AttackGoal --> ActivityLease["TacticalActivityLease / O(1) 语义仲裁"]
+    RetreatGoal --> ActivityLease
+    EngineerGoal --> ActivityLease
+    FireGoal --> ActivityLease
 
     EndermanSpawn["普通末影人 finalizeSpawn"] --> EndermanProfile["难度 + IQ + 末地主场职业分配"]
     EndermanProfile --> ProfessionData["同步 byte + 实体存档 + 真实装备"]
@@ -132,9 +144,13 @@ flowchart TD
 com.wjz.mobsthinknow
 ├─ MobsThinkNow                         Fabric 初始化与世界事件注册
 ├─ ai/utility                           通用效用选择器
+├─ ai/activity
+│  ├─ TacticalActivity                  跨物种战术活动、优先级与语义分类
+│  └─ TacticalActivityLease             O(1) 抢占、续租、超时释放与所有权校验
 ├─ ai/skeleton
 │  ├─ SkeletonIntelligence              持久智力 1～10 与名称标记
 │  ├─ SkeletonEscapeSpeedProfile        难度化、个体随机且持久的逃跑速度因子
+│  ├─ SkeletonShotSafety                预测弹道走廊、爆炸危险区与安全射击位
 │  ├─ SmartSkeletonBowAttackGoal        距离分带、持弓拉扯、闪箭与掩体循环
 │  ├─ SkeletonEmergencyDisengageGoal    对任意当前目标的高优先级全速脱离
 │  ├─ SkeletonCrossbowLoadout            难度/IQ 弩手生成与真实爆炸烟花数据
@@ -152,6 +168,7 @@ com.wjz.mobsthinknow
 │  ├─ SpiderCombatMath                 绕侧、预判跳扑、拉扯和运输冲锋纯数学
 │  ├─ SmartSpiderPounceGoal            2.5～7 格速度预测跳扑与原版热切换
 │  ├─ SmartSpiderCombatGoal            截击、观察绕侧、命中后重定位
+│  ├─ SpiderTransportRouteEvaluator    组合碰撞箱净空、危险落差与安全下车点
 │  ├─ CreeperTransportAccess           单目标、带租约的瞬时苦力怕预约
 │  ├─ SpiderCreeperCarrierGoal         苦力怕会合、骑乘、退火和最终冲锋状态机
 │  └─ SpiderSquadCarrierGoal           小队骷髅/僵尸的跳跃登乘与加速换位
@@ -216,7 +233,7 @@ com.wjz.mobsthinknow
 │  ├─ ZombieWeaponCombat                武器 CD、周旋、斧手跳劈与暴击
 │  ├─ ZombieShieldCombat                举盾接近、随机守候、延迟反击、盾击与放盾收招
 │  ├─ ZombieBodyAction/Language          服务端动作仲裁、编号与世界开始时间同步
-│  ├─ ZombieBodyAnimation                客户端纯关键帧采样、左右手镜像与动作恢复
+│  ├─ ZombieBodyAnimation                客户端纯关键帧采样、镜像、动作恢复与交叉淡化
 │  ├─ SmartZombieMetrics                运行指标
 │  └─ squad
 │     ├─ ZombieSquadCoordinator         五类家族混编、黑板、分层载具分配、状态机与命令
@@ -224,6 +241,10 @@ com.wjz.mobsthinknow
 │     ├─ SquadRolePlanner                智力到战术复杂度的映射 + 兵种职位偏好
 │     ├─ SquadComposition                不持有世界引用的一次性阵容计数快照
 │     ├─ SquadAssaultPlanner             首领 IQ 与阵容到六类总攻方案的纯函数
+│     ├─ ObservedTargetTactic            六种只由真实可见证据产生的目标战术
+│     ├─ SquadTacticMemory               定长积分、迟滞切换与证据过期
+│     ├─ SquadAdaptiveAssaultPlanner     基础方案与可见战术证据的有界适配
+│     ├─ SquadRouteFailureTracker        同计划两次失败、改令冷却与去抖
 │     ├─ SquadAssaultGeometry            交叉射界、侧后爆破和移动火力阵位纯数学
 │     ├─ SquadPreparationGoal            溺尸/苦力怕/蜘蛛/巨人集结与部署命令适配
 │     ├─ SquadMemberHeartbeat            无近战包装成员的 O(1) 感知心跳
@@ -264,6 +285,15 @@ com.wjz.mobsthinknow
   原版仅在普通僵尸出生时随机发放的武装、特殊桶、空袭与巨人替换仍保持普通僵尸专属；
 - 溺尸不替换两栖导航、入水/上岸和三叉戟 Goal，只额外安装小队准备 Goal 与独立 O(1) 心跳。
   僵尸转化为溺尸时转移智力与建筑库存并按新实体类型重建名称，不持久化旧小队引用。
+- `TacticalActivityLease` 补充原版 `GoalSelector` 的 MOVE/LOOK 标志：标志解决同 tick 的控制器互斥，
+  租约解决跨 Goal 的语义优先级。撤退、灭火、空袭、工程、近战、远程与载具流程以实体为键做 O(1)
+  抢占；高优先级活动可立即接管，所有权释放不会误停新活动，忘记续租的条目会在 3 tick 后过期。
+- 交战阶段不因单次寻路失败立刻翻案。同一成员对同一 `planEpoch + destination` 连续两次收到
+  `Navigation#moveTo=false` 才上报；协调器只检查截断与施压两个常数候选，成功后递增 `planEpoch`
+  并下发新命令，单成员再进入 40～80 tick 的确定性冷却，避免狭窄地形中反复重算。
+- 玩家战术只从至少一名成员真实 LOS 下的服务器状态归纳：高处、举盾、拉扯、卡口和水域防守。
+  `SquadTacticMemory` 用定长积分与启用/保持双阈值抑制抖动；失去视线不会继续窥探实时状态，证据
+  最长保留 100 tick。适配器只有在当前阵容确实支持时才切换总攻方案。
 
 ## 2.1 骷髅远程战术与混编边界
 
@@ -281,6 +311,9 @@ com.wjz.mobsthinknow
   `0.68/0.76/0.84`，上界均为 `1.0`，所以旧智力速度曲线仍是绝对上限；
 - 弩使用物品组件中的真实 `CHARGED_PROJECTILES` 状态，爆炸烟花是有限库存。小于六格时
   保留已装填弹药并优先拉开，烟花耗尽后 `Monster#getProjectile` 自然回落到普通箭；
+- 弓与弩在真正准备放箭时才用八段预测弹道走廊检查同队成员；爆炸烟花另加四格落点危险区。
+  连续受阻达到阈值后，射手在目标左右四个固定候选中最多创建四条路径，找到安全射击位再开火；
+  没有合法通道时继续扣住弹药并翻转拉扯方向，不会穿过队友身体“魔法命中”。
 - 混编协调器仍按“相同目标 + 空间格”分桶。受支持僵尸家族、骷髅家族、苦力怕、蜘蛛与巨人
   都提交 O(1) 心跳并参与统一选举、换届；非首领骷髅家族成员强制使用 `RANGED` 角色及智力化射击站位；
 - 同队五类成员的误伤记录会被各自的 `HurtByTargetGoal` 包装消费，队外攻击仍正常转移仇恨。
@@ -325,6 +358,10 @@ com.wjz.mobsthinknow
 - 配对每只蜘蛛错峰 `10～20 tick` 执行一次局部空间查询，单轮最多评估 32 个候选。苦力怕上的
   60 tick 可续租 UUID 预约保证一对一归属；预约态和骑乘态都会临时暂停苦力怕自己的接敌/引信 Goal。
   会合阶段另有 100 tick 硬时限，不可达组合会释放预约并恢复双方个人战斗。
+- 预约前先以“蜘蛛碰撞箱 + 乘员高度”评估投送路径，最多采样 16 个 Path 节点，拒绝低顶、窄道和
+  超过 2.5 格的危险落差。运输中只在重寻路时复核，连续两次失败才中止；尚未提交引信时会从八个
+  相邻格选择有承重、无碰撞的安全下车点并进入 80 tick 冷却，引信已经提交后则保持最终冲锋，
+  避免把正在倒计时的苦力怕卸在队友脚边。
 - 小队内每只蜘蛛最多分配一名乘员，优先级为苦力怕、骷髅、僵尸；每名乘员也只属于一只蜘蛛。
   `SpiderSquadCarrierGoal` 负责非苦力怕乘员的 3～9 tick 真实跳跃登乘、骑乘朝向与预测换点；
   `getControllingPassenger` 对三类载荷返回空控制者，乘员不会夺走蜘蛛的 MOVE/LOOK。已有独立速度曲线的
@@ -677,13 +714,23 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 16. 总攻方案只在职位重建时用一次 O(K) 阵容计数选择；交叉射界与侧后 staging point 都是 O(1)
     向量数学。部署阶段的乘员反查只遍历本队有界运输表，交战阶段载具读取精确的成员/乘员 Map，
     不追加范围实体查询，也不会把跨职业配合退化为 N²。
+17. 活动租约按实体存放在弱键 Map 中，抢占、续租和释放均为 O(1)，不扫描附近实体；3 tick 过期
+    只在相关 Goal 查询或续租时惰性清理，不增加全局 tick 遍历。
+18. 可观察战术记忆只遍历六个固定枚举；证据复用成员心跳已有的 LOS 与速度快照，并只在小队决策
+    间隔更新。没有视线时只衰减/过期旧证据，不新增实体或方块范围扫描。
+19. 战中改令须先累计同计划的两次真实寻路失败，随后最多创建截断、施压两条后备 Path，并进入
+    40～80 tick 冷却；单次导航瞬断不会触发全队重新部署。
+20. 射击走廊只在真正准备开火时做八段碰撞查询，连续受阻后最多检查四个射击位；蜘蛛运输路径
+    最多采样 16 个节点，且只在预约预检和已有重寻路节拍运行，失败后用冷却限制重复 A*。
 
-`/mtn status` 会显示活跃小队、选举/换届次数和累计候选检查数，便于后续做
+`/mtn status` 会显示活跃小队、活动租约、选举/换届次数和累计候选检查数，便于后续做
 50、100、200 只激活僵尸的 MSPT 实机基准；同时输出累计采集、放置、俯击、工程兵 TNT、
 水、岩浆与目标点燃次数，以及剑士佯攻、斧手前摇、盾击启动/命中次数，用于判断地形、工程与
 武器动作在真实服务器中的触发频率。
 小队部分另输出总攻方案、交叉火力、机动爆破与完整联合兵种次数；蜘蛛部分同时输出配对查询、
-候选检查、成功合体、投送引信、侧后集结和移动火力平台计数，便于定位高密度刷怪塔中的触发频率。
+候选检查、成功合体、运输路径检查/拒绝/安全下车、投送引信、侧后集结和移动火力平台计数；
+小队另输出交战寻路失败/后备检查/改令/冷却抑制与战术证据切换，骷髅输出友军扣箭、爆炸危险区
+扣箭和射击位改派，便于定位高密度刷怪塔中的触发频率。
 下界部分输出控制器安装、猪灵改位、烈焰人弹幕/弹体、恶魂射击/换位、疣猪兽冲锋/命中与
 岩浆怪跳扑计数，便于区分“没有合法战术窗口”和“Mixin 未运行”。
 
@@ -701,6 +748,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `skeletonCrossbowChance` | `0.18` | 弩手基础概率，再按难度与个体智力缩放 |
 | `skeletonFireworkCrossbowChance` | `0.25` | 智力 7～10 弩手携带有限爆炸烟花的二次基础概率 |
 | `skeletonPreferredRange` | `10.0` | 骷髅基础偏好射程，再按智力缩放 |
+| `skeletonFiringLaneReposition` | `true` | 友军连续挡住预测弹道时寻找可达侧射位 |
 | `creeperAiEnabled` | `true` | 普通苦力怕智力、截击、绕后与智能引信总开关 |
 | `creeperFlanking` | `true` | IQ 6 以上被观察或面对举盾目标时前往稳定侧后方 |
 | `creeperMovingFuse` | `true` | 保留完整引信但点火后继续导航至预测爆点 |
@@ -713,6 +761,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `spiderCreeperCoordination` | `true` | 蜘蛛与同目标普通苦力怕是否会合并执行骑乘投送 |
 | `spiderCreeperSearchRadius` | `8.0` | 局部配对搜索半径，范围 `4～16` 格 |
 | `spiderCreeperCarrierSpeed` | `1.40` | 蜘蛛载具冲锋配置上限，范围 `1.10～1.70`；三类乘员每组再随机取其 88%～100% |
+| `spiderTransportRouteAssessment` | `true` | 载人前及改道时检查组合净空、危险落差并支持安全下车 |
 | `endermanAiEnabled` | `true` | 普通末影人智力与额外投送战术总开关；不改变原版仇恨获取 |
 | `endermanCreeperDelivery` | `true` | 已敌对玩家的末影人是否抱取、传送并点燃附近苦力怕 |
 | `endermanCreeperSearchRadius` | `16.0` | 局部搜索配置半径，范围 `6～32` 格，再按末影人 IQ 缩放 |
@@ -737,6 +786,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `magmaCubePredictivePounce` | `true` | 岩浆怪真实起跳时加入水平预测方向 |
 | `magmaCubePounceSpeed` | `0.68` | 岩浆怪跳扑水平速度，范围 `0.35～1.0` |
 | `packSurrounding` | `true` | 小队系统开关 |
+| `dynamicSquadReplanning` | `true` | 交战中同计划连续寻路失败后有界改令 |
+| `observableTargetTactics` | `true` | 只按真实 LOS 证据迟滞调整小队总攻方案 |
 | `decisionIntervalTicks` | `8` | 战术与路径更新间隔 |
 | `targetMemoryTicks` | `60` | 最后目击记忆时间 |
 | `minimumSquadSize` | `3` | 正式组队最少成员 |
@@ -752,6 +803,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 | `rallyQuorum` | `0.7` | 集结完成比例 |
 | `deploymentQuorum` | `0.6` | 部署完成比例 |
 | `squadVisualEffects` | `true` | 会议叫声、粒子、光环与怒吼 |
+| `zombieAnimationBlendTicks` | `4` | 战术动作切换时客户端交叉淡化，范围 `0～8` tick |
 | `squadRoleNameTags` | `true` | 组队期间的职业名牌 |
 | `individualTraits` | `true` | 难度化速度/生命/伤害/追踪距离差异；固定声线始终属于表现层 |
 | `retreatTactics` | `true` | 拉扯机制总开关 |
@@ -1086,8 +1138,10 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
 
 ## 9. 验证体系
 
-- JUnit：效用选择、配置边界、六类总攻方案门槛、交叉射界/侧后爆破纯几何、苦力怕难度智力区间、观察点积、稳定绕后点、起爆/退火边界与移动引信速度硬上限、
-  蜘蛛难度智力区间、水平注视、绕侧/命中后重定位、预判跳扑边界与运输速度上限、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
+- JUnit：效用选择、配置边界、六类总攻方案门槛、可见战术证据积分/迟滞/过期、阵容约束下的自适应总攻、
+  同计划两次失败再改令与冷却、八段预测友军射界、运输净空分类和动作交叉淡化端点/权重；另覆盖交叉射界/侧后爆破纯几何、
+  苦力怕难度智力区间、观察点积、稳定绕后点、起爆/退火边界与移动引信速度硬上限、蜘蛛难度智力区间、水平注视、
+  绕侧/命中后重定位、预判跳扑边界与运输速度上限、持矛僵尸 16～64 弹量边界与难度均值单调性、撤退硬时限/水平安全距离边界、高处目标所需整格高度与
   四格上限、IQ 8～10 拆柱概率、
   觅食半血边界、个体声线映射、难度属性均值、特殊桶概率分区与原版掉落率、智力
   概率和换手选择、工程兵 6～10 秒调度边界、水/岩浆保留时间与五秒点燃常量、智力名字结构、
@@ -1097,7 +1151,8 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   剑士佯攻资格/严格概率边界、首领选举优先级、
   低/高智力职位规划、武器攻速冷却换算与圆弧目的地、空手软方块破坏时长以及
   草方块到泥土的采集语义，以及巨人难度化出生率、排除的出生原因、智力区间、目标提前量与抛投速度上限；
-- Minecraft 服务端 GameTest：生产 Mixin 安装、智力经过真实实体存读链保持不变、
+- Minecraft 服务端 GameTest：真实 Mob 上的活动租约同级互斥、高优先级抢占、旧所有者续租失败、精确释放与 3 tick 过期；
+  另覆盖动作切换时旧动作/已播放时长/切换时刻同步快照，以及生产 Mixin 安装、智力经过真实实体存读链保持不变、
   五类小队与非僵尸最高智力首领当选、UUID 票并列抽签、首领移除后自动换届、八种主世界亡灵
   在同一目标下进入同队且最高智力干尸当选、三个明确排除类型不登记；另以真实 Zombie 同步数据
   验证召集—巡视—左右翼命令—真实路线异议—首领纠正—最终命令完整会议序列、换届环顾/敬礼/
@@ -1146,7 +1201,7 @@ tick 把其有效命令降级为 `PRESSURER`，不等待下一次重编队。
   额外乘员；阵型间距按本批最大真实碰撞宽度自适应，末影人另覆盖生产 Mixin Goal/职业分配
    安装、持久智力名称、四职业同步与装备、真实盾牌格挡反击、原版长矛突进、胸前乘客三轴挂点、载荷不取得驾驶权，以及“已有敌对玩家 → 预约 → 抱取 →
    随传送 → 安全卸载 → 原版点燃”的完整生产状态机；`spawn` 子树另验证 `all`、十二个基础生物名、
-   六个复数分类、`nether`/`overworld_assault` 分类与五十七个战术/变种 literal 全量注册，并真实批量生成十四类基础实体；当前共 146 项
+   六个复数分类、`nether`/`overworld_assault` 分类与五十七个战术/变种 literal 全量注册，并真实批量生成十四类基础实体；当前共 149 项
   服务端 GameTest；
 - `runGameTest` 启动真实 Fabric 服务端验证集成；
 - `build` 执行编译、JUnit、资源处理和可发布 JAR 打包。
