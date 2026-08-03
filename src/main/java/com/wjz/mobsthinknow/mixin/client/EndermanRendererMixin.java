@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.mixin.client;
 
 import com.wjz.mobsthinknow.ai.enderman.EndermanCreeperDeliveryGoal;
 import com.wjz.mobsthinknow.ai.enderman.EndermanProfessionProfile;
+import com.wjz.mobsthinknow.client.render.EndermanArmPoseSelection;
 import com.wjz.mobsthinknow.client.render.EndermanCarrierRenderStateAccess;
 import com.wjz.mobsthinknow.client.render.EndermanItemInHandLayer;
 import com.wjz.mobsthinknow.client.render.EndermanProfessionRenderStateAccess;
@@ -11,7 +12,6 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.EndermanRenderer;
 import net.minecraft.client.renderer.entity.state.EndermanRenderState;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.item.ItemStack;
@@ -47,7 +47,7 @@ public abstract class EndermanRendererMixin {
 		((EndermanProfessionRenderStateAccess)state).mobsthinknow$setEndermanProfession(
 			EndermanProfessionProfile.get(enderman)
 		);
-		configureArmPoses(enderman, state);
+		configureArmPoses(state);
 	}
 
 	@Inject(
@@ -68,7 +68,7 @@ public abstract class EndermanRendererMixin {
 		}
 	}
 
-	private static void configureArmPoses(final EnderMan enderman, final EndermanRenderState state) {
+	private static void configureArmPoses(final EndermanRenderState state) {
 		if (!state.carriedBlock.isEmpty()) {
 			state.rightHandItemState.clear();
 			state.leftHandItemState.clear();
@@ -78,12 +78,11 @@ public abstract class EndermanRendererMixin {
 			state.leftArmPose = HumanoidModel.ArmPose.EMPTY;
 			return;
 		}
-		state.rightArmPose = poseFor(enderman, state, HumanoidArm.RIGHT);
-		state.leftArmPose = poseFor(enderman, state, HumanoidArm.LEFT);
+		state.rightArmPose = poseFor(state, HumanoidArm.RIGHT);
+		state.leftArmPose = poseFor(state, HumanoidArm.LEFT);
 	}
 
 	private static HumanoidModel.ArmPose poseFor(
-		final EnderMan enderman,
 		final EndermanRenderState state,
 		final HumanoidArm arm
 	) {
@@ -91,8 +90,7 @@ public abstract class EndermanRendererMixin {
 		if (stack.isEmpty()) {
 			return HumanoidModel.ArmPose.EMPTY;
 		}
-		boolean usedArm = enderman.isUsingItem()
-			&& enderman.getUsedItemHand() == (arm == state.mainArm ? InteractionHand.MAIN_HAND : InteractionHand.OFF_HAND);
+		boolean usedArm = EndermanArmPoseSelection.isUsingArm(state, arm);
 		if (usedArm && stack.getUseAnimation() == ItemUseAnimation.BLOCK) {
 			return HumanoidModel.ArmPose.BLOCK;
 		}

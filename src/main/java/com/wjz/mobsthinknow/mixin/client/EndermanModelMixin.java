@@ -1,10 +1,12 @@
 package com.wjz.mobsthinknow.mixin.client;
 
+import com.wjz.mobsthinknow.client.render.EndermanArmPoseSelection;
 import com.wjz.mobsthinknow.client.render.EndermanCarrierRenderStateAccess;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.monster.enderman.EndermanModel;
 import net.minecraft.client.renderer.entity.state.EndermanRenderState;
+import net.minecraft.world.entity.HumanoidArm;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -35,22 +37,32 @@ public abstract class EndermanModelMixin {
 
 	private void mobsthinknow$poseProfessionEquipment(final EndermanRenderState state) {
 		HumanoidModel<?> model = (HumanoidModel<?>)(Object)this;
-		poseArm(model.rightArm, state.rightArmPose, false, state.isUsingItem);
-		poseArm(model.leftArm, state.leftArmPose, true, state.isUsingItem);
+		poseArm(
+			model.rightArm,
+			state.rightArmPose,
+			false,
+			EndermanArmPoseSelection.isUsingArm(state, HumanoidArm.RIGHT)
+		);
+		poseArm(
+			model.leftArm,
+			state.leftArmPose,
+			true,
+			EndermanArmPoseSelection.isUsingArm(state, HumanoidArm.LEFT)
+		);
 	}
 
 	private static void poseArm(
 		final ModelPart arm,
 		final HumanoidModel.ArmPose pose,
 		final boolean left,
-		final boolean usingItem
+		final boolean usingThisArm
 	) {
 		if (pose == HumanoidModel.ArmPose.BLOCK) {
 			arm.xRot = -0.92F;
 			arm.yRot = left ? 0.52F : -0.52F;
 			arm.zRot = left ? -0.14F : 0.14F;
 		} else if (pose == HumanoidModel.ArmPose.SPEAR) {
-			arm.xRot = usingItem ? -1.32F : -0.88F;
+			arm.xRot = usingThisArm ? -1.32F : -0.88F;
 			arm.yRot = left ? 0.08F : -0.08F;
 			arm.zRot = left ? -0.04F : 0.04F;
 		}
