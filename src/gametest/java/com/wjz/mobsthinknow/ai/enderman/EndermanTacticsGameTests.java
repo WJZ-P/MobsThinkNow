@@ -11,6 +11,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
@@ -57,6 +58,32 @@ public final class EndermanTacticsGameTests implements CustomTestMethodInvoker {
 			"Natural enderman name did not expose its stable intelligence."
 		);
 		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 60, padding = 4)
+	public void professionlessEndermanRetainsVanillaMeleeFallback(final GameTestHelper helper) {
+		EnderMan enderman = helper.spawn(EntityType.ENDERMAN, 4, 2, 4);
+		Villager target = helper.spawn(EntityType.VILLAGER, 5, 2, 4);
+		target.setNoAi(true);
+		EndermanProfessionProfile.applyShowcaseLoadout(enderman, EndermanProfession.NONE);
+		enderman.setTarget(target);
+		float initialHealth = target.getHealth();
+		int[] elapsed = {0};
+
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			enderman.setTarget(target);
+			if (target.getHealth() < initialHealth) {
+				helper.succeed();
+				return;
+			}
+			if (elapsed[0] >= 45) {
+				helper.assertTrue(
+					false,
+					"An enderman without an active profession lost its vanilla melee fallback."
+				);
+			}
+		});
 	}
 
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)

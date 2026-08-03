@@ -55,11 +55,14 @@ public abstract class EnderManMixin extends Monster implements EndermanIntellige
 
 	@Inject(method = "registerGoals", at = @At("TAIL"))
 	private void mobsthinknow$installProfessionGoals(final CallbackInfo callbackInfo) {
+		EnderMan enderman = (EnderMan)(Object)this;
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == MeleeAttackGoal.class);
-		this.mobsthinknow$professionCombatGoal = new EndermanProfessionCombatGoal((EnderMan)(Object)this);
-		this.goalSelector.addGoal(1, new EndermanCreeperDeliveryGoal((EnderMan)(Object)this));
-		this.goalSelector.addGoal(2, new EndermanVoidLancerGoal((EnderMan)(Object)this));
+		this.mobsthinknow$professionCombatGoal = new EndermanProfessionCombatGoal(enderman);
+		this.goalSelector.addGoal(1, new EndermanCreeperDeliveryGoal(enderman));
+		this.goalSelector.addGoal(2, new EndermanVoidLancerGoal(enderman));
 		this.goalSelector.addGoal(2, this.mobsthinknow$professionCombatGoal);
+		// 职业 Goal 关闭或不适用时回退到原版近战；较低优先级保证职业战术仍可随配置热切换抢占。
+		this.goalSelector.addGoal(3, new MeleeAttackGoal(enderman, 1.0, false));
 		SmartEndermanMetrics.goalInstalled();
 	}
 
