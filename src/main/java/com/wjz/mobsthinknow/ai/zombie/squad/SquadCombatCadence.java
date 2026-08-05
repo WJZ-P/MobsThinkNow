@@ -18,7 +18,8 @@ public final class SquadCombatCadence {
 		+ RESET_TICKS
 		+ PREPARE_TICKS
 		+ SUPPRESS_TICKS;
-	private static final int MINIMUM_INITIAL_COMMIT_DELAY_TICKS = 28;
+	/** Goal 启动抖动最多 8 tick，满弓 20 tick，最早齐射位还会比总攻早 3 tick。 */
+	private static final int MINIMUM_INITIAL_COMMIT_DELAY_TICKS = 34;
 	private static final int INITIAL_COMMIT_DELAY_VARIANCE_TICKS = 5;
 	private static final int FORCED_COMMIT_DELAY_TICKS = 4;
 

@@ -1442,10 +1442,14 @@ public final class ZombieSquadCoordinator {
 				}
 			}
 			case ENGAGING -> {
+				SquadCombatCadence.Window combatWindow = this.combatWindowFor(squad, now);
+				if (combatWindow.beat() != squad.lastCombatBeat) {
+					this.transitionCombatBeat(squad, config, combatWindow.beat(), now);
+				}
 				if (now >= squad.nextPlanRefreshAt) {
 					this.refreshThreatAssignments(squad, config, now);
 					this.updateObservedTargetTactics(squad, config, now);
-					this.refreshCombatOrders(squad, config, true, false, now);
+					this.refreshCombatOrders(squad, config, !combatWindow.beat().holdsFormation(), false, now);
 					squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 				}
 			}
@@ -1919,6 +1923,7 @@ public final class ZombieSquadCoordinator {
 		squad.commitArmedAt = Long.MIN_VALUE;
 		squad.firstCommitAt = Long.MAX_VALUE;
 		squad.deploymentReadyFraction = 0.0;
+		squad.lastCombatBeat = SquadCombatBeat.PREPARE;
 		this.refreshCombatOrders(squad, config, false, true, now);
 		this.enterState(
 			squad,
@@ -1943,8 +1948,29 @@ public final class ZombieSquadCoordinator {
 			squad.combatEpoch++;
 		}
 		this.refreshCombatOrders(squad, config, true, true, now);
+		squad.lastCombatBeat = SquadCombatBeat.COMMIT;
 		squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 		this.enterState(squad, SquadState.ENGAGING, now, Long.MAX_VALUE, config, reason);
+	}
+
+	private void transitionCombatBeat(
+		final ZombieSquad squad,
+		final MobsThinkNowConfig config,
+		final SquadCombatBeat nextBeat,
+		final long now
+	) {
+		SquadCombatBeat previousBeat = squad.lastCombatBeat;
+		squad.lastCombatBeat = nextBeat;
+		if (previousBeat.holdsFormation() == nextBeat.holdsFormation()) {
+			return;
+		}
+
+		boolean attacking = !nextBeat.holdsFormation();
+		this.refreshThreatAssignments(squad, config, now);
+		this.updateObservedTargetTactics(squad, config, now);
+		this.refreshCombatOrders(squad, config, attacking, true, now);
+		squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
+		this.debug(config, squad, "combat beat " + previousBeat + " -> " + nextBeat);
 	}
 
 	private void refreshCombatOrders(
@@ -2652,6 +2678,7 @@ public final class ZombieSquadCoordinator {
 		private long commitArmedAt = Long.MIN_VALUE;
 		private long firstCommitAt = Long.MAX_VALUE;
 		private double deploymentReadyFraction;
+		private SquadCombatBeat lastCombatBeat = SquadCombatBeat.PREPARE;
 		private SquadState state = SquadState.FORMING;
 		private SquadAssaultPlan baseAssaultPlan = SquadAssaultPlan.SWARM;
 		private SquadAssaultPlan assaultPlan = SquadAssaultPlan.SWARM;

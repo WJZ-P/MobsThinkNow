@@ -34,10 +34,10 @@ class SquadCombatCadenceTest {
 	}
 
 	@Test
-	void initialDelayAlwaysLeavesEnoughTimeToDrawABow() {
+	void initialDelayAlwaysLeavesEnoughTimeForGoalJitterAndAFullBowDraw() {
 		for (int intelligence = 1; intelligence <= 10; intelligence++) {
 			for (long squadId = 1L; squadId <= 32L; squadId++) {
-				assertTrue(SquadCombatCadence.initialCommitDelay(intelligence, squadId) >= 25);
+				assertTrue(SquadCombatCadence.initialCommitDelay(intelligence, squadId) >= 31);
 			}
 		}
 	}

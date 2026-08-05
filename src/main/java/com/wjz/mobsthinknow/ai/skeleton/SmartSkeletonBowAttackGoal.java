@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
 import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCoverPlanner.CoverPlan;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -199,10 +200,23 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		}
 
 		MobsThinkNowConfig config = ConfigManager.get();
-		if (SkeletonSquadOrders.obeyPreparationOrder(this.skeleton, target, this.speedModifier)) {
-			this.attackTime = Math.max(this.attackTime, 5);
+		SquadDirective preparationDirective = SkeletonSquadOrders.obeyPreparationOrder(
+			this.skeleton,
+			target,
+			this.speedModifier
+		);
+		if (preparationDirective != null) {
 			this.clearCoverState(false);
-			this.releaseFiringLaneReservation();
+			if (!preparationDirective.isCombatPhase()) {
+				this.attackTime = Math.max(this.attackTime, 5);
+				this.releaseFiringLaneReservation();
+				return;
+			}
+			boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
+			this.updateSightMemory(hasLineOfSight);
+			this.updateFiringLaneReservation(target, hasLineOfSight);
+			this.faceCombatTarget(target);
+			this.tickBow(target, hasLineOfSight);
 			return;
 		}
 		int intelligence = SkeletonIntelligence.get(this.skeleton);
@@ -367,6 +381,9 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 
 			int usingTicks = this.skeleton.getTicksUsingItem();
 			if (hasLineOfSight && usingTicks >= BOW_DRAW_TICKS) {
+				if (!SkeletonSquadOrders.mayReleaseShot(this.skeleton, target)) {
+					return;
+				}
 				SkeletonShotSafety.Assessment safety = SkeletonShotSafety.assess(this.skeleton, target, false);
 				if (safety.status() == SkeletonShotSafety.Status.CLEAR) {
 					this.fireArrow(target, usingTicks, false);

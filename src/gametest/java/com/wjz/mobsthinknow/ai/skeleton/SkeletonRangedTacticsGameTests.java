@@ -1,11 +1,13 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal.CoverPhase;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
+import com.wjz.mobsthinknow.config.ConfigManager;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,6 +20,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -158,6 +161,110 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 			helper.assertTrue(directive != null, "The skeleton received no mixed-squad directive.");
 			helper.assertTrue(directive.role() == SquadRole.RANGED, "The skeleton was assigned a melee squad role.");
 			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 190, padding = 4)
+	public void squadBowDrawsEarlyButReleasesOnlyOnItsVolleyLane(final GameTestHelper helper) {
+		Skeleton shooter = helper.spawn(EntityType.SKELETON, 2, 2, 2);
+		Zombie leader = helper.spawn(EntityType.ZOMBIE, 4, 2, 3);
+		Zombie wing = helper.spawn(EntityType.ZOMBIE, 5, 2, 2);
+		Villager target = helper.spawn(EntityType.VILLAGER, 14, 2, 2);
+		shooter.setNoAi(true);
+		leader.setNoAi(true);
+		wing.setNoAi(true);
+		target.setNoAi(true);
+		shooter.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+		SkeletonIntelligence.set(shooter, 9);
+		ZombieIntelligence.set(leader, 10);
+		ZombieIntelligence.set(wing, 8);
+		shooter.setTarget(target);
+		leader.setTarget(target);
+		wing.setTarget(target);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		SmartSkeletonBowAttackGoal goal = new SmartSkeletonBowAttackGoal(shooter, 1.0, 40, 15.0F);
+		helper.assertTrue(
+			goal.canUse(),
+			"The synchronized-volley bow goal did not start: target=" + shooter.getTarget()
+				+ ",alive=" + target.isAlive()
+				+ ",main=" + shooter.getMainHandItem()
+				+ ",holdingBow=" + shooter.isHolding(Items.BOW)
+				+ ",enabled=" + ConfigManager.get().enabled
+				+ ",skeletonAi=" + ConfigManager.get().skeletonAiEnabled
+				+ ",lease=" + TacticalActivityLease.snapshot(shooter, helper.getLevel().getGameTime())
+		);
+		goal.start();
+		long[] executeAt = {Long.MAX_VALUE};
+		long[] releaseAt = {Long.MAX_VALUE};
+		boolean[] heldFullDraw = {false};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			coordinator.heartbeat(shooter, target, true, target.position(), now);
+			coordinator.heartbeat(leader, target, true, target.position(), now);
+			coordinator.heartbeat(wing, target, true, target.position(), now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+
+			for (Mob member : List.of(shooter, leader, wing)) {
+				SquadDirective order = coordinator.directiveFor(member);
+				if (order != null
+					&& order.destination() != null
+					&& (executeAt[0] == Long.MAX_VALUE || member == shooter)
+					&& (order.isMeetingPhase() || order.holdsCombatFormation())) {
+					Vec3 destination = order.destination();
+					member.snapTo(destination.x, destination.y, destination.z, member.getYRot(), member.getXRot());
+				}
+			}
+
+			shooter.getSensing().tick();
+			if (shooter.isUsingItem() && shooter.getTicksUsingItem() >= 20) {
+				heldFullDraw[0] = true;
+			}
+			goal.tick();
+			SquadDirective directive = coordinator.directiveFor(shooter);
+			if (directive == null || !directive.isCombatPhase() || directive.combatExecuteAt() == Long.MAX_VALUE) {
+				return;
+			}
+			if (executeAt[0] == Long.MAX_VALUE) {
+				executeAt[0] = directive.combatExecuteAt();
+				releaseAt[0] = SkeletonVolleyTiming.releaseAt(
+					executeAt[0],
+					SkeletonVolleyTiming.stableShooterKey(shooter.getUUID())
+				);
+				// 无 AI 夹具不会运行已有的 SquadFiringLaneClearGoal；口令锁定后手动移出箭道。
+				leader.snapTo(shooter.getX() - 2.0, shooter.getY(), shooter.getZ() + 4.0, 0.0F, 0.0F);
+				wing.snapTo(shooter.getX() - 2.0, shooter.getY(), shooter.getZ() - 4.0, 0.0F, 0.0F);
+			}
+			helper.assertTrue(
+				directive.combatExecuteAt() == executeAt[0],
+				"The shooter received a different execution tick while holding its draw."
+			);
+
+			boolean arrowSpawned = !helper.getEntities(EntityType.ARROW).isEmpty();
+			if (now < releaseAt[0]) {
+				helper.assertTrue(!arrowSpawned, "The bow released before its assigned volley lane.");
+				return;
+			}
+			if (arrowSpawned) {
+				helper.assertTrue(heldFullDraw[0], "The shooter did not visibly prepare before the volley.");
+				helper.assertTrue(now <= executeAt[0], "The prepared bow missed the shared pre-commit volley window.");
+				goal.stop();
+				helper.succeed();
+				return;
+			}
+			if (now > executeAt[0] + 2L) {
+				goal.stop();
+				helper.fail(
+					"The fully prepared squad bow never released on its assigned volley lane: now=" + now
+						+ ",release=" + releaseAt[0]
+						+ ",execute=" + executeAt[0]
+						+ ",beat=" + directive.combatBeat()
+						+ ",using=" + shooter.isUsingItem()
+						+ ",draw=" + shooter.getTicksUsingItem()
+						+ ",los=" + shooter.getSensing().hasLineOfSight(target)
+						+ ",safety=" + SkeletonShotSafety.assess(shooter, target, false).status()
+				);
+			}
 		});
 	}
 

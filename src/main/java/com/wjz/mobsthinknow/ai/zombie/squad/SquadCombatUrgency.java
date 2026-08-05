@@ -25,6 +25,7 @@ import net.minecraft.world.entity.monster.zombie.Zombie;
  */
 public final class SquadCombatUrgency {
 	private static final int RECENT_ATTACK_TICKS = 40;
+	private static final int COMBAT_FORMATION_DEFENSE_TICKS = 10;
 	private static final double SPIDER_MELEE_DISTANCE_SQUARED = 12.25;
 
 	private SquadCombatUrgency() {
@@ -38,10 +39,7 @@ public final class SquadCombatUrgency {
 			return false;
 		}
 
-		LivingEntity attacker = mob.getLastHurtByMob();
-		if (attacker != null
-			&& attacker.isAlive()
-			&& mob.tickCount - mob.getLastHurtByMobTimestamp() <= RECENT_ATTACK_TICKS) {
+		if (wasRecentlyAttacked(mob, RECENT_ATTACK_TICKS)) {
 			return true;
 		}
 
@@ -56,6 +54,39 @@ public final class SquadCombatUrgency {
 			return skeletonUrgency(skeleton, target, config);
 		}
 		return mob instanceof Zombie zombie && zombie.isWithinMeleeAttackRange(target);
+	}
+
+	/**
+	 * 已进入统一战斗节拍后，普通“走进攻击距离”不再打断阵位；只保留真实受击、已经点燃的苦力怕
+	 * 和骷髅贴脸保命这三种不可等待事件。
+	 */
+	public static boolean shouldInterruptCombatFormation(final Mob mob, final LivingEntity target) {
+		if (!mob.isAlive()
+			|| !target.isAlive()
+			|| !EntitySelector.NO_CREATIVE_OR_SPECTATOR.test(target)) {
+			return false;
+		}
+		if (wasRecentlyAttacked(mob, COMBAT_FORMATION_DEFENSE_TICKS)) {
+			return true;
+		}
+		if (mob instanceof Creeper creeper) {
+			return creeper.isIgnited() || creeper.getSwellDir() > 0;
+		}
+		return mob instanceof AbstractSkeleton skeleton
+			&& skeletonUrgency(skeleton, target, ConfigManager.get());
+	}
+
+	public static boolean wasRecentlyAttackedBy(final Mob mob, final LivingEntity target) {
+		return mob.getLastHurtByMob() == target
+			&& target.isAlive()
+			&& mob.tickCount - mob.getLastHurtByMobTimestamp() <= COMBAT_FORMATION_DEFENSE_TICKS;
+	}
+
+	private static boolean wasRecentlyAttacked(final Mob mob, final int maximumAgeTicks) {
+		LivingEntity attacker = mob.getLastHurtByMob();
+		return attacker != null
+			&& attacker.isAlive()
+			&& mob.tickCount - mob.getLastHurtByMobTimestamp() <= maximumAgeTicks;
 	}
 
 	private static boolean creeperUrgency(

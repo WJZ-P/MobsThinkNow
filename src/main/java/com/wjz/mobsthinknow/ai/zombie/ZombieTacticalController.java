@@ -76,10 +76,7 @@ final class ZombieTacticalController {
 				this.lastSeenAt
 			);
 			this.squadDirective = coordinator.directiveFor(this.zombie);
-			if (this.squadDirective != null
-				&& SquadCombatUrgency.shouldInterruptPreparation(this.zombie, target)
-				&& (this.squadDirective.isMeetingPhase()
-					|| this.squadDirective.state() == SquadState.DEPLOYING)) {
+			if (this.squadDirective != null && this.shouldInterruptDirective(this.squadDirective, target)) {
 				// 只忽略本 tick 的准备命令；心跳仍会上报，危险解除后可立即回归队形。
 				this.squadDirective = null;
 			}
@@ -109,6 +106,12 @@ final class ZombieTacticalController {
 		if (this.squadDirective != null) {
 			SquadState state = this.squadDirective.state();
 			if (state == SquadState.ENGAGING) {
+				if (!this.squadDirective.allowsMeleeAttack()) {
+					return SquadCombatUrgency.wasRecentlyAttackedBy(this.zombie, target)
+						&& this.hasLineOfSight
+						&& this.zombie.isWithinMeleeAttackRange(target)
+						&& !this.shouldHoldFrontalAttack(target);
+				}
 				SquadRole role = this.squadDirective.role();
 				return role == SquadRole.LEADER
 					|| role == SquadRole.PRESSURER
@@ -117,8 +120,10 @@ final class ZombieTacticalController {
 						&& !this.shouldHoldFrontalAttack(target));
 			}
 
-			// 集结和部署时仍允许贴身自卫；协调器会在本 tick 末尾切到紧急交战状态。
-			return this.hasLineOfSight
+			// 会议阶段保留贴身自卫；部署战斗节拍则只有目标真实命中后才允许提前还手。
+			return (!this.squadDirective.isCombatPhase()
+					|| SquadCombatUrgency.wasRecentlyAttackedBy(this.zombie, target))
+				&& this.hasLineOfSight
 				&& this.zombie.isWithinMeleeAttackRange(target)
 				&& !this.shouldHoldFrontalAttack(target);
 		}
@@ -139,7 +144,19 @@ final class ZombieTacticalController {
 
 	/** 守势阶段禁止提前挥击；攻击窗口打开后只放行一次真实近战结算。 */
 	boolean shouldHoldAttack(final LivingEntity target) {
-		return this.shieldCombat.blocksAttack() || this.shouldHoldFrontalAttack(target);
+		boolean cadenceHoldsAttack = this.squadDirective != null
+			&& this.squadDirective.isCombatPhase()
+			&& !this.squadDirective.allowsMeleeAttack()
+			&& !SquadCombatUrgency.wasRecentlyAttackedBy(this.zombie, target);
+		return cadenceHoldsAttack || this.shieldCombat.blocksAttack() || this.shouldHoldFrontalAttack(target);
+	}
+
+	private boolean shouldInterruptDirective(final SquadDirective directive, final LivingEntity target) {
+		if (directive.holdsCombatFormation()) {
+			return SquadCombatUrgency.shouldInterruptCombatFormation(this.zombie, target);
+		}
+		return directive.isMeetingPhase()
+			&& SquadCombatUrgency.shouldInterruptPreparation(this.zombie, target);
 	}
 
 	boolean hasShieldCombatIntent() {

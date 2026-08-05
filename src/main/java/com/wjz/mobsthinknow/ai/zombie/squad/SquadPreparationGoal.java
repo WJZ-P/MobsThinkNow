@@ -111,13 +111,13 @@ public final class SquadPreparationGoal extends Goal {
 		if (target == null || !target.isAlive()) {
 			return null;
 		}
-		if (SquadCombatUrgency.shouldInterruptPreparation(this.mob, target)) {
+		SquadDirective current = ZombieSquadCoordinator.forLevel(level).directiveFor(this.mob);
+		if (current == null || (!current.isMeetingPhase() && !current.holdsCombatFormation())) {
 			return null;
 		}
-		SquadDirective current = ZombieSquadCoordinator.forLevel(level).directiveFor(this.mob);
-		return current != null
-			&& (current.isMeetingPhase() || current.state() == SquadState.DEPLOYING)
-			? current
-			: null;
+		boolean urgent = current.holdsCombatFormation()
+			? SquadCombatUrgency.shouldInterruptCombatFormation(this.mob, target)
+			: SquadCombatUrgency.shouldInterruptPreparation(this.mob, target);
+		return urgent ? null : current;
 	}
 }

@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.skeleton;
 import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
 import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonCombatMath.MovementMode;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
@@ -118,11 +119,28 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 		}
 
 		MobsThinkNowConfig config = ConfigManager.get();
-		if (SkeletonSquadOrders.obeyPreparationOrder(this.skeleton, target, MOVE_SPEED)) {
-			if (this.state == CrossbowState.CHARGING) {
-				this.state = CrossbowState.UNCHARGED;
+		SquadDirective preparationDirective = SkeletonSquadOrders.obeyPreparationOrder(
+			this.skeleton,
+			target,
+			MOVE_SPEED
+		);
+		if (preparationDirective != null) {
+			if (!preparationDirective.isCombatPhase()) {
+				if (this.state == CrossbowState.CHARGING) {
+					this.state = CrossbowState.UNCHARGED;
+				}
+				this.releaseFiringLaneReservation();
+				return;
 			}
-			this.releaseFiringLaneReservation();
+			boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
+			this.updateFiringLaneReservation(target, hasLineOfSight);
+			this.faceTarget(target);
+			this.tickCrossbow(
+				target,
+				hasLineOfSight,
+				this.skeleton.distanceToSqr(target),
+				SkeletonIntelligence.get(this.skeleton)
+			);
 			return;
 		}
 		this.skeleton.setAggressive(true);
@@ -261,6 +279,9 @@ public final class SmartSkeletonCrossbowAttackGoal extends Goal {
 				);
 				boolean explosive = charged.contains(Items.FIREWORK_ROCKET);
 				if (!hasLineOfSight || (explosive && distanceSquared < MINIMUM_FIREWORK_DISTANCE_SQUARED)) {
+					return;
+				}
+				if (!SkeletonSquadOrders.mayReleaseShot(this.skeleton, target)) {
 					return;
 				}
 				SkeletonShotSafety.Assessment safety = SkeletonShotSafety.assess(this.skeleton, target, explosive);
