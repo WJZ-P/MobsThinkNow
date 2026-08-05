@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.skeleton;
 
 import java.util.Comparator;
 import java.util.Optional;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.phys.Vec3;
@@ -58,6 +59,34 @@ public final class SkeletonProjectileEvasion {
 			return Optional.empty();
 		}
 		return Optional.of(new Threat(arrow, time));
+	}
+
+	/**
+	 * 以骷髅攻击目标的朝向为本地坐标系，选择远离预测箭路的一侧。
+	 * 这样骷髅仍能正面拉弓，却不会随机侧移进本来可以避开的箭路。
+	 */
+	public static int preferredDodgeDirection(
+		final AbstractSkeleton skeleton,
+		final LivingEntity target,
+		final Threat threat,
+		final int fallbackDirection
+	) {
+		double targetX = target.getX() - skeleton.getX();
+		double targetZ = target.getZ() - skeleton.getZ();
+		float combatYaw = (float)(Math.toDegrees(Math.atan2(targetZ, targetX)) - 90.0);
+		Vec3 center = skeleton.getBoundingBox().getCenter();
+		Vec3 velocity = threat.arrow().getDeltaMovement();
+		return SkeletonCombatMath.saferProjectileDodgeDirection(
+			center.x,
+			center.z,
+			threat.arrow().getX(),
+			threat.arrow().getZ(),
+			velocity.x,
+			velocity.z,
+			threat.ticksUntilClosestApproach(),
+			combatYaw,
+			fallbackDirection
+		);
 	}
 
 	public record Threat(AbstractArrow arrow, double ticksUntilClosestApproach) {

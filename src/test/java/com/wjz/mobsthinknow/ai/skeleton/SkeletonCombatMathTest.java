@@ -101,6 +101,49 @@ class SkeletonCombatMathTest {
 	}
 
 	@Test
+	void projectileDodgeMovesAwayFromPredictedMissSide() {
+		// 骷髅面向东（yaw=-90）时，身体右侧是北方（-Z）。箭从东侧飞来且偏南，应该向北闪。
+		assertEquals(1, SkeletonCombatMath.saferProjectileDodgeDirection(
+			0.0, 0.0,
+			4.0, 0.6,
+			-0.75, 0.0,
+			4.0 / 0.75,
+			-90.0F,
+			-1
+		));
+
+		// 相同来向改为偏北，应该反向向南闪。
+		assertEquals(-1, SkeletonCombatMath.saferProjectileDodgeDirection(
+			0.0, 0.0,
+			4.0, -0.6,
+			-0.75, 0.0,
+			4.0 / 0.75,
+			-90.0F,
+			1
+		));
+	}
+
+	@Test
+	void centeredOrInvalidProjectileDodgeRetainsNormalizedFallback() {
+		assertEquals(-1, SkeletonCombatMath.saferProjectileDodgeDirection(
+			0.0, 0.0,
+			4.0, 0.0,
+			-1.0, 0.0,
+			4.0,
+			-90.0F,
+			-7
+		));
+		assertEquals(1, SkeletonCombatMath.saferProjectileDodgeDirection(
+			0.0, 0.0,
+			Double.NaN, 0.0,
+			-1.0, 0.0,
+			4.0,
+			-90.0F,
+			0
+		));
+	}
+
+	@Test
 	void horizontalLeadUsesTravelTimeStrengthAndHardDistanceCap() {
 		HorizontalLead ordinary = SkeletonCombatMath.horizontalLead(0.30, 0.0, 16.0, 0.65);
 		assertEquals(1.56, ordinary.x(), 1.0E-12);

@@ -213,7 +213,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		boolean hasLineOfSight = this.skeleton.getSensing().hasLineOfSight(target);
 		this.updateFiringLaneReservation(target, hasLineOfSight);
 		updateSightMemory(hasLineOfSight);
-		updateProjectileThreat(config);
+		updateProjectileThreat(config, target);
 
 		double distanceSquared = this.skeleton.distanceToSqr(target);
 		MovementMode selected = SkeletonCombatMath.chooseMovement(
@@ -279,6 +279,11 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 	/** 当前状态仅用于 GameTest、诊断 UI 和后续表现层，不允许外部反向驱动 Goal。 */
 	public MovementMode movementMode() {
 		return this.movementMode;
+	}
+
+	/** 当前侧闪方向只读暴露给 GameTest 与诊断界面。 */
+	public int dodgeDirection() {
+		return this.dodgeDirection;
 	}
 
 	/** 掩体子状态只读暴露给 GameTest 与诊断界面；实际切换仍完全由 Goal 驱动。 */
@@ -779,7 +784,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		this.seeTime += hasLineOfSight ? 1 : -1;
 	}
 
-	private void updateProjectileThreat(final MobsThinkNowConfig config) {
+	private void updateProjectileThreat(final MobsThinkNowConfig config, final LivingEntity target) {
 		if (!config.skeletonProjectileDodging) {
 			this.dodgeTicks = 0;
 			return;
@@ -789,11 +794,17 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 		}
 
 		this.projectileScanCooldown = PROJECTILE_SCAN_INTERVAL_TICKS - 1;
-		if (SkeletonProjectileEvasion.nearestIncomingArrow(this.skeleton).isEmpty()) {
+		var threat = SkeletonProjectileEvasion.nearestIncomingArrow(this.skeleton);
+		if (threat.isEmpty()) {
 			return;
 		}
 
-		this.dodgeDirection = randomDirection();
+		this.dodgeDirection = SkeletonProjectileEvasion.preferredDodgeDirection(
+			this.skeleton,
+			target,
+			threat.orElseThrow(),
+			randomDirection()
+		);
 		this.dodgeTicks = MINIMUM_DODGE_TICKS
 			+ this.skeleton.getRandom().nextInt(MAXIMUM_DODGE_TICKS - MINIMUM_DODGE_TICKS + 1);
 		SmartSkeletonMetrics.projectileDodgeStarted();

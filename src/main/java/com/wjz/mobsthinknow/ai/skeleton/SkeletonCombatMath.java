@@ -199,6 +199,56 @@ public final class SkeletonCombatMath {
 	}
 
 	/**
+	 * 根据来箭在最近交会时刻的水平落点选择更安全的侧闪方向，而不是随机赌左或右。
+	 * 返回值与 {@code MoveControl.strafe} 的第二个参数同号：{@code 1} 为身体右侧，
+	 * {@code -1} 为身体左侧。两侧收益相同时保留调用方提供的随机方向，让正中来箭仍有变化。
+	 */
+	static int saferProjectileDodgeDirection(
+		final double skeletonX,
+		final double skeletonZ,
+		final double projectileX,
+		final double projectileZ,
+		final double velocityX,
+		final double velocityZ,
+		final double closestApproachTicks,
+		final float combatYaw,
+		final int fallbackDirection
+	) {
+		int fallback = fallbackDirection < 0 ? -1 : 1;
+		if (!Double.isFinite(skeletonX)
+			|| !Double.isFinite(skeletonZ)
+			|| !Double.isFinite(projectileX)
+			|| !Double.isFinite(projectileZ)
+			|| !Double.isFinite(velocityX)
+			|| !Double.isFinite(velocityZ)
+			|| !Double.isFinite(closestApproachTicks)
+			|| closestApproachTicks < 0.0
+			|| !Float.isFinite(combatYaw)) {
+			return fallback;
+		}
+
+		double predictedX = projectileX + velocityX * closestApproachTicks;
+		double predictedZ = projectileZ + velocityZ * closestApproachTicks;
+		if (!Double.isFinite(predictedX) || !Double.isFinite(predictedZ)) {
+			return fallback;
+		}
+
+		// Minecraft yaw 为 0 时面向 +Z，此时身体右侧是 +X。
+		double yaw = combatYaw * Math.PI / 180.0;
+		double rightX = Math.cos(yaw);
+		double rightZ = Math.sin(yaw);
+		double missX = predictedX - skeletonX;
+		double missZ = predictedZ - skeletonZ;
+		double signedMissOnRightAxis = missX * rightX + missZ * rightZ;
+		if (Math.abs(signedMissOnRightAxis) < 1.0E-6) {
+			return fallback;
+		}
+
+		// 来箭偏在右侧便向左闪，偏在左侧便向右闪。
+		return signedMissOnRightAxis > 0.0 ? -1 : 1;
+	}
+
+	/**
 	 * 只预测水平位移，竖直方向仍交给原版弓箭抛物线补偿。提前量同时受时间和三格距离上限
 	 * 约束，避免高速目标让骷髅向画面外夸张甩弓。
 	 */

@@ -411,16 +411,16 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		Vec3 center = skeleton.getBoundingBox().getCenter();
 		Arrow arrow = new Arrow(
 			helper.getLevel(),
-			center.x,
+			center.x + 4.0,
 			center.y,
-			center.z - 4.0,
+			center.z + 0.6,
 			new ItemStack(Items.ARROW),
 			new ItemStack(Items.BOW)
 		);
 		arrow.setOwner(target);
 		arrow.setNoGravity(true);
 		arrow.setNoPhysics(true);
-		arrow.setDeltaMovement(0.0, 0.0, 0.75);
+		arrow.setDeltaMovement(-0.75, 0.0, 0.0);
 		helper.assertTrue(helper.getLevel().addFreshEntity(arrow), "The incoming-arrow fixture was not added.");
 
 		SmartSkeletonBowAttackGoal goal = new SmartSkeletonBowAttackGoal(skeleton, 1.0, 40, 15.0F);
@@ -429,7 +429,11 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		goal.tick();
 		helper.assertTrue(
 			goal.movementMode() == MovementMode.DODGE,
-			"An arrow crossing the skeleton center within eight ticks did not start a dodge burst."
+			"An arrow passing dangerously close within eight ticks did not start a dodge burst."
+		);
+		helper.assertTrue(
+			goal.dodgeDirection() == 1,
+			"The skeleton did not dodge north, away from the arrow path passing on its south side."
 		);
 		skeleton.getMoveControl().tick();
 		skeleton.getLookControl().tick();
