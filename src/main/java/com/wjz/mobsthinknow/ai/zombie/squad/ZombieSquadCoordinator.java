@@ -349,6 +349,7 @@ public final class ZombieSquadCoordinator {
 		MemberRecord leader = this.members.get(squad.leaderId);
 		Vec3 focusPosition = this.socialFocusPosition(squad, member, leader);
 		long now = mob.level().getGameTime();
+		SquadCombatCadence.Window combatWindow = this.combatWindowFor(squad, now);
 		boolean sharedMemoryIsFresh = isMemoryFresh(
 			squad.sharedLastSeenPosition,
 			squad.sharedLastSeenAt,
@@ -360,6 +361,11 @@ public final class ZombieSquadCoordinator {
 			squad.id,
 			squad.term,
 			squad.planEpoch,
+			squad.combatEpoch,
+			combatWindow.cycle(),
+			combatWindow.beat(),
+			combatWindow.executeAt(),
+			combatWindow.endsAt(),
 			squad.state,
 			squad.assaultPlan,
 			squad.observedTargetTactic,
@@ -730,6 +736,7 @@ public final class ZombieSquadCoordinator {
 		if (squad == null) {
 			return null;
 		}
+		SquadCombatCadence.Window combatWindow = this.combatWindowFor(squad, mob.level().getGameTime());
 		return new SquadView(
 			squad.id,
 			squad.state,
@@ -738,8 +745,23 @@ public final class ZombieSquadCoordinator {
 			squad.leaderId,
 			squad.term,
 			squad.planEpoch,
+			squad.combatEpoch,
+			combatWindow.cycle(),
+			combatWindow.beat(),
+			combatWindow.executeAt(),
+			squad.deploymentReadyFraction,
 			squad.memberIds.size()
 		);
+	}
+
+	private SquadCombatCadence.Window combatWindowFor(final ZombieSquad squad, final long now) {
+		if (squad.state == SquadState.ENGAGING && squad.firstCommitAt != Long.MAX_VALUE) {
+			return SquadCombatCadence.combatWindow(squad.firstCommitAt, now);
+		}
+		if (squad.state == SquadState.DEPLOYING && squad.firstCommitAt != Long.MAX_VALUE) {
+			return SquadCombatCadence.deploymentWindow(squad.commitArmedAt, squad.firstCommitAt, now);
+		}
+		return SquadCombatCadence.waiting();
 	}
 
 	private void updateObservedTargetTactics(
@@ -1407,8 +1429,16 @@ public final class ZombieSquadCoordinator {
 				}
 			}
 			case DEPLOYING -> {
-				if (this.hasReachedQuorum(squad, config.deploymentQuorum) || now >= squad.stateDeadline) {
-					this.enterEngaging(squad, config, now, "deployment complete");
+				SquadReadinessBarrier.Result readiness = this.deploymentReadiness(squad, config.deploymentQuorum);
+				squad.deploymentReadyFraction = readiness.readyFraction();
+				if (squad.firstCommitAt != Long.MAX_VALUE) {
+					if (now >= squad.firstCommitAt) {
+						this.enterEngaging(squad, config, now, "synchronized assault committed");
+					}
+				} else if (readiness.canCommit()) {
+					this.armCommit(squad, config, now, false);
+				} else if (now >= squad.stateDeadline) {
+					this.armCommit(squad, config, now, true);
 				}
 			}
 			case ENGAGING -> {
@@ -1886,6 +1916,9 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private void enterDeploying(final ZombieSquad squad, final MobsThinkNowConfig config, final long now) {
+		squad.commitArmedAt = Long.MIN_VALUE;
+		squad.firstCommitAt = Long.MAX_VALUE;
+		squad.deploymentReadyFraction = 0.0;
 		this.refreshCombatOrders(squad, config, false, true, now);
 		this.enterState(
 			squad,
@@ -1903,6 +1936,12 @@ public final class ZombieSquadCoordinator {
 		final long now,
 		final String reason
 	) {
+		// 紧急接敌会抢占尚未执行的口令；正常部署则保留全队已经共享的执行 tick。
+		if (squad.firstCommitAt == Long.MAX_VALUE || squad.firstCommitAt > now) {
+			squad.commitArmedAt = now;
+			squad.firstCommitAt = now;
+			squad.combatEpoch++;
+		}
 		this.refreshCombatOrders(squad, config, true, true, now);
 		squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 		this.enterState(squad, SquadState.ENGAGING, now, Long.MAX_VALUE, config, reason);
@@ -2122,8 +2161,54 @@ public final class ZombieSquadCoordinator {
 		return total > 0 && arrived >= Math.ceil(total * requiredFraction);
 	}
 
+	private SquadReadinessBarrier.Result deploymentReadiness(
+		final ZombieSquad squad,
+		final double requiredFraction
+	) {
+		List<SquadReadinessBarrier.MemberStatus> statuses = new ArrayList<>(squad.memberIds.size());
+		for (int memberId : squad.memberIds) {
+			MemberRecord member = this.members.get(memberId);
+			SquadOrder order = squad.orders.get(memberId);
+			boolean assigned = member != null && order != null && order.destination != null;
+			boolean arrived = assigned
+				&& member.mob.position().distanceToSqr(order.destination) <= ORDER_REACHED_DISTANCE_SQUARED;
+			boolean roleReady = member != null && assigned && this.isRoleReadyForCommit(member);
+			statuses.add(new SquadReadinessBarrier.MemberStatus(assigned, arrived, roleReady));
+		}
+		return SquadReadinessBarrier.evaluate(statuses, requiredFraction);
+	}
+
+	private boolean isRoleReadyForCommit(final MemberRecord member) {
+		// 射手至少要重新获得共享目标的直视线；近战和载具在抵达阵位后即可响应总攻。
+		return !isRangedMember(member.mob) || member.hasLineOfSight;
+	}
+
+	private void armCommit(
+		final ZombieSquad squad,
+		final MobsThinkNowConfig config,
+		final long now,
+		final boolean forced
+	) {
+		MemberRecord leader = this.members.get(squad.leaderId);
+		int leaderIntelligence = leader == null ? 1 : intelligenceOf(leader.mob);
+		int delay = forced
+			? SquadCombatCadence.forcedCommitDelay()
+			: SquadCombatCadence.initialCommitDelay(leaderIntelligence, squad.id);
+		squad.commitArmedAt = now;
+		squad.firstCommitAt = now + delay;
+		squad.combatEpoch++;
+		this.debug(
+			config,
+			squad,
+			(forced ? "forced" : "ready")
+				+ " commit armed at " + squad.firstCommitAt
+				+ " readiness=" + String.format(java.util.Locale.ROOT, "%.2f", squad.deploymentReadyFraction)
+		);
+	}
+
 	private boolean shouldEmergencyEngage(final ZombieSquad squad, final MobsThinkNowConfig config) {
 		double emergencyDistanceSquared = config.emergencyEngageDistance * config.emergencyEngageDistance;
+		boolean deploymentIsHoldingForCommit = squad.state == SquadState.DEPLOYING;
 		for (int memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
 			if (member == null) {
@@ -2134,8 +2219,12 @@ public final class ZombieSquadCoordinator {
 			// 用"最后一次被生物攻击的时间戳距今 ≤10 tick"才能精确对应目标刚出手这一事件。
 			boolean hurtByTarget = member.mob.getLastHurtByMob() == squad.target
 				&& member.mob.tickCount - member.mob.getLastHurtByMobTimestamp() <= 10;
+			// 成员主动抵达近身部署位不算遭遇战，否则旧的距离旁路会在同一 tick 吞掉就绪屏障。
+			// 部署阶段仍允许目标真实出手抢占；其他阶段则保留原有的近距离紧急接敌能力。
 			if (hurtByTarget
-				|| (member.hasLineOfSight && member.mob.distanceToSqr(squad.target) <= emergencyDistanceSquared)) {
+				|| (!deploymentIsHoldingForCommit
+					&& member.hasLineOfSight
+					&& member.mob.distanceToSqr(squad.target) <= emergencyDistanceSquared)) {
 				return true;
 			}
 		}
@@ -2516,6 +2605,11 @@ public final class ZombieSquadCoordinator {
 		int leaderEntityId,
 		int term,
 		int planEpoch,
+		int combatEpoch,
+		long combatCycle,
+		SquadCombatBeat combatBeat,
+		long combatExecuteAt,
+		double deploymentReadyFraction,
 		int memberCount
 	) {
 	}
@@ -2554,6 +2648,10 @@ public final class ZombieSquadCoordinator {
 		private int leaderId;
 		private int term;
 		private int planEpoch;
+		private int combatEpoch;
+		private long commitArmedAt = Long.MIN_VALUE;
+		private long firstCommitAt = Long.MAX_VALUE;
+		private double deploymentReadyFraction;
 		private SquadState state = SquadState.FORMING;
 		private SquadAssaultPlan baseAssaultPlan = SquadAssaultPlan.SWARM;
 		private SquadAssaultPlan assaultPlan = SquadAssaultPlan.SWARM;

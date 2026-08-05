@@ -174,6 +174,90 @@ public final class SquadBattlefieldCoordinationGameTests implements CustomTestMe
 		});
 	}
 
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 190, padding = 4)
+	public void deployedMembersShareOneReadinessBarrierAndCommitTick(final GameTestHelper helper) {
+		List<Zombie> members = List.of(
+			helper.spawn(EntityType.ZOMBIE, 2, 2, 2),
+			helper.spawn(EntityType.ZOMBIE, 3, 2, 3),
+			helper.spawn(EntityType.ZOMBIE, 4, 2, 2)
+		);
+		Villager target = helper.spawn(EntityType.VILLAGER, 14, 2, 2);
+		prepare(target);
+		for (int index = 0; index < members.size(); index++) {
+			Zombie member = members.get(index);
+			prepare(member, target);
+			ZombieIntelligence.set(member, 10 - index);
+		}
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		long[] lastVisibleAt = {helper.getLevel().getGameTime()};
+		long[] sharedCommitAt = {Long.MAX_VALUE};
+		int[] sharedCombatEpoch = {-1};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			for (Zombie member : members) {
+				// 部署点可能靠近目标；此时故意只上报缓存视野，避免紧急接敌旁路抢占本测试的同步口令。
+				boolean visibleOutsideEmergencyRange = member.distanceToSqr(target) > 36.0;
+				if (visibleOutsideEmergencyRange) {
+					lastVisibleAt[0] = now;
+				}
+				coordinator.heartbeat(
+					member,
+					target,
+					visibleOutsideEmergencyRange,
+					target.position(),
+					lastVisibleAt[0]
+				);
+			}
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(members.getFirst());
+			if (view == null) {
+				return;
+			}
+			for (Zombie member : members) {
+				SquadDirective directive = coordinator.directiveFor(member);
+				if (directive != null && directive.destination() != null && directive.state() != SquadState.ENGAGING) {
+					Vec3 destination = directive.destination();
+					member.snapTo(destination.x, destination.y, destination.z, member.getYRot(), member.getXRot());
+				}
+			}
+
+			if (view.state() == SquadState.DEPLOYING && view.combatExecuteAt() != Long.MAX_VALUE) {
+				if (sharedCommitAt[0] == Long.MAX_VALUE) {
+					sharedCommitAt[0] = view.combatExecuteAt();
+					sharedCombatEpoch[0] = view.combatEpoch();
+				}
+				helper.assertTrue(now < sharedCommitAt[0], "The squad engaged before its shared execution tick.");
+				helper.assertTrue(
+					view.combatBeat() == SquadCombatBeat.PREPARE || view.combatBeat() == SquadCombatBeat.SUPPRESS,
+					"Deployment exposed an invalid pre-commit combat beat."
+				);
+				for (Zombie member : members) {
+					SquadDirective directive = coordinator.directiveFor(member);
+					helper.assertTrue(directive != null, "A deployed member lost its squad directive.");
+					helper.assertTrue(
+						directive.combatExecuteAt() == sharedCommitAt[0]
+							&& directive.combatEpoch() == sharedCombatEpoch[0],
+						"Members received different combat timelines."
+					);
+				}
+				return;
+			}
+
+			if (view.state() == SquadState.ENGAGING) {
+				helper.assertTrue(sharedCommitAt[0] != Long.MAX_VALUE, "Engagement skipped the readiness barrier.");
+				helper.assertTrue(now >= sharedCommitAt[0], "Engagement began before the committed tick.");
+				helper.assertTrue(view.combatBeat() == SquadCombatBeat.COMMIT, "The first assault tick was not COMMIT.");
+				helper.assertTrue(
+					view.combatEpoch() == sharedCombatEpoch[0] && view.combatExecuteAt() == sharedCommitAt[0],
+					"Entering combat replaced the already announced timeline."
+				);
+				helper.succeed();
+			}
+		});
+	}
+
 	@Override
 	public void invokeTestMethod(final GameTestHelper helper, final Method method) throws ReflectiveOperationException {
 		method.invoke(this, helper);

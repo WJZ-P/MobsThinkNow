@@ -8,12 +8,22 @@ import org.jspecify.annotations.Nullable;
  *
  * @param term 首领任期；首领更替时递增
  * @param planEpoch 同一任期内的计划版本；重新集结或重新部署时递增
+ * @param combatEpoch 本次统一交战时间轴；重新部署或紧急接敌时递增
+ * @param combatCycle 当前或下一次总攻轮次
+ * @param combatBeat 所有成员共享的战斗节拍
+ * @param combatExecuteAt 当前节拍等待的统一执行 tick
+ * @param combatBeatEndsAt 当前节拍结束 tick
  * @param assaultPlan 本轮按首领智力与队伍构成冻结的总攻方案
  */
 public record SquadDirective(
 	long squadId,
 	int term,
 	int planEpoch,
+	int combatEpoch,
+	long combatCycle,
+	SquadCombatBeat combatBeat,
+	long combatExecuteAt,
+	long combatBeatEndsAt,
 	SquadState state,
 	SquadAssaultPlan assaultPlan,
 	ObservedTargetTactic observedTargetTactic,
@@ -31,5 +41,19 @@ public record SquadDirective(
 
 	public boolean isCombatPhase() {
 		return this.state == SquadState.DEPLOYING || this.state == SquadState.ENGAGING;
+	}
+
+	/** 重整和准备阶段继续执行阵位命令；贴身自卫仍可由紧急仲裁层抢占。 */
+	public boolean holdsCombatFormation() {
+		return this.isCombatPhase() && this.combatBeat.holdsFormation();
+	}
+
+	public boolean allowsMeleeAttack() {
+		return this.state == SquadState.ENGAGING && this.combatBeat.allowsMeleeAttack();
+	}
+
+	public boolean allowsRangedAttack() {
+		return this.combatBeat.allowsRangedAttack()
+			&& (this.state == SquadState.DEPLOYING || this.state == SquadState.ENGAGING);
 	}
 }
