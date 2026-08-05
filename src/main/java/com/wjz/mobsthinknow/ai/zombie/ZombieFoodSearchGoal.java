@@ -28,7 +28,8 @@ import org.jspecify.annotations.Nullable;
  * {@link #canUse()} 直接返回 false，原来的追击、小队与武器行为完全照旧。</p>
  *
  * <p>性能上先以 2～4 秒随机间隔和智力概率做门控，再查 12 格局部实体索引；每次最多为
- * 4 个最近候选计算路径，不会每 tick 扫描，也不会遍历世界中的全部掉落物。</p>
+ * 4 个最近候选计算路径。共用的短期预留会阻止多只僵尸追同一份食物，因此既不会每 tick
+ * 扫描或遍历世界中的全部掉落物，也不会在尸群中制造重复路径。</p>
  */
 public final class ZombieFoodSearchGoal extends Goal {
 	private static final double FOOD_HEALTH_FRACTION = 0.50;
@@ -94,7 +95,7 @@ public final class ZombieFoodSearchGoal extends Goal {
 			return false;
 		}
 
-		SearchTarget found = this.findReachableFood(level);
+		SearchTarget found = this.findReachableFood(level, now);
 		if (found == null) {
 			return false;
 		}
@@ -112,7 +113,12 @@ public final class ZombieFoodSearchGoal extends Goal {
 		return switch (this.phase) {
 			case SEEKING -> isBelowFoodThreshold(this.zombie.getHealth(), this.zombie.getMaxHealth())
 				&& this.zombie.level().getGameTime() < this.searchDeadline
-				&& isAvailableFoodEntity(this.targetFood);
+				&& isAvailableFoodEntity(this.targetFood)
+				&& ZombieGroundItemReservations.renew(
+					this.targetFood,
+					this.zombie,
+					this.zombie.level().getGameTime()
+				);
 			case EATING -> ZombieFoodEquipment.isActive(this.zombie);
 			case IDLE, DONE -> false;
 		};
@@ -126,6 +132,10 @@ public final class ZombieFoodSearchGoal extends Goal {
 		this.nextPathUpdateAt = now + PATH_REFRESH_TICKS;
 		this.zombie.stopUsingItem();
 		this.zombie.setAggressive(false);
+		if (!ZombieGroundItemReservations.renew(this.targetFood, this.zombie, now)) {
+			this.phase = Phase.DONE;
+			return;
+		}
 		if (this.initialPath != null) {
 			this.zombie.getNavigation().moveTo(this.initialPath, MOVE_SPEED_MODIFIER);
 		}
@@ -144,6 +154,7 @@ public final class ZombieFoodSearchGoal extends Goal {
 	@Override
 	public void stop() {
 		this.zombie.getNavigation().stop();
+		this.releaseTargetReservation();
 		if (ZombieFoodEquipment.isActive(this.zombie)) {
 			// 撤退、配置热重载、死亡等中断会把尚未吃完的一份食物放回脚边并恢复装备。
 			ZombieFoodEquipment.restore(this.zombie, true);
@@ -165,7 +176,10 @@ public final class ZombieFoodSearchGoal extends Goal {
 
 	private void tickSeeking() {
 		ItemEntity food = this.targetFood;
-		if (!isAvailableFoodEntity(food)) {
+		long now = this.zombie.level().getGameTime();
+		if (!isAvailableFoodEntity(food)
+			|| !ZombieGroundItemReservations.renew(food, this.zombie, now)) {
+			this.releaseTargetReservation();
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -175,7 +189,6 @@ public final class ZombieFoodSearchGoal extends Goal {
 			return;
 		}
 
-		long now = this.zombie.level().getGameTime();
 		if (now >= this.nextPathUpdateAt) {
 			this.zombie.getNavigation().moveTo(food, MOVE_SPEED_MODIFIER);
 			this.nextPathUpdateAt = now + PATH_REFRESH_TICKS;
@@ -187,6 +200,7 @@ public final class ZombieFoodSearchGoal extends Goal {
 		FoodProperties food = groundStack.get(DataComponents.FOOD);
 		Consumable consumable = groundStack.get(DataComponents.CONSUMABLE);
 		if (food == null || food.nutrition() <= 0 || consumable == null || consumable.consumeTicks() <= 0) {
+			this.releaseTargetReservation();
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -198,6 +212,8 @@ public final class ZombieFoodSearchGoal extends Goal {
 		if (groundStack.isEmpty()) {
 			foodEntity.discard();
 		}
+		// 只拿走一份后便交还 ItemEntity；堆叠中的剩余食物可立即被另一名成员认领。
+		this.releaseTargetReservation();
 
 		InteractionHand hand = preferredFoodHand(!this.zombie.getMainHandItem().isEmpty());
 		ZombieFoodEquipment.begin(this.zombie, hand, serving);
@@ -234,13 +250,14 @@ public final class ZombieFoodSearchGoal extends Goal {
 		this.phase = Phase.DONE;
 	}
 
-	private @Nullable SearchTarget findReachableFood(final ServerLevel level) {
+	private @Nullable SearchTarget findReachableFood(final ServerLevel level, final long now) {
 		AABB searchBox = this.zombie.getBoundingBox().inflate(SEARCH_RADIUS, SEARCH_VERTICAL_RADIUS, SEARCH_RADIUS);
 		List<ItemEntity> foods = level.getEntitiesOfClass(
 			ItemEntity.class,
 			searchBox,
 			entity -> isAvailableFoodEntity(entity)
 				&& this.zombie.distanceToSqr(entity) <= SEARCH_RADIUS * SEARCH_RADIUS
+				&& ZombieGroundItemReservations.isAvailableTo(entity, this.zombie, now)
 		);
 		foods.sort(
 			Comparator.<ItemEntity>comparingInt(entity -> foodPriority(entity.getItem())).reversed()
@@ -253,18 +270,25 @@ public final class ZombieFoodSearchGoal extends Goal {
 
 		int pathChecks = 0;
 		for (ItemEntity food : foods) {
-			if (this.zombie.distanceToSqr(food) <= PICKUP_DISTANCE_SQUARED) {
+			if (this.zombie.distanceToSqr(food) <= PICKUP_DISTANCE_SQUARED
+				&& ZombieGroundItemReservations.tryReserve(food, this.zombie, now)) {
 				return new SearchTarget(food, null);
 			}
 			if (pathChecks++ >= MAXIMUM_PATH_CANDIDATES) {
 				break;
 			}
 			Path path = this.zombie.getNavigation().createPath(food, 1);
-			if (path != null && path.canReach()) {
+			if (path != null
+				&& path.canReach()
+				&& ZombieGroundItemReservations.tryReserve(food, this.zombie, now)) {
 				return new SearchTarget(food, path);
 			}
 		}
 		return null;
+	}
+
+	private void releaseTargetReservation() {
+		ZombieGroundItemReservations.release(this.targetFood, this.zombie);
 	}
 
 	/** 原版 looting 不再把食物当武器装备；所有食物拾取统一走上面的单份消费事务。 */

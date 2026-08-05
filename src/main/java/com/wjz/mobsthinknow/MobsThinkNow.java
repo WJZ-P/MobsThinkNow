@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerEquipment;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
+import com.wjz.mobsthinknow.ai.zombie.ZombieGroundItemReservations;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
@@ -59,6 +60,7 @@ public final class MobsThinkNow implements ModInitializer {
 			ZombieSquadCoordinator.unloadLevel(level);
 			ZombieFireSupportMemory.clearLevel(level);
 			ZombieFluidThreatMemory.clearLevel(level);
+			ZombieGroundItemReservations.clearLevel(level);
 		});
 		// 关服保存前结束最多几十 tick 的临时换手，确保存档里永远是原武器/盾牌。
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -75,6 +77,7 @@ public final class MobsThinkNow implements ModInitializer {
 			ZombieShieldMemory.clear();
 			ZombieFireSupportMemory.clear();
 			ZombieFluidThreatMemory.clear();
+			ZombieGroundItemReservations.clear();
 		});
 		// 在 die() 记录“Named entity died”日志之前恢复职业名牌；只做表现清理，不改变死亡结果。
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, damageSource, damageAmount) -> {
@@ -83,6 +86,7 @@ public final class MobsThinkNow implements ModInitializer {
 				ZombieShieldMemory.discard(zombie);
 				ZombieFireSupportMemory.discard(zombie);
 				ZombieFluidThreatMemory.discard(zombie);
+				ZombieGroundItemReservations.releaseAll(zombie);
 				ZombieSquadCoordinator.onZombieDying(zombie);
 				ZombieFoodEquipment.restore(zombie, true);
 				ZombieEngineerEquipment.restore(zombie, true);

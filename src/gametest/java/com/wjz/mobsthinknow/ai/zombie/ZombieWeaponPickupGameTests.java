@@ -15,6 +15,48 @@ import net.minecraft.world.item.Items;
 /** 地面实体、拾取动画链、装备槽和旧物掉落共同参与的武器换装集成测试。 */
 public final class ZombieWeaponPickupGameTests implements CustomTestMethodInvoker {
 	@GameTest
+	public void nearbyZombiesReserveDifferentGroundWeapons(final GameTestHelper helper) {
+		Zombie first = helper.spawn(EntityType.ZOMBIE, 2, 0, 2);
+		Zombie second = helper.spawn(EntityType.ZOMBIE, 3, 0, 2);
+		first.setNoAi(true);
+		second.setNoAi(true);
+		first.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+		second.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+
+		ItemEntity ironSword = new ItemEntity(
+			helper.getLevel(),
+			(first.getX() + second.getX()) * 0.5,
+			first.getY(),
+			(first.getZ() + second.getZ()) * 0.5,
+			new ItemStack(Items.IRON_SWORD)
+		);
+		ItemEntity stoneSword = new ItemEntity(
+			helper.getLevel(),
+			(first.getX() + second.getX()) * 0.5,
+			first.getY(),
+			(first.getZ() + second.getZ()) * 0.5,
+			new ItemStack(Items.STONE_SWORD)
+		);
+		helper.getLevel().addFreshEntity(ironSword);
+		helper.getLevel().addFreshEntity(stoneSword);
+
+		ZombieWeaponPickupGoal firstGoal = new ZombieWeaponPickupGoal(first);
+		ZombieWeaponPickupGoal secondGoal = new ZombieWeaponPickupGoal(second);
+		helper.assertTrue(firstGoal.canUse(), "The first zombie could not reserve the best weapon.");
+		helper.assertTrue(secondGoal.canUse(), "The second zombie did not fall back to the unreserved weapon.");
+		firstGoal.start();
+		secondGoal.start();
+		firstGoal.tick();
+		secondGoal.tick();
+
+		helper.assertTrue(first.getMainHandItem().is(Items.IRON_SWORD), "The first zombie lost its reserved iron sword.");
+		helper.assertTrue(second.getMainHandItem().is(Items.STONE_SWORD), "Both zombies chased the iron sword instead of splitting up.");
+		firstGoal.stop();
+		secondGoal.stop();
+		helper.succeed();
+	}
+
+	@GameTest
 	public void zombiePrioritizesBestGroundWeaponAndDropsMainHandJunk(final GameTestHelper helper) {
 		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 0, 2);
 		zombie.setNoAi(true);

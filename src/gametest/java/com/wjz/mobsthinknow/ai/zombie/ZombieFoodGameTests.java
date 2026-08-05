@@ -15,6 +15,39 @@ import net.minecraft.world.item.Items;
 
 public final class ZombieFoodGameTests implements CustomTestMethodInvoker {
 	@GameTest
+	public void foodReservationPreventsDogpileAndReleasesRemainingStack(final GameTestHelper helper) {
+		Zombie first = helper.spawn(EntityType.ZOMBIE, 2, 0, 2);
+		Zombie second = helper.spawn(EntityType.ZOMBIE, 3, 0, 2);
+		for (Zombie zombie : new Zombie[]{first, second}) {
+			zombie.setNoAi(true);
+			zombie.setHealth(8.0F);
+			ZombieIntelligence.set(zombie, 10);
+		}
+		ItemEntity bread = new ItemEntity(
+			helper.getLevel(),
+			(first.getX() + second.getX()) * 0.5,
+			first.getY(),
+			(first.getZ() + second.getZ()) * 0.5,
+			new ItemStack(Items.BREAD, 2)
+		);
+		helper.getLevel().addFreshEntity(bread);
+
+		ZombieFoodSearchGoal firstGoal = new ZombieFoodSearchGoal(first, (candidate, intelligence, minimum) -> true);
+		ZombieFoodSearchGoal blockedGoal = new ZombieFoodSearchGoal(second, (candidate, intelligence, minimum) -> true);
+		helper.assertTrue(firstGoal.canUse(), "The first zombie could not reserve the bread stack.");
+		helper.assertTrue(!blockedGoal.canUse(), "Two zombies reserved the same ItemEntity at once.");
+
+		firstGoal.start();
+		firstGoal.tick();
+		helper.assertTrue(bread.getItem().getCount() == 1, "The first zombie did not take exactly one serving.");
+		ZombieFoodSearchGoal releasedGoal = new ZombieFoodSearchGoal(second, (candidate, intelligence, minimum) -> true);
+		helper.assertTrue(releasedGoal.canUse(), "The remaining bread stayed reserved after the first serving was taken.");
+		releasedGoal.stop();
+		firstGoal.stop();
+		helper.succeed();
+	}
+
+	@GameTest
 	public void treasureFoodOutranksRottenFleshAtTheSameDistance(final GameTestHelper helper) {
 		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 0, 2);
 		zombie.setNoAi(true);

@@ -27,7 +27,8 @@ import org.jspecify.annotations.Nullable;
  * 让普通僵尸主动寻找并装备地面近战武器。
  *
  * <p>搜索只在 1～2.5 秒的错峰窗口触发，局部实体查询后最多为四件武器寻路。候选先按攻击伤害、
- * 附魔和耐久排序，再比较距离，因此僵尸不会因为一把较近的木剑而错过同一区域里的铁剑。</p>
+ * 附魔和耐久排序，再比较距离；短期预留还会让同伴跳过已经有人追赶的武器，因此尸群不会
+ * 一起白跑，也不会因为一把较近的木剑而错过同一区域里的铁剑。</p>
  *
  * <p>空手或主手为普通杂物时直接换装；已有武器时只接受严格升级。水桶、岩浆桶和已部署流体的
  * 空桶属于战术装备，不会被替换。旧物会真实掉回脚边，拾到的新武器沿用原版拾取装备的必掉落和
@@ -77,7 +78,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 			+ Math.floorMod(this.zombie.getId(), 7)
 			+ this.zombie.getRandom().nextInt(SEARCH_DELAY_VARIANCE_TICKS + 1);
 
-		SearchTarget found = this.findReachableWeapon(level);
+		SearchTarget found = this.findReachableWeapon(level, now);
 		if (found == null) {
 			return false;
 		}
@@ -89,13 +90,15 @@ public final class ZombieWeaponPickupGoal extends Goal {
 	@Override
 	public boolean canContinueToUse() {
 		MobsThinkNowConfig config = ConfigManager.get();
+		long now = this.zombie.level().getGameTime();
 		return this.phase == Phase.SEEKING
 			&& isEnabled(this.zombie, config)
 			&& !ZombieAirAssault.isAirAssaultLoadout(this.zombie)
 			&& !ZombieFoodEquipment.isActive(this.zombie)
-			&& this.zombie.level().getGameTime() < this.searchDeadline
+			&& now < this.searchDeadline
 			&& isAvailableWeaponEntity(this.targetWeapon)
-			&& canReplaceMainHand(this.zombie.getMainHandItem(), this.targetWeapon.getItem());
+			&& canReplaceMainHand(this.zombie.getMainHandItem(), this.targetWeapon.getItem())
+			&& ZombieGroundItemReservations.renew(this.targetWeapon, this.zombie, now);
 	}
 
 	@Override
@@ -106,6 +109,10 @@ public final class ZombieWeaponPickupGoal extends Goal {
 		this.nextPathUpdateAt = now + PATH_REFRESH_TICKS;
 		this.zombie.stopUsingItem();
 		this.zombie.setAggressive(false);
+		if (!ZombieGroundItemReservations.renew(this.targetWeapon, this.zombie, now)) {
+			this.phase = Phase.DONE;
+			return;
+		}
 		if (this.initialPath != null) {
 			this.zombie.getNavigation().moveTo(this.initialPath, MOVE_SPEED_MODIFIER);
 		}
@@ -114,9 +121,12 @@ public final class ZombieWeaponPickupGoal extends Goal {
 	@Override
 	public void tick() {
 		ItemEntity weapon = this.targetWeapon;
+		long now = this.zombie.level().getGameTime();
 		if (this.phase != Phase.SEEKING
 			|| !isAvailableWeaponEntity(weapon)
-			|| !canReplaceMainHand(this.zombie.getMainHandItem(), weapon.getItem())) {
+			|| !canReplaceMainHand(this.zombie.getMainHandItem(), weapon.getItem())
+			|| !ZombieGroundItemReservations.renew(weapon, this.zombie, now)) {
+			this.releaseTargetReservation();
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -128,7 +138,6 @@ public final class ZombieWeaponPickupGoal extends Goal {
 			return;
 		}
 
-		long now = this.zombie.level().getGameTime();
 		if (now >= this.nextPathUpdateAt) {
 			this.zombie.getNavigation().moveTo(weapon, MOVE_SPEED_MODIFIER);
 			this.nextPathUpdateAt = now + PATH_REFRESH_TICKS;
@@ -139,6 +148,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 	public void stop() {
 		this.zombie.getNavigation().stop();
 		this.zombie.setAggressive(false);
+		this.releaseTargetReservation();
 		this.phase = Phase.IDLE;
 		this.targetWeapon = null;
 		this.initialPath = null;
@@ -152,12 +162,14 @@ public final class ZombieWeaponPickupGoal extends Goal {
 
 	private void equipOne(final ItemEntity weaponEntity) {
 		if (!(this.zombie.level() instanceof ServerLevel level)) {
+			this.releaseTargetReservation();
 			this.phase = Phase.DONE;
 			return;
 		}
 		ItemStack groundStack = weaponEntity.getItem();
 		ItemStack current = this.zombie.getMainHandItem().copy();
 		if (!canReplaceMainHand(current, groundStack)) {
+			this.releaseTargetReservation();
 			this.phase = Phase.DONE;
 			return;
 		}
@@ -169,6 +181,8 @@ public final class ZombieWeaponPickupGoal extends Goal {
 		if (groundStack.isEmpty()) {
 			weaponEntity.discard();
 		}
+		// 堆叠里若仍有武器，立即让下一只僵尸认领，不占用到本 Goal 的下一次 stop。
+		this.releaseTargetReservation();
 
 		this.zombie.getNavigation().stop();
 		this.zombie.stopUsingItem();
@@ -182,7 +196,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 		this.phase = Phase.DONE;
 	}
 
-	private @Nullable SearchTarget findReachableWeapon(final ServerLevel level) {
+	private @Nullable SearchTarget findReachableWeapon(final ServerLevel level, final long now) {
 		ItemStack current = this.zombie.getMainHandItem();
 		AABB searchBox = this.zombie.getBoundingBox().inflate(SEARCH_RADIUS, SEARCH_VERTICAL_RADIUS, SEARCH_RADIUS);
 		List<ItemEntity> weapons = level.getEntitiesOfClass(
@@ -190,6 +204,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 			searchBox,
 			entity -> isAvailableWeaponEntity(entity)
 				&& this.zombie.distanceToSqr(entity) <= SEARCH_RADIUS * SEARCH_RADIUS
+				&& ZombieGroundItemReservations.isAvailableTo(entity, this.zombie, now)
 				&& canReplaceMainHand(current, entity.getItem())
 		);
 		weapons.sort((first, second) -> {
@@ -203,18 +218,25 @@ public final class ZombieWeaponPickupGoal extends Goal {
 
 		int pathChecks = 0;
 		for (ItemEntity weapon : weapons) {
-			if (this.zombie.distanceToSqr(weapon) <= PICKUP_DISTANCE_SQUARED) {
+			if (this.zombie.distanceToSqr(weapon) <= PICKUP_DISTANCE_SQUARED
+				&& ZombieGroundItemReservations.tryReserve(weapon, this.zombie, now)) {
 				return new SearchTarget(weapon, null);
 			}
 			if (pathChecks++ >= MAXIMUM_PATH_CANDIDATES) {
 				break;
 			}
 			Path path = this.zombie.getNavigation().createPath(weapon, 1);
-			if (path != null && path.canReach()) {
+			if (path != null
+				&& path.canReach()
+				&& ZombieGroundItemReservations.tryReserve(weapon, this.zombie, now)) {
 				return new SearchTarget(weapon, path);
 			}
 		}
 		return null;
+	}
+
+	private void releaseTargetReservation() {
+		ZombieGroundItemReservations.release(this.targetWeapon, this.zombie);
 	}
 
 	/** 阻止原版随机 looting 抢先处理武器；选择、比较和换装统一由本 Goal 完成。 */
