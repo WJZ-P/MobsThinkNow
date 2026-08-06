@@ -5,7 +5,6 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.MountedSkeletonTargetGoal;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonBowAttackGoal;
-import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadAssaultPlan;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
@@ -314,7 +313,6 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		SmartSkeletonBowAttackGoal bowGoal = new SmartSkeletonBowAttackGoal(skeleton, 1.0, 40, 15.0F);
 		helper.assertTrue(bowGoal.canUse(), "Mounted bow goal did not start with the mirrored target.");
 		bowGoal.start();
-		long shotsBefore = SmartSkeletonMetrics.snapshot().shots();
 		int[] elapsed = {0};
 
 		helper.onEachTick(() -> {
@@ -322,11 +320,11 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 			targetGoal.tick();
 			skeleton.getSensing().tick();
 			bowGoal.tick();
-			if (SmartSkeletonMetrics.snapshot().shots() > shotsBefore) {
-				helper.assertTrue(
-					!helper.getEntities(EntityType.ARROW).isEmpty(),
-					"Mounted bow state recorded a shot without creating a real arrow."
-				);
+			// Metrics are global to the GameTest JVM and other parallel tests can increment them first.
+			// An arrow owned by this exact passenger is the entity-local proof that its bow goal fired.
+			boolean passengerArrowSpawned = helper.getEntities(EntityType.ARROW).stream()
+				.anyMatch(arrow -> arrow.getOwner() == skeleton);
+			if (passengerArrowSpawned) {
 				helper.assertTrue(skeleton.getTarget() == target, "Passenger lost the spider's target while firing.");
 				bowGoal.stop();
 				targetGoal.stop();

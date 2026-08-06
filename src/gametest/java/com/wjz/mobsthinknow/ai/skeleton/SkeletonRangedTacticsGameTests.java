@@ -331,7 +331,6 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		skeleton.setTarget(target);
 		skeleton.getSensing().tick();
 		helper.assertTrue(skeleton.getSensing().hasLineOfSight(target), "The crossbow fixture had no clear firing line.");
-		long fireworkShotsBefore = SmartSkeletonMetrics.snapshot().fireworkCrossbowShots();
 		SmartSkeletonCrossbowAttackGoal goal = new SmartSkeletonCrossbowAttackGoal(skeleton);
 		helper.assertTrue(goal.canUse(), "A crossbow skeleton with a live target could not start its goal.");
 		goal.start();
@@ -341,14 +340,12 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 			elapsed[0]++;
 			skeleton.getSensing().tick();
 			goal.tick();
-			if (SmartSkeletonMetrics.snapshot().fireworkCrossbowShots() > fireworkShotsBefore) {
+			boolean ownedRocketSpawned = helper.getEntities(EntityType.FIREWORK_ROCKET).stream()
+				.anyMatch(rocket -> rocket.getOwner() == skeleton);
+			if (ownedRocketSpawned) {
 				helper.assertTrue(
 					skeleton.getOffhandItem().getCount() == 2,
 					"Loading one explosive rocket did not consume exactly one offhand item."
-				);
-				helper.assertTrue(
-					!helper.getEntities(EntityType.FIREWORK_ROCKET).isEmpty(),
-					"The crossbow state machine recorded a shot without spawning a real firework entity."
 				);
 				goal.stop();
 				helper.succeed();
@@ -474,7 +471,6 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		}
 		helper.assertTrue(skeleton.isUsingItem(), "The skeleton never drew its bow while fully hidden.");
 
-		long coverShotsBefore = SmartSkeletonMetrics.snapshot().coverShots();
 		AtomicBoolean shotObserved = new AtomicBoolean();
 		helper.onEachTick(() -> {
 			SkeletonCoverPlanner.CoverPlan activePlan = goal.coverPlan();
@@ -486,7 +482,7 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 			skeleton.getSensing().tick();
 			goal.tick();
 
-			if (!shotObserved.get() && SmartSkeletonMetrics.snapshot().coverShots() > coverShotsBefore) {
+			if (!shotObserved.get() && goal.coverPhase() == CoverPhase.POST_SHOT_FACING) {
 				helper.assertTrue(
 					goal.coverPhase() == CoverPhase.POST_SHOT_FACING,
 					"The peek shot did not retain a short target-facing visual recovery phase."

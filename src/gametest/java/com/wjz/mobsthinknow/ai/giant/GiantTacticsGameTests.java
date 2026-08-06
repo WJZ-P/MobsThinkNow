@@ -4,7 +4,6 @@ import java.lang.reflect.Method;
 import java.util.List;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
-import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
@@ -115,21 +114,18 @@ public final class GiantTacticsGameTests implements CustomTestMethodInvoker {
 
 		giant.setTarget(target);
 		rider.setTarget(null);
-		long shotsBefore = SmartSkeletonMetrics.snapshot().shots();
 		boolean[] sharedTargetObserved = {false};
 		helper.onEachTick(() -> {
 			giant.positionRider(rider);
 			sharedTargetObserved[0] |= rider.getTarget() == target;
-			if (SmartSkeletonMetrics.snapshot().shots() <= shotsBefore) {
+			boolean riderArrowSpawned = helper.getEntities(EntityType.ARROW).stream()
+				.anyMatch(arrow -> arrow.getOwner() == rider);
+			if (!riderArrowSpawned) {
 				return;
 			}
 			helper.assertTrue(
 				sharedTargetObserved[0],
 				"Head rider fired without ever adopting the Giant's shared target."
-			);
-			helper.assertTrue(
-				!helper.getEntities(EntityType.ARROW).isEmpty(),
-				"Mounted bow state machine recorded a shot without spawning a real arrow."
 			);
 			target.discard();
 			helper.succeed();
