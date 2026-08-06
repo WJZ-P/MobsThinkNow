@@ -4,7 +4,9 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -258,6 +260,85 @@ public final class SquadBattlefieldCoordinationGameTests implements CustomTestMe
 		});
 	}
 
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 320, padding = 4)
+	public void secondWaveRegroupsAroundMovedTargetInsteadOfOriginalBriefing(final GameTestHelper helper) {
+		List<Zombie> members = List.of(
+			helper.spawn(EntityType.ZOMBIE, 2, 2, 2),
+			helper.spawn(EntityType.ZOMBIE, 3, 2, 3),
+			helper.spawn(EntityType.ZOMBIE, 4, 2, 2)
+		);
+		Villager target = helper.spawn(EntityType.VILLAGER, 14, 2, 2);
+		prepare(target);
+		for (int index = 0; index < members.size(); index++) {
+			Zombie member = members.get(index);
+			prepare(member, target);
+			ZombieIntelligence.set(member, 10 - index);
+		}
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		Map<Integer, Vec3> firstDeployment = new HashMap<>();
+		boolean[] targetMoved = {false};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			heartbeat(coordinator, members, target, now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(members.getFirst());
+			if (view == null) {
+				return;
+			}
+
+			if (view.state() == SquadState.DEPLOYING && firstDeployment.isEmpty()) {
+				for (Zombie member : members) {
+					SquadDirective directive = coordinator.directiveFor(member);
+					helper.assertTrue(
+						directive != null && directive.destination() != null,
+						"Initial deployment did not assign every member a formation destination."
+					);
+					firstDeployment.put(member.getId(), directive.destination());
+				}
+			}
+
+			if (view.state() != SquadState.ENGAGING) {
+				for (Zombie member : members) {
+					SquadDirective directive = coordinator.directiveFor(member);
+					if (directive != null && directive.destination() != null) {
+						Vec3 destination = directive.destination();
+						member.snapTo(destination.x, destination.y, destination.z, member.getYRot(), member.getXRot());
+					}
+				}
+				return;
+			}
+
+			if (!targetMoved[0]) {
+				helper.assertTrue(!firstDeployment.isEmpty(), "Engagement skipped the initial deployment snapshot.");
+				targetMoved[0] = true;
+				target.snapTo(target.getX(), target.getY(), target.getZ() + 8.0, target.getYRot(), target.getXRot());
+				return;
+			}
+			if (view.combatBeat() != SquadCombatBeat.RESET) {
+				return;
+			}
+
+			for (Zombie member : members) {
+				SquadDirective directive = coordinator.directiveFor(member);
+				Vec3 oldDestination = firstDeployment.get(member.getId());
+				helper.assertTrue(
+					directive != null && directive.holdsCombatFormation() && directive.destination() != null,
+					"A second-wave RESET member did not receive a fresh formation order."
+				);
+				helper.assertTrue(
+					horizontalDistance(oldDestination, directive.destination()) > 5.0,
+					"A member returned to the first briefing position after the target moved eight blocks."
+				);
+				helper.assertTrue(
+					horizontalDistance(target.position(), directive.destination()) < 12.0,
+					"A refreshed formation destination was detached from the target's current battlefield position."
+				);
+			}
+			helper.succeed();
+		});
+	}
+
 	@Override
 	public void invokeTestMethod(final GameTestHelper helper, final Method method) throws ReflectiveOperationException {
 		method.invoke(this, helper);
@@ -281,5 +362,11 @@ public final class SquadBattlefieldCoordinationGameTests implements CustomTestMe
 
 	private static void prepare(final Mob mob) {
 		mob.setNoAi(true);
+	}
+
+	private static double horizontalDistance(final Vec3 first, final Vec3 second) {
+		double dx = first.x - second.x;
+		double dz = first.z - second.z;
+		return Math.sqrt(dx * dx + dz * dz);
 	}
 }

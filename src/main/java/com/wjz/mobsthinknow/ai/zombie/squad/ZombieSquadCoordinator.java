@@ -1449,7 +1449,14 @@ public final class ZombieSquadCoordinator {
 				if (now >= squad.nextPlanRefreshAt) {
 					this.refreshThreatAssignments(squad, config, now);
 					this.updateObservedTargetTactics(squad, config, now);
-					this.refreshCombatOrders(squad, config, !combatWindow.beat().holdsFormation(), false, now);
+					this.refreshCombatOrders(
+						squad,
+						config,
+						!combatWindow.beat().holdsFormation(),
+						false,
+						false,
+						now
+					);
 					squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 				}
 			}
@@ -1924,7 +1931,7 @@ public final class ZombieSquadCoordinator {
 		squad.firstCommitAt = Long.MAX_VALUE;
 		squad.deploymentReadyFraction = 0.0;
 		squad.lastCombatBeat = SquadCombatBeat.PREPARE;
-		this.refreshCombatOrders(squad, config, false, true, now);
+		this.refreshCombatOrders(squad, config, false, true, true, now);
 		this.enterState(
 			squad,
 			SquadState.DEPLOYING,
@@ -1947,7 +1954,7 @@ public final class ZombieSquadCoordinator {
 			squad.firstCommitAt = now;
 			squad.combatEpoch++;
 		}
-		this.refreshCombatOrders(squad, config, true, true, now);
+		this.refreshCombatOrders(squad, config, true, false, true, now);
 		squad.lastCombatBeat = SquadCombatBeat.COMMIT;
 		squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 		this.enterState(squad, SquadState.ENGAGING, now, Long.MAX_VALUE, config, reason);
@@ -1968,15 +1975,23 @@ public final class ZombieSquadCoordinator {
 		boolean attacking = !nextBeat.holdsFormation();
 		this.refreshThreatAssignments(squad, config, now);
 		this.updateObservedTargetTactics(squad, config, now);
-		this.refreshCombatOrders(squad, config, attacking, true, now);
+		this.refreshCombatOrders(squad, config, attacking, false, true, now);
 		squad.nextPlanRefreshAt = now + config.decisionIntervalTicks;
 		this.debug(config, squad, "combat beat " + previousBeat + " -> " + nextBeat);
 	}
 
+	/**
+	 * 刷新当前战斗节拍的阵位。简报寻路结果只服务于首次部署；进入交战循环后，每次重整都必须围绕
+	 * 最新目标快照重新锚定，否则目标移动后成员会折返最初的开会位置。
+	 *
+	 * @param attacking 当前节拍是否释放成员追击和近战
+	 * @param reuseBriefingDestinations 是否复用首次简报中已经验证可达的阵位
+	 */
 	private void refreshCombatOrders(
 		final ZombieSquad squad,
 		final MobsThinkNowConfig config,
-		final boolean engaging,
+		final boolean attacking,
+		final boolean reuseBriefingDestinations,
 		final boolean bumpPlanEpoch,
 		final long now
 	) {
@@ -1986,6 +2001,16 @@ public final class ZombieSquadCoordinator {
 		Vec3 targetPosition = squad.sharedLastSeenPosition;
 		if (targetPosition == null) {
 			return;
+		}
+		if (!attacking && !reuseBriefingDestinations) {
+			MemberRecord leader = this.members.get(squad.leaderId);
+			int leaderIntelligence = leader == null ? 1 : intelligenceOf(leader.mob);
+			targetPosition = SquadFormationAnchor.predict(
+				targetPosition,
+				squad.sharedTargetVelocity,
+				leaderIntelligence,
+				now - squad.sharedLastSeenAt
+			);
 		}
 
 		Vec3 squadCentroid = this.memberCentroid(squad);
@@ -1999,7 +2024,7 @@ public final class ZombieSquadCoordinator {
 		for (int memberId : ordered) {
 			MemberRecord member = this.members.get(memberId);
 			SquadRole role = squad.roles.getOrDefault(memberId, member == null ? SquadRole.PRESSURER : defaultRole(member.mob));
-			LivingEntity assignedTarget = engaging ? this.assignedTargetEntity(squad, memberId) : squad.target;
+			LivingEntity assignedTarget = attacking ? this.assignedTargetEntity(squad, memberId) : squad.target;
 			Vec3 orderTargetPosition = assignedTarget == null || assignedTarget == squad.target
 				? targetPosition
 				: assignedTarget.position();
@@ -2008,9 +2033,11 @@ public final class ZombieSquadCoordinator {
 				: horizontalUnit(assignedTarget.getLookAngle(), orderTargetPosition.subtract(squadCentroid));
 			Vec3 orderLateral = new Vec3(-orderForward.z, 0.0, orderForward.x);
 			// 部署阶段让蜘蛛乘员原地等载具靠近，避免乘员和载具同时追逐造成“永远差一格”的会合。
-			Vec3 destination = !engaging && member != null && this.assignedSpiderCarrierId(squad, memberId) != null
+			Vec3 destination = reuseBriefingDestinations
+				&& member != null
+				&& this.assignedSpiderCarrierId(squad, memberId) != null
 				? member.mob.position()
-				: !engaging && squad.briefingDestinations.containsKey(memberId)
+				: reuseBriefingDestinations && squad.briefingDestinations.containsKey(memberId)
 					? squad.briefingDestinations.get(memberId)
 					: this.combatDestination(
 					squad,
@@ -2020,7 +2047,7 @@ public final class ZombieSquadCoordinator {
 					orderForward,
 					orderLateral,
 					config,
-					engaging,
+					attacking,
 					pressureIndex,
 					rangedIndex
 					);
