@@ -1253,7 +1253,7 @@ public final class ZombieSquadCoordinator {
 			}
 			if (this.squads.containsKey(squad.id)) {
 				this.presentSquad(level, squad, config, now);
-				this.applySquadMobility(squad, config);
+				this.applySquadMobility(squad, config, now);
 			}
 		}
 		SmartZombieMetrics.coordinatorTick();
@@ -2413,9 +2413,16 @@ public final class ZombieSquadCoordinator {
 
 	/**
 	 * 组队期间给全员挂临时移速加成（transient，永不写入存档），离队即移除。
-	 * 只在数值真正变化时重建修饰符，因此 {@code /mtn reload} 修改数值会立即作用于存量小队。
+	 * 集结或持阵时，明显落后当前阵位的成员会获得离散、封顶的追赶档位；正式进攻时只保留基础加成。
+	 * 仅在数值真正变化时重建修饰符，因此 {@code /mtn reload} 修改数值会立即作用于存量小队。
 	 */
-	private void applySquadMobility(final ZombieSquad squad, final MobsThinkNowConfig config) {
+	private void applySquadMobility(
+		final ZombieSquad squad,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		boolean cohesionOrderActive = squad.state != SquadState.ENGAGING
+			|| this.combatWindowFor(squad, now).beat().holdsFormation();
 		for (int memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
 			if (member == null) {
@@ -2432,15 +2439,27 @@ public final class ZombieSquadCoordinator {
 				speed.removeModifier(SQUAD_SPEED_MODIFIER_ID);
 				continue;
 			}
-			if (config.squadSpeedBonus <= 0.0) {
+			SquadOrder order = squad.orders.get(memberId);
+			boolean memberHasCohesionOrder = cohesionOrderActive
+				&& order != null
+				&& order.destination != null;
+			double distanceToDestinationSquared = memberHasCohesionOrder
+				? member.mob.position().distanceToSqr(order.destination)
+				: 0.0;
+			double requestedBonus = SquadCohesionPacing.speedBonus(
+				config.squadSpeedBonus,
+				memberHasCohesionOrder,
+				distanceToDestinationSquared
+			);
+			if (requestedBonus <= 0.0) {
 				speed.removeModifier(SQUAD_SPEED_MODIFIER_ID);
 				continue;
 			}
 			AttributeModifier existing = speed.getModifier(SQUAD_SPEED_MODIFIER_ID);
-			if (existing == null || existing.amount() != config.squadSpeedBonus) {
+			if (existing == null || Double.compare(existing.amount(), requestedBonus) != 0) {
 				speed.addOrUpdateTransientModifier(new AttributeModifier(
 					SQUAD_SPEED_MODIFIER_ID,
-					config.squadSpeedBonus,
+					requestedBonus,
 					AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
 				));
 			}

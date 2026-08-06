@@ -1,8 +1,10 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
+import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.config.ConfigManager;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
@@ -10,9 +12,13 @@ import java.util.Map;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -335,6 +341,86 @@ public final class SquadBattlefieldCoordinationGameTests implements CustomTestMe
 					"A refreshed formation destination was detached from the target's current battlefield position."
 				);
 			}
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 120, padding = 4)
+	public void distantFormationMemberReceivesAndReleasesCatchUpPacing(final GameTestHelper helper) {
+		List<Zombie> members = List.of(
+			helper.spawn(EntityType.ZOMBIE, 2, 2, 2),
+			helper.spawn(EntityType.ZOMBIE, 3, 2, 3),
+			helper.spawn(EntityType.ZOMBIE, 4, 2, 2)
+		);
+		Zombie straggler = members.getLast();
+		Villager target = helper.spawn(EntityType.VILLAGER, 14, 2, 2);
+		prepare(target);
+		for (int index = 0; index < members.size(); index++) {
+			Zombie member = members.get(index);
+			prepare(member, target);
+			ZombieIntelligence.set(member, 10 - index);
+		}
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		Identifier speedModifierId = Identifier.fromNamespaceAndPath(MobsThinkNow.MOD_ID, "squad_speed_bonus");
+		double configuredBaseBonus = ConfigManager.get().squadSpeedBonus;
+		int[] phase = {0};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			heartbeat(coordinator, members, target, now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(straggler);
+			if (view == null) {
+				return;
+			}
+			helper.assertTrue(
+				configuredBaseBonus > 0.0 && configuredBaseBonus < 0.5,
+				"The integration test requires the normal, non-saturated squad speed configuration."
+			);
+
+			SquadDirective directive = coordinator.directiveFor(straggler);
+			helper.assertTrue(
+				directive != null && directive.destination() != null,
+				"The selected squad straggler has no formation destination."
+			);
+			Vec3 destination = directive.destination();
+			if (phase[0] == 0) {
+				straggler.snapTo(
+					destination.x + 21.0,
+					destination.y,
+					destination.z,
+					straggler.getYRot(),
+					straggler.getXRot()
+				);
+				phase[0] = 1;
+				return;
+			}
+
+			AttributeInstance movementSpeed = straggler.getAttribute(Attributes.MOVEMENT_SPEED);
+			helper.assertTrue(movementSpeed != null, "The zombie lost its movement speed attribute.");
+			AttributeModifier modifier = movementSpeed.getModifier(speedModifierId);
+			helper.assertTrue(modifier != null, "The squad mobility modifier was not installed.");
+			if (phase[0] == 1) {
+				double expected = SquadCohesionPacing.speedBonus(configuredBaseBonus, true, 21.0 * 21.0);
+				helper.assertTrue(
+					Math.abs(modifier.amount() - expected) < 1.0E-9,
+					"A distant formation member did not receive the maximum bounded catch-up tier."
+				);
+				straggler.snapTo(
+					destination.x,
+					destination.y,
+					destination.z,
+					straggler.getYRot(),
+					straggler.getXRot()
+				);
+				phase[0] = 2;
+				return;
+			}
+
+			helper.assertTrue(
+				Math.abs(modifier.amount() - configuredBaseBonus) < 1.0E-9,
+				"Catch-up pacing remained after the member rejoined its assigned position."
+			);
 			helper.succeed();
 		});
 	}
