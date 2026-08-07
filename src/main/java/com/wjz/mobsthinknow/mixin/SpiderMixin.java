@@ -10,6 +10,7 @@ import com.wjz.mobsthinknow.ai.spider.SpiderIntelligenceName;
 import com.wjz.mobsthinknow.ai.spider.SpiderSpawnEffects;
 import com.wjz.mobsthinknow.ai.spider.SpiderSquadCarrierGoal;
 import com.wjz.mobsthinknow.ai.spider.SpiderSquadTransportAccess;
+import com.wjz.mobsthinknow.ai.spider.SpiderWebTrapGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadFriendlyFireGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadFiringLaneClearGoal;
@@ -70,6 +71,7 @@ public abstract class SpiderMixin extends Monster implements SpiderIntelligenceA
 		this.goalSelector.addGoal(2, new SpiderCreeperCarrierGoal(spider));
 		this.goalSelector.addGoal(2, new SpiderSquadCarrierGoal(spider));
 		this.goalSelector.addGoal(3, new SquadFiringLaneClearGoal(spider, 1.24));
+		this.goalSelector.addGoal(3, new SpiderWebTrapGoal(spider));
 		this.goalSelector.addGoal(3, new SmartSpiderPounceGoal(spider));
 		this.goalSelector.addGoal(4, new SmartSpiderCombatGoal(spider));
 		boolean hasVanillaHurtByGoal = this.targetSelector.getAvailableGoals().stream()

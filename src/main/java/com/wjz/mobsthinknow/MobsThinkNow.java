@@ -17,6 +17,7 @@ import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligenceName;
 import com.wjz.mobsthinknow.ai.giant.GiantIntelligenceName;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieSpawnConversion;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligenceName;
+import com.wjz.mobsthinknow.ai.spider.SpiderWebTrapRegistry;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.command.MtnCommands;
@@ -53,6 +54,7 @@ public final class MobsThinkNow implements ModInitializer {
 			}
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(GiantZombieSpawnConversion::tickLevel);
+		ServerTickEvents.END_LEVEL_TICK.register(SpiderWebTrapRegistry::tickLevel);
 		// 协调器统一在每个维度 tick 的末尾做一次决策，保证本 tick 的所有僵尸心跳已经收齐。
 		ServerTickEvents.END_LEVEL_TICK.register(ZombieSquadCoordinator::tickLevel);
 		ServerLevelEvents.UNLOAD.register((server, level) -> {
@@ -61,11 +63,13 @@ public final class MobsThinkNow implements ModInitializer {
 			ZombieFireSupportMemory.clearLevel(level);
 			ZombieFluidThreatMemory.clearLevel(level);
 			ZombieGroundItemReservations.clearLevel(level);
+			SpiderWebTrapRegistry.unloadLevel(level);
 		});
 		// 关服保存前结束最多几十 tick 的临时换手，确保存档里永远是原武器/盾牌。
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			ZombieEngineerEquipment.restoreAll();
 			ZombieFoodEquipment.restoreAll();
+			SpiderWebTrapRegistry.restoreAll();
 		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			GiantZombieSpawnConversion.clear();
@@ -78,6 +82,7 @@ public final class MobsThinkNow implements ModInitializer {
 			ZombieFireSupportMemory.clear();
 			ZombieFluidThreatMemory.clear();
 			ZombieGroundItemReservations.clear();
+			SpiderWebTrapRegistry.clearAll();
 		});
 		// 在 die() 记录“Named entity died”日志之前恢复职业名牌；只做表现清理，不改变死亡结果。
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, damageSource, damageAmount) -> {

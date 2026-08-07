@@ -229,6 +229,34 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderHitAndRun = value))
 			.build());
 		spiderCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.spider_web_traps"),
+			config.spiderWebTraps
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_web_traps.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderWebTraps = value))
+			.build());
+		spiderCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.spider_web_trap_cooldown"),
+			config.spiderWebTrapCooldownTicks,
+			MobsThinkNowConfig.MINIMUM_SPIDER_WEB_TRAP_COOLDOWN_TICKS,
+			MobsThinkNowConfig.MAXIMUM_SPIDER_WEB_TRAP_COOLDOWN_TICKS
+		)
+			.setDefaultValue(MobsThinkNowConfig.DEFAULT_SPIDER_WEB_TRAP_COOLDOWN_TICKS)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_web_trap_cooldown.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderWebTrapCooldownTicks = value))
+			.build());
+		spiderCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.spider_web_trap_lifetime"),
+			config.spiderWebTrapLifetimeTicks,
+			MobsThinkNowConfig.MINIMUM_SPIDER_WEB_TRAP_LIFETIME_TICKS,
+			MobsThinkNowConfig.MAXIMUM_SPIDER_WEB_TRAP_LIFETIME_TICKS
+		)
+			.setDefaultValue(MobsThinkNowConfig.DEFAULT_SPIDER_WEB_TRAP_LIFETIME_TICKS)
+			.setTooltip(Component.translatable("mobsthinknow.config.spider_web_trap_lifetime.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.spiderWebTrapLifetimeTicks = value))
+			.build());
+		spiderCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.spider_creeper_coordination"),
 			config.spiderCreeperCoordination
 		)

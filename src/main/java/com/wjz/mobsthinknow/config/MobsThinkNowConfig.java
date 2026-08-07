@@ -45,6 +45,12 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_SPIDER_CREEPER_CARRIER_SPEED = 1.40;
 	public static final double MINIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.10;
 	public static final double MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.70;
+	public static final int DEFAULT_SPIDER_WEB_TRAP_COOLDOWN_TICKS = 240;
+	public static final int MINIMUM_SPIDER_WEB_TRAP_COOLDOWN_TICKS = 80;
+	public static final int MAXIMUM_SPIDER_WEB_TRAP_COOLDOWN_TICKS = 600;
+	public static final int DEFAULT_SPIDER_WEB_TRAP_LIFETIME_TICKS = 160;
+	public static final int MINIMUM_SPIDER_WEB_TRAP_LIFETIME_TICKS = 60;
+	public static final int MAXIMUM_SPIDER_WEB_TRAP_LIFETIME_TICKS = 400;
 	public static final double DEFAULT_ENDERMAN_CREEPER_SEARCH_RADIUS = 16.0;
 	public static final double MINIMUM_ENDERMAN_CREEPER_SEARCH_RADIUS = 6.0;
 	public static final double MAXIMUM_ENDERMAN_CREEPER_SEARCH_RADIUS = 32.0;
@@ -129,6 +135,12 @@ public final class MobsThinkNowConfig {
 	public boolean spiderPredictivePounce = true;
 	/** 智力 5 以上的蜘蛛命中后先绕到下一次跳扑距离，而不是原地持续贴脸。 */
 	public boolean spiderHitAndRun = true;
+	/** IQ 7～10 蜘蛛会在目标预测路径放置有声效、会自动清理的限时蛛网；完整服从 mobGriefing。 */
+	public boolean spiderWebTraps = true;
+	/** 单只蜘蛛两次成功吐网之间的基础冷却；智力、难度和随机错峰只会小幅调整。 */
+	public int spiderWebTrapCooldownTicks = DEFAULT_SPIDER_WEB_TRAP_COOLDOWN_TICKS;
+	/** 临时蛛网存在时间；维度卸载或服务器关停时会提前恢复原方块。 */
+	public int spiderWebTrapLifetimeTicks = DEFAULT_SPIDER_WEB_TRAP_LIFETIME_TICKS;
 	/** 蜘蛛与普通苦力怕会限频局部配对，真实骑乘后由蜘蛛高速投送至目标身边。 */
 	public boolean spiderCreeperCoordination = true;
 	/** 每次配对只查询这个局部半径，默认 8 格；搜索间隔随机 10～20 tick。 */
@@ -408,6 +420,16 @@ public final class MobsThinkNowConfig {
 			this.spiderCreeperCarrierSpeed,
 			MINIMUM_SPIDER_CREEPER_CARRIER_SPEED,
 			MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED
+		);
+		this.spiderWebTrapCooldownTicks = clamp(
+			this.spiderWebTrapCooldownTicks,
+			MINIMUM_SPIDER_WEB_TRAP_COOLDOWN_TICKS,
+			MAXIMUM_SPIDER_WEB_TRAP_COOLDOWN_TICKS
+		);
+		this.spiderWebTrapLifetimeTicks = clamp(
+			this.spiderWebTrapLifetimeTicks,
+			MINIMUM_SPIDER_WEB_TRAP_LIFETIME_TICKS,
+			MAXIMUM_SPIDER_WEB_TRAP_LIFETIME_TICKS
 		);
 		this.endermanCreeperSearchRadius = clamp(
 			this.endermanCreeperSearchRadius,

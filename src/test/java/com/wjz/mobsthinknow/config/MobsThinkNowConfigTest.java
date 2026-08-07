@@ -50,6 +50,9 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.spiderAiEnabled);
 		assertEquals(true, config.spiderPredictivePounce);
 		assertEquals(true, config.spiderHitAndRun);
+		assertEquals(true, config.spiderWebTraps);
+		assertEquals(240, config.spiderWebTrapCooldownTicks);
+		assertEquals(160, config.spiderWebTrapLifetimeTicks);
 		assertEquals(true, config.spiderCreeperCoordination);
 		assertEquals(true, config.spiderTransportRouteAssessment);
 		assertEquals(8.0, config.spiderCreeperSearchRadius);
@@ -323,6 +326,23 @@ class MobsThinkNowConfigTest {
 		config.validate();
 		assertEquals(4.0, config.spiderCreeperSearchRadius);
 		assertEquals(1.10, config.spiderCreeperCarrierSpeed);
+	}
+
+	@Test
+	void clampsSpiderWebTrapEnvelope() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.spiderWebTrapCooldownTicks = 5000;
+		config.spiderWebTrapLifetimeTicks = -1;
+		config.validate();
+
+		assertEquals(600, config.spiderWebTrapCooldownTicks);
+		assertEquals(60, config.spiderWebTrapLifetimeTicks);
+
+		config.spiderWebTrapCooldownTicks = 1;
+		config.spiderWebTrapLifetimeTicks = 5000;
+		config.validate();
+		assertEquals(80, config.spiderWebTrapCooldownTicks);
+		assertEquals(400, config.spiderWebTrapLifetimeTicks);
 	}
 
 	@Test

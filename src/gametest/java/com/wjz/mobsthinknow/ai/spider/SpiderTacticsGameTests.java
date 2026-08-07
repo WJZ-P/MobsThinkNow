@@ -12,6 +12,7 @@ import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import java.lang.reflect.Method;
+import java.util.UUID;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
@@ -32,13 +33,13 @@ import net.minecraft.world.level.block.Blocks;
 /** 从真实实体、GoalSelector、骑乘关系和引信数据验证蜘蛛战术。 */
 public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
-	public void spiderMixinInstallsSixGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
+	public void spiderMixinInstallsSevenGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
 		long before = SmartSpiderMetrics.snapshot().installedGoals();
 		Spider spider = helper.spawn(EntityType.SPIDER, 2, 2, 2);
 
 		helper.assertTrue(
-			SmartSpiderMetrics.snapshot().installedGoals() == before + 6,
-			"Spider construction did not install blast evacuation, preparation, personal combat, and both carrier goals."
+			SmartSpiderMetrics.snapshot().installedGoals() == before + 7,
+			"Spider construction did not install evacuation, preparation, web ambush, personal combat, and carrier goals."
 		);
 		int intelligence = SpiderIntelligence.get(spider);
 		helper.assertTrue(intelligence >= 1 && intelligence <= 10, "Spider intelligence escaped the 1-10 range.");
@@ -47,6 +48,66 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 			"Natural spider name did not expose its stable intelligence."
 		);
 		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 90, padding = 4)
+	public void temporaryWebTrapPlacesAndRestoresItsPreviousBlock(final GameTestHelper helper) {
+		BlockPos relative = new BlockPos(5, 2, 2);
+		helper.setBlock(relative.below(), Blocks.STONE);
+		helper.setBlock(relative, Blocks.AIR);
+		BlockPos absolute = helper.absolutePos(relative);
+		long now = helper.getLevel().getGameTime();
+
+		helper.assertTrue(
+			SpiderWebTrapRegistry.tryPlace(helper.getLevel(), absolute, UUID.randomUUID(), now, 40),
+			"A supported air block did not accept a managed spider web trap."
+		);
+		helper.assertTrue(helper.getLevel().getBlockState(absolute).is(Blocks.COBWEB), "Managed trap did not place cobweb.");
+		helper.assertTrue(SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute), "Placed web was not registered.");
+		int[] elapsed = {0};
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			if (elapsed[0] < 45) {
+				return;
+			}
+			helper.assertTrue(helper.getLevel().getBlockState(absolute).isAir(), "Expired trap did not restore air.");
+			helper.assertTrue(
+				!SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute),
+				"Expired trap left a stale registry entry."
+			);
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 90, padding = 4)
+	public void temporaryWebCleanupPreservesPlayerReplacement(final GameTestHelper helper) {
+		BlockPos relative = new BlockPos(6, 2, 2);
+		helper.setBlock(relative.below(), Blocks.STONE);
+		helper.setBlock(relative, Blocks.AIR);
+		BlockPos absolute = helper.absolutePos(relative);
+		long now = helper.getLevel().getGameTime();
+
+		helper.assertTrue(
+			SpiderWebTrapRegistry.tryPlace(helper.getLevel(), absolute, UUID.randomUUID(), now, 40),
+			"Replacement-preservation fixture could not place its managed web."
+		);
+		helper.setBlock(relative, Blocks.OAK_PLANKS);
+		int[] elapsed = {0};
+		helper.onEachTick(() -> {
+			elapsed[0]++;
+			if (elapsed[0] < 45) {
+				return;
+			}
+			helper.assertTrue(
+				helper.getLevel().getBlockState(absolute).is(Blocks.OAK_PLANKS),
+				"Trap cleanup overwrote a block that had replaced the managed cobweb."
+			);
+			helper.assertTrue(
+				!SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute),
+				"Replaced trap left a stale registry entry."
+			);
+			helper.succeed();
+		});
 	}
 
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
@@ -66,6 +127,53 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(spider.getDeltaMovement().x > 0.35, "Pounce did not travel toward the target.");
 		helper.assertTrue(spider.getDeltaMovement().z > 0.0, "Pounce ignored the target's lateral movement.");
 		helper.assertTrue(spider.getDeltaMovement().y >= 0.40, "Pounce lacked its vertical launch component.");
+		goal.stop();
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void skilledSpiderPerformsReadableWindupAndTrapsPredictedFootfall(final GameTestHelper helper) {
+		for (int x = 1; x <= 12; x++) {
+			for (int z = 1; z <= 4; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
+				helper.setBlock(new BlockPos(x, 2, z), Blocks.AIR);
+			}
+		}
+		Spider spider = helper.spawn(EntityType.SPIDER, 2, 2, 2);
+		Villager target = helper.spawn(EntityType.VILLAGER, 7, 2, 2);
+		spider.setNoAi(true);
+		target.setNoAi(true);
+		spider.setOnGround(true);
+		target.setDeltaMovement(0.15, 0.0, 0.0);
+		SpiderIntelligence.set(spider, 10);
+		spider.setTarget(target);
+		spider.getSensing().tick();
+		long windupsBefore = SmartSpiderMetrics.snapshot().webTrapWindups();
+		long websBefore = SmartSpiderMetrics.snapshot().webTrapsPlaced();
+
+		SpiderWebTrapGoal goal = new SpiderWebTrapGoal(spider);
+		helper.assertTrue(goal.canUse(), "IQ-10 spider did not select a supported predicted web position.");
+		goal.start();
+		helper.assertTrue(
+			SmartSpiderMetrics.snapshot().webTrapWindups() == windupsBefore + 1,
+			"Web goal did not expose its windup telemetry."
+		);
+		for (int tick = 0; tick < 8; tick++) {
+			goal.tick();
+		}
+		helper.assertTrue(
+			SmartSpiderMetrics.snapshot().webTrapsPlaced() == websBefore + 1,
+			"Web goal reached its release frame without placing a trap."
+		);
+		boolean foundPredictedWeb = false;
+		for (int x = 7; x <= 11; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (helper.getBlockState(new BlockPos(x, 2, z)).is(Blocks.COBWEB)) {
+					foundPredictedWeb = true;
+				}
+			}
+		}
+		helper.assertTrue(foundPredictedWeb, "Spider did not place the web ahead of the moving target.");
 		goal.stop();
 		helper.succeed();
 	}

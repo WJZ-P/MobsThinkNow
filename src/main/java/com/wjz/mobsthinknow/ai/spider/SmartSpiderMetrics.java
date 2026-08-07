@@ -8,6 +8,9 @@ public final class SmartSpiderMetrics {
 	private static final AtomicLong FLANKS = new AtomicLong();
 	private static final AtomicLong POUNCES = new AtomicLong();
 	private static final AtomicLong REPOSITIONS = new AtomicLong();
+	private static final AtomicLong WEB_TRAP_WINDUPS = new AtomicLong();
+	private static final AtomicLong WEB_TRAPS_PLACED = new AtomicLong();
+	private static final AtomicLong WEB_TRAPS_EXPIRED = new AtomicLong();
 	private static final AtomicLong CARRIER_SEARCHES = new AtomicLong();
 	private static final AtomicLong CARRIER_CANDIDATE_CHECKS = new AtomicLong();
 	private static final AtomicLong CREEPERS_MOUNTED = new AtomicLong();
@@ -22,7 +25,7 @@ public final class SmartSpiderMetrics {
 	}
 
 	public static void goalsInstalled() {
-		INSTALLED_GOALS.addAndGet(6L);
+		INSTALLED_GOALS.addAndGet(7L);
 	}
 
 	public static void flankStarted() {
@@ -35,6 +38,18 @@ public final class SmartSpiderMetrics {
 
 	public static void repositionStarted() {
 		REPOSITIONS.incrementAndGet();
+	}
+
+	public static void webTrapWindup() {
+		WEB_TRAP_WINDUPS.incrementAndGet();
+	}
+
+	public static void webTrapPlaced() {
+		WEB_TRAPS_PLACED.incrementAndGet();
+	}
+
+	public static void webTrapExpired() {
+		WEB_TRAPS_EXPIRED.incrementAndGet();
 	}
 
 	public static void carrierSearch() {
@@ -81,6 +96,9 @@ public final class SmartSpiderMetrics {
 			FLANKS.get(),
 			POUNCES.get(),
 			REPOSITIONS.get(),
+			WEB_TRAP_WINDUPS.get(),
+			WEB_TRAPS_PLACED.get(),
+			WEB_TRAPS_EXPIRED.get(),
 			CARRIER_SEARCHES.get(),
 			CARRIER_CANDIDATE_CHECKS.get(),
 			CREEPERS_MOUNTED.get(),
@@ -98,6 +116,9 @@ public final class SmartSpiderMetrics {
 		long flanks,
 		long pounces,
 		long repositions,
+		long webTrapWindups,
+		long webTrapsPlaced,
+		long webTrapsExpired,
 		long carrierSearches,
 		long carrierCandidateChecks,
 		long creepersMounted,
