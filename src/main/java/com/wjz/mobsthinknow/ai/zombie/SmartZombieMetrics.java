@@ -54,6 +54,10 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong CASUALTY_RESPONSES_FINISHED = new AtomicLong();
 	private static final AtomicLong CASUALTY_GOALS_STARTED = new AtomicLong();
 	private static final AtomicLong CASUALTY_ESCORT_HITS = new AtomicLong();
+	private static final AtomicLong WEB_AMBUSHES_STARTED = new AtomicLong();
+	private static final AtomicLong WEB_AMBUSHES_COMMITTED = new AtomicLong();
+	private static final AtomicLong WEB_AMBUSHES_FINISHED = new AtomicLong();
+	private static final AtomicLong WEB_AMBUSH_ESCAPES = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -247,6 +251,22 @@ public final class SmartZombieMetrics {
 		CASUALTY_ESCORT_HITS.incrementAndGet();
 	}
 
+	public static void webAmbushStarted() {
+		WEB_AMBUSHES_STARTED.incrementAndGet();
+	}
+
+	public static void webAmbushCommitted() {
+		WEB_AMBUSHES_COMMITTED.incrementAndGet();
+	}
+
+	public static void webAmbushFinished() {
+		WEB_AMBUSHES_FINISHED.incrementAndGet();
+	}
+
+	public static void webAmbushEscaped() {
+		WEB_AMBUSH_ESCAPES.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -297,7 +317,11 @@ public final class SmartZombieMetrics {
 			CASUALTY_RESPONSES_STARTED.get(),
 			CASUALTY_RESPONSES_FINISHED.get(),
 			CASUALTY_GOALS_STARTED.get(),
-			CASUALTY_ESCORT_HITS.get()
+			CASUALTY_ESCORT_HITS.get(),
+			WEB_AMBUSHES_STARTED.get(),
+			WEB_AMBUSHES_COMMITTED.get(),
+			WEB_AMBUSHES_FINISHED.get(),
+			WEB_AMBUSH_ESCAPES.get()
 		);
 	}
 
@@ -350,7 +374,11 @@ public final class SmartZombieMetrics {
 		long casualtyResponsesStarted,
 		long casualtyResponsesFinished,
 		long casualtyGoalsStarted,
-		long casualtyEscortHits
+		long casualtyEscortHits,
+		long webAmbushesStarted,
+		long webAmbushesCommitted,
+		long webAmbushesFinished,
+		long webAmbushEscapes
 	) {
 	}
 }

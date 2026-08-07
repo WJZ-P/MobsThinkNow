@@ -18,6 +18,7 @@ import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gamerules.GameRules;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 临时蛛网的按维度登记、限流与原状恢复。
@@ -139,6 +140,13 @@ public final class SpiderWebTrapRegistry {
 	public static synchronized boolean isOwnedTrap(final ServerLevel level, final BlockPos pos) {
 		Map<BlockPos, Trap> traps = ACTIVE.get(level);
 		return traps != null && traps.containsKey(pos);
+	}
+
+	/** O(1) 所有权查询；协调器只有在目标脚下命中登记项后才会扫描对应小队确认成员关系。 */
+	public static synchronized @Nullable UUID ownerAt(final ServerLevel level, final BlockPos pos) {
+		Map<BlockPos, Trap> traps = ACTIVE.get(level);
+		Trap trap = traps == null ? null : traps.get(pos);
+		return trap == null || !level.getBlockState(pos).is(Blocks.COBWEB) ? null : trap.owner();
 	}
 
 	private static void restoreIfStillOwned(

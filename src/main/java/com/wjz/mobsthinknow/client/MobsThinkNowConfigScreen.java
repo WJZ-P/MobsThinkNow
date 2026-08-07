@@ -592,6 +592,14 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadFiringLaneReservations = value))
 			.build());
 		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_web_ambush_followup"),
+			config.squadWebAmbushFollowup
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_web_ambush_followup.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadWebAmbushFollowup = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.squad_threat_distribution"),
 			config.squadThreatDistribution
 		)

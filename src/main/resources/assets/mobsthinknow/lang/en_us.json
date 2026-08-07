@@ -339,5 +339,7 @@
 	"mobsthinknow.config.squad_casualty_health_threshold": "Casualty Health Threshold (%)",
 	"mobsthinknow.config.squad_casualty_health_threshold.tooltip": "Range: 10%-50%, default 30%. The response ends after recovery to threshold plus 20%, reaching 10 blocks from the threat, or timing out.",
 	"mobsthinknow.config.squad_casualty_response_ticks": "Extraction Window (ticks)",
-	"mobsthinknow.config.squad_casualty_response_ticks.tooltip": "Range: 40-120, default 60 (3 seconds). A fixed 80-tick cooldown after each response prevents a low-health member from retreating forever."
+	"mobsthinknow.config.squad_casualty_response_ticks.tooltip": "Range: 40-120, default 60 (3 seconds). A fixed 80-tick cooldown after each response prevents a low-health member from retreating forever.",
+	"mobsthinknow.config.squad_web_ambush_followup": "Web-Controlled Squad Ambush",
+	"mobsthinknow.config.squad_web_ambush_followup.tooltip": "When a target enters a temporary web placed by this squad's spider, the leader grants skeletons a six-tick staggered volley window, then releases melee, carrier, and demolition members for a 24-tick synchronized charge. Escaping before the order cancels the charge; each squad then cools down for 120 ticks."
 }

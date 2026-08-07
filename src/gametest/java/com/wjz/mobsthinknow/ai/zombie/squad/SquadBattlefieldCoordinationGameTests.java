@@ -3,6 +3,9 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
+import com.wjz.mobsthinknow.ai.spider.SpiderWebTrapRegistry;
+import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import java.lang.reflect.Method;
@@ -11,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
@@ -28,6 +32,7 @@ import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 /** 验证小队黑板、爆点预约、射击走廊与有限多目标分兵在真实服务器实体上的连接。 */
@@ -277,6 +282,107 @@ public final class SquadBattlefieldCoordinationGameTests implements CustomTestMe
 			);
 			escortGoal.stop();
 			casualtyGoal.stop();
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 200, padding = 4)
+	public void squadSpiderWebTriggersVolleyThenSynchronizedCharge(final GameTestHelper helper) {
+		Spider trapper = helper.spawn(EntityType.SPIDER, 5, 2, 3);
+		Skeleton archer = helper.spawn(EntityType.SKELETON, 4, 2, 2);
+		Zombie charger = helper.spawn(EntityType.ZOMBIE, 6, 2, 2);
+		Villager target = helper.spawn(EntityType.VILLAGER, 14, 2, 2);
+		prepare(trapper, target);
+		prepare(archer, target);
+		prepare(charger, target);
+		prepare(target);
+		SpiderIntelligence.set(trapper, 10);
+		SkeletonIntelligence.set(archer, 9);
+		ZombieIntelligence.set(charger, 8);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		BlockPos webRelative = new BlockPos(12, 2, 5);
+		helper.setBlock(webRelative.below(), Blocks.STONE);
+		helper.setBlock(webRelative, Blocks.AIR);
+		BlockPos webPosition = helper.absolutePos(webRelative);
+		Vec3 battlePosition = Vec3.atBottomCenterOf(webPosition);
+		long ambushesBefore = SmartZombieMetrics.snapshot().webAmbushesStarted();
+		long commitsBefore = SmartZombieMetrics.snapshot().webAmbushesCommitted();
+		boolean[] madeEmergencyContact = {false};
+		boolean[] restoredBattlePosition = {false};
+		boolean[] placedWeb = {false};
+		long[] announcedCommitAt = {Long.MAX_VALUE};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			heartbeat(coordinator, List.of(trapper, archer, charger), target, now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(charger);
+			if (view == null) {
+				return;
+			}
+			if (view.state() != SquadState.ENGAGING) {
+				if (!madeEmergencyContact[0]) {
+					madeEmergencyContact[0] = true;
+					target.snapTo(charger.getX() + 1.5, charger.getY(), charger.getZ(), 0.0F, 0.0F);
+				}
+				return;
+			}
+			if (!restoredBattlePosition[0]) {
+				restoredBattlePosition[0] = true;
+				target.snapTo(
+					battlePosition.x,
+					battlePosition.y,
+					battlePosition.z,
+					target.getYRot(),
+					target.getXRot()
+				);
+				return;
+			}
+			if (!placedWeb[0]) {
+				placedWeb[0] = SpiderWebTrapRegistry.tryPlace(
+					helper.getLevel(),
+					webPosition,
+					trapper.getUUID(),
+					now,
+					80
+				);
+				helper.assertTrue(placedWeb[0], "Squad web-ambush fixture could not place a managed trap at the target.");
+				return;
+			}
+			if (!view.webAmbushActive()) {
+				return;
+			}
+
+			SquadDirective chargerOrder = coordinator.directiveFor(charger);
+			SquadDirective archerOrder = coordinator.directiveFor(archer);
+			helper.assertTrue(chargerOrder != null && archerOrder != null, "Web ambush lost a member directive.");
+			if (view.combatBeat() == SquadCombatBeat.SUPPRESS) {
+				if (announcedCommitAt[0] == Long.MAX_VALUE) {
+					announcedCommitAt[0] = view.combatExecuteAt();
+				}
+				helper.assertTrue(
+					!chargerOrder.allowsMeleeAttack() && archerOrder.allowsRangedAttack(),
+					"Web contact did not hold melee while opening the staggered volley window."
+				);
+				helper.assertTrue(
+					SmartZombieMetrics.snapshot().webAmbushesStarted() > ambushesBefore,
+					"Web-controlled opportunity was absent from diagnostics."
+				);
+				return;
+			}
+
+			if (announcedCommitAt[0] == Long.MAX_VALUE || now < announcedCommitAt[0]) {
+				return;
+			}
+			helper.assertTrue(view.combatBeat() == SquadCombatBeat.COMMIT, "Web volley did not transition into COMMIT.");
+			helper.assertTrue(
+				chargerOrder.allowsMeleeAttack() && archerOrder.allowsRangedAttack(),
+				"The synchronized charge failed to release both melee and ranged roles."
+			);
+			helper.assertTrue(
+				SmartZombieMetrics.snapshot().webAmbushesCommitted() > commitsBefore,
+				"The committed web follow-up was absent from diagnostics."
+			);
 			helper.succeed();
 		});
 	}

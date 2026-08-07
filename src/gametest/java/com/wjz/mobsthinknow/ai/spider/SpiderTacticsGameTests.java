@@ -57,13 +57,15 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		helper.setBlock(relative, Blocks.AIR);
 		BlockPos absolute = helper.absolutePos(relative);
 		long now = helper.getLevel().getGameTime();
+		UUID owner = UUID.randomUUID();
 
 		helper.assertTrue(
-			SpiderWebTrapRegistry.tryPlace(helper.getLevel(), absolute, UUID.randomUUID(), now, 40),
+			SpiderWebTrapRegistry.tryPlace(helper.getLevel(), absolute, owner, now, 40),
 			"A supported air block did not accept a managed spider web trap."
 		);
 		helper.assertTrue(helper.getLevel().getBlockState(absolute).is(Blocks.COBWEB), "Managed trap did not place cobweb.");
 		helper.assertTrue(SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute), "Placed web was not registered.");
+		helper.assertTrue(owner.equals(SpiderWebTrapRegistry.ownerAt(helper.getLevel(), absolute)), "Trap owner was not queryable.");
 		int[] elapsed = {0};
 		helper.onEachTick(() -> {
 			elapsed[0]++;

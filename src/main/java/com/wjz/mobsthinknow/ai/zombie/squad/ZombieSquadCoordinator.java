@@ -11,6 +11,7 @@ import com.wjz.mobsthinknow.ai.skeleton.SkeletonShotSafety;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
+import com.wjz.mobsthinknow.ai.spider.SpiderWebTrapRegistry;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
 import com.wjz.mobsthinknow.ai.zombie.ZombieBodyAction;
@@ -35,10 +36,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
@@ -152,6 +156,12 @@ public final class ZombieSquadCoordinator {
 	public static int activeCasualtyResponses() {
 		return COORDINATORS.values().stream().mapToInt(coordinator -> (int)coordinator.squads.values().stream()
 			.filter(squad -> !squad.casualtyDirectives.isEmpty())
+			.count()).sum();
+	}
+
+	public static int activeWebAmbushes() {
+		return COORDINATORS.values().stream().mapToInt(coordinator -> (int)coordinator.squads.values().stream()
+			.filter(squad -> squad.webAmbushStartedAt != Long.MIN_VALUE)
 			.count()).sum();
 	}
 
@@ -768,6 +778,7 @@ public final class ZombieSquadCoordinator {
 			combatWindow.cycle(),
 			combatWindow.beat(),
 			combatWindow.executeAt(),
+			squad.webAmbushStartedAt != Long.MIN_VALUE,
 			squad.deploymentReadyFraction,
 			squad.memberIds.size()
 		);
@@ -775,7 +786,14 @@ public final class ZombieSquadCoordinator {
 
 	private SquadCombatCadence.Window combatWindowFor(final ZombieSquad squad, final long now) {
 		if (squad.state == SquadState.ENGAGING && squad.firstCommitAt != Long.MAX_VALUE) {
-			return SquadCombatCadence.combatWindow(squad.firstCommitAt, now);
+			SquadCombatCadence.Window normal = SquadCombatCadence.combatWindow(squad.firstCommitAt, now);
+			SquadCombatCadence.Window ambush = SquadWebAmbushTiming.window(
+				squad.webAmbushStartedAt,
+				squad.webAmbushLastConfirmedAt,
+				now,
+				normal.cycle()
+			);
+			return ambush == null ? normal : ambush;
 		}
 		if (squad.state == SquadState.DEPLOYING && squad.firstCommitAt != Long.MAX_VALUE) {
 			return SquadCombatCadence.deploymentWindow(squad.commitArmedAt, squad.firstCommitAt, now);
@@ -1461,6 +1479,7 @@ public final class ZombieSquadCoordinator {
 				}
 			}
 			case ENGAGING -> {
+				this.refreshWebAmbushOpportunity(squad, config, now);
 				SquadCombatCadence.Window combatWindow = this.combatWindowFor(squad, now);
 				if (combatWindow.beat() != squad.lastCombatBeat) {
 					this.transitionCombatBeat(squad, config, combatWindow.beat(), now);
@@ -1532,6 +1551,137 @@ public final class ZombieSquadCoordinator {
 			}
 		}
 		return candidates;
+	}
+
+	/**
+	 * 每队每 tick 只查目标脚下、上下三格的蛛网登记；只有 O(1) 命中后才做一次有上限的 O(K)
+	 * 成员所有权确认。这样跨物种联动不会把临时蛛网表或世界实体变成新的扫描热点。
+	 */
+	private void refreshWebAmbushOpportunity(
+		final ZombieSquad squad,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		if (!config.squadWebAmbushFollowup || !(squad.target.level() instanceof ServerLevel level)) {
+			if (squad.webAmbushStartedAt != Long.MIN_VALUE) {
+				this.clearWebAmbush(squad, now);
+			}
+			return;
+		}
+
+		UUID trapOwner = this.webTrapOwnerAtTarget(level, squad.target);
+		int ownerId = trapOwner == null ? 0 : this.squadSpiderId(squad, trapOwner);
+		if (squad.webAmbushStartedAt != Long.MIN_VALUE) {
+			if (ownerId != 0) {
+				squad.webAmbushOwnerId = ownerId;
+				squad.webAmbushLastConfirmedAt = now;
+			}
+			long normalCycle = squad.firstCommitAt == Long.MAX_VALUE
+				? 0L
+				: SquadCombatCadence.combatWindow(squad.firstCommitAt, now).cycle();
+			SquadCombatCadence.Window active = SquadWebAmbushTiming.window(
+				squad.webAmbushStartedAt,
+				squad.webAmbushLastConfirmedAt,
+				now,
+				normalCycle
+			);
+			if (active == null) {
+				this.clearWebAmbush(squad, now);
+				return;
+			}
+			if (active.beat() == SquadCombatBeat.COMMIT && !squad.webAmbushCommitAnnounced) {
+				squad.webAmbushCommitAnnounced = true;
+				SmartZombieMetrics.webAmbushCommitted();
+				this.announceWebAmbushCommit(level, squad);
+			}
+			return;
+		}
+
+		if (ownerId == 0 || now < squad.nextWebAmbushAt) {
+			return;
+		}
+		squad.webAmbushStartedAt = now;
+		squad.webAmbushLastConfirmedAt = now;
+		squad.webAmbushOwnerId = ownerId;
+		squad.webAmbushCommitAnnounced = false;
+		squad.combatEpoch++;
+		SmartZombieMetrics.webAmbushStarted();
+		this.announceWebAmbushStart(level, squad, ownerId);
+	}
+
+	private @Nullable UUID webTrapOwnerAtTarget(final ServerLevel level, final LivingEntity target) {
+		BlockPos feet = target.blockPosition();
+		UUID owner = SpiderWebTrapRegistry.ownerAt(level, feet);
+		if (owner == null) {
+			owner = SpiderWebTrapRegistry.ownerAt(level, feet.below());
+		}
+		return owner == null ? SpiderWebTrapRegistry.ownerAt(level, feet.above()) : owner;
+	}
+
+	private int squadSpiderId(final ZombieSquad squad, final UUID owner) {
+		for (int memberId : squad.memberIds) {
+			MemberRecord member = this.members.get(memberId);
+			if (member != null
+				&& member.mob instanceof Spider
+				&& member.mob.isAlive()
+				&& member.mob.getUUID().equals(owner)) {
+				return memberId;
+			}
+		}
+		return 0;
+	}
+
+	private void announceWebAmbushStart(
+		final ServerLevel level,
+		final ZombieSquad squad,
+		final int ownerId
+	) {
+		MemberRecord owner = this.members.get(ownerId);
+		if (owner == null || !(owner.mob instanceof Spider spider)) {
+			return;
+		}
+		spider.getLookControl().setLookAt(squad.target, 65.0F, 45.0F);
+		if (spider.onGround()) {
+			Vec3 movement = spider.getDeltaMovement();
+			spider.setDeltaMovement(movement.x * 0.40, Math.max(movement.y, 0.18), movement.z * 0.40);
+		}
+		level.playSound(null, spider, SoundEvents.SPIDER_AMBIENT, SoundSource.HOSTILE, 0.95F, 1.38F);
+	}
+
+	private void announceWebAmbushCommit(final ServerLevel level, final ZombieSquad squad) {
+		MemberRecord leader = this.members.get(squad.leaderId);
+		if (leader == null || !leader.mob.isAlive()) {
+			return;
+		}
+		leader.mob.getLookControl().setLookAt(squad.target, 65.0F, 45.0F);
+		leader.mob.setAggressive(true);
+		if (leader.mob instanceof Zombie zombie) {
+			ZombieBodyLanguage.play(zombie, ZombieBodyAction.WAR_CRY);
+		}
+		var sound = leader.mob instanceof AbstractSkeleton
+			? SoundEvents.SKELETON_AMBIENT
+			: leader.mob instanceof Spider
+				? SoundEvents.SPIDER_AMBIENT
+				: leader.mob instanceof Creeper
+					? SoundEvents.CREEPER_HURT
+					: SoundEvents.ZOMBIE_AMBIENT;
+		level.playSound(null, leader.mob, sound, SoundSource.HOSTILE, 1.0F, 0.82F);
+	}
+
+	private void clearWebAmbush(final ZombieSquad squad, final long now) {
+		if (squad.webAmbushStartedAt == Long.MIN_VALUE) {
+			return;
+		}
+		if (squad.webAmbushCommitAnnounced) {
+			SmartZombieMetrics.webAmbushFinished();
+		} else {
+			SmartZombieMetrics.webAmbushEscaped();
+		}
+		squad.nextWebAmbushAt = Math.max(squad.nextWebAmbushAt, now + 120L);
+		squad.webAmbushStartedAt = Long.MIN_VALUE;
+		squad.webAmbushLastConfirmedAt = Long.MIN_VALUE;
+		squad.webAmbushOwnerId = 0;
+		squad.webAmbushCommitAnnounced = false;
 	}
 
 	/**
@@ -2497,6 +2647,9 @@ public final class ZombieSquadCoordinator {
 		if (state != SquadState.ENGAGING && !squad.casualtyDirectives.isEmpty()) {
 			this.clearCasualtyResponse(squad, now, false);
 		}
+		if (state != SquadState.ENGAGING && squad.webAmbushStartedAt != Long.MIN_VALUE) {
+			this.clearWebAmbush(squad, now);
+		}
 		squad.state = state;
 		squad.stateStartedAt = now;
 		squad.stateDeadline = deadline;
@@ -2839,6 +2992,7 @@ public final class ZombieSquadCoordinator {
 		long combatCycle,
 		SquadCombatBeat combatBeat,
 		long combatExecuteAt,
+		boolean webAmbushActive,
 		double deploymentReadyFraction,
 		int memberCount
 	) {
@@ -2880,6 +3034,11 @@ public final class ZombieSquadCoordinator {
 		private int casualtyEscortId;
 		private long casualtyResponseEndsAt = Long.MIN_VALUE;
 		private long nextCasualtyResponseAt = Long.MIN_VALUE;
+		private long webAmbushStartedAt = Long.MIN_VALUE;
+		private long webAmbushLastConfirmedAt = Long.MIN_VALUE;
+		private long nextWebAmbushAt = Long.MIN_VALUE;
+		private int webAmbushOwnerId;
+		private boolean webAmbushCommitAnnounced;
 		private int leaderId;
 		private int term;
 		private int planEpoch;
