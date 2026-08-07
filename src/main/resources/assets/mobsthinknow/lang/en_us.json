@@ -343,5 +343,7 @@
 	"mobsthinknow.config.squad_web_ambush_followup": "Web-Controlled Squad Ambush",
 	"mobsthinknow.config.squad_web_ambush_followup.tooltip": "When a target enters a temporary web placed by this squad's spider, the leader grants skeletons a six-tick staggered volley window, then releases melee, carrier, and demolition members for a 24-tick synchronized charge. Escaping before the order cancels the charge; each squad then cools down for 120 ticks.",
 	"mobsthinknow.config.squad_spider_casualty_transport": "Spider Casualty Transport",
-	"mobsthinknow.config.squad_spider_casualty_transport.tooltip": "When no healthy shield bearer is available, an idle spider with intelligence 6 or higher is preferred over an unshielded walking escort. The casualty visibly leaps onto its back, rides away from the threat, and dismounts at a safe position."
+	"mobsthinknow.config.squad_spider_casualty_transport.tooltip": "When no healthy shield bearer is available, an idle spider with intelligence 6 or higher is preferred over an unshielded walking escort. The casualty visibly leaps onto its back, rides away from the threat, and dismounts at a safe position.",
+	"mobsthinknow.config.squad_shield_wall_rotation": "Rotating Shield Wall",
+	"mobsthinknow.config.squad_shield_wall_rotation.tooltip": "In shield-wedge or combined-arms plans, two or more frontal shield bearers take distinct slots in rows of up to five. Everyone guards while holding formation; during commit and exploit windows only one member attacks every 16 ticks while the others maintain cover."
 }

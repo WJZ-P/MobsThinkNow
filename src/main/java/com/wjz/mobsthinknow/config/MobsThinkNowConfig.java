@@ -305,6 +305,8 @@ public final class MobsThinkNowConfig {
 	public boolean squadFiringLaneReservations = true;
 	/** 目标踩中本队蜘蛛的临时蛛网时，先触发短齐射，再让近战与爆破成员同步冲锋。 */
 	public boolean squadWebAmbushFollowup = true;
+	/** 两名以上盾卫组成多排盾墙，持阵时全员举盾，进攻窗口每次只轮换一人放盾出击。 */
+	public boolean squadShieldWallRotation = true;
 	/** 真实攻击者和可见新目标可吸引最多 40% 的合格成员，首领与多数成员保持主目标。 */
 	public boolean squadThreatDistribution = true;
 	/** 交战中只撤出生命最低的一名伤员，并由最近的健康盾兵/近战成员卡住追击路线。 */

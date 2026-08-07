@@ -36,6 +36,7 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong AXE_WINDUPS = new AtomicLong();
 	private static final AtomicLong SHIELD_BASHES = new AtomicLong();
 	private static final AtomicLong SHIELD_BASH_HITS = new AtomicLong();
+	private static final AtomicLong SHIELD_WALL_ROTATIONS = new AtomicLong();
 	private static final AtomicLong LEADER_SOCIAL_GESTURES = new AtomicLong();
 	private static final AtomicLong MEMBER_SOCIAL_GESTURES = new AtomicLong();
 	private static final AtomicLong BRIEFING_ROUTE_CHECKS = new AtomicLong();
@@ -179,6 +180,10 @@ public final class SmartZombieMetrics {
 		SHIELD_BASH_HITS.incrementAndGet();
 	}
 
+	public static void shieldWallRotation() {
+		SHIELD_WALL_ROTATIONS.incrementAndGet();
+	}
+
 	public static void leaderSocialGesture() {
 		LEADER_SOCIAL_GESTURES.incrementAndGet();
 	}
@@ -300,6 +305,7 @@ public final class SmartZombieMetrics {
 			AXE_WINDUPS.get(),
 			SHIELD_BASHES.get(),
 			SHIELD_BASH_HITS.get(),
+			SHIELD_WALL_ROTATIONS.get(),
 			LEADER_SOCIAL_GESTURES.get(),
 			MEMBER_SOCIAL_GESTURES.get(),
 			BRIEFING_ROUTE_CHECKS.get(),
@@ -357,6 +363,7 @@ public final class SmartZombieMetrics {
 		long axeWindups,
 		long shieldBashes,
 		long shieldBashHits,
+		long shieldWallRotations,
 		long leaderSocialGestures,
 		long memberSocialGestures,
 		long briefingRouteChecks,

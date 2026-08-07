@@ -14,6 +14,7 @@ import org.jspecify.annotations.Nullable;
  * @param combatExecuteAt 当前节拍等待的统一执行 tick
  * @param combatBeatEndsAt 当前节拍结束 tick
  * @param assaultPlan 本轮按首领智力与队伍构成冻结的总攻方案
+ * @param shieldOrder 盾阵成员当前的举盾/出击职责；非盾阵成员为 NONE
  */
 public record SquadDirective(
 	long squadId,
@@ -30,6 +31,7 @@ public record SquadDirective(
 	SquadRole role,
 	@Nullable Vec3 destination,
 	@Nullable Vec3 focusPosition,
+	SquadShieldOrder shieldOrder,
 	boolean hasSharedTargetMemory
 ) {
 	public boolean isMeetingPhase() {

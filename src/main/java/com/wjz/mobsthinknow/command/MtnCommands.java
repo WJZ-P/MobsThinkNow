@@ -463,6 +463,11 @@ public final class MtnCommands {
 				metrics.webAmbushEscapes(),
 				ZombieSquadCoordinator.activeWebAmbushes()
 			);
+		message += ", shieldWallRotations=%d, activeShieldWalls=%d"
+			.formatted(
+				metrics.shieldWallRotations(),
+				ZombieSquadCoordinator.activeShieldWalls()
+			);
 		message += ", sharedDangers=%d, dangersAvoided=%d, activeDangerCells=%d, secondaryThreats=%d, threatReassignments=%d, activeSecondaryTargets=%d, firingLanesReserved=%d, alliesClearedLanes=%d, activeFiringLanes=%d, blastReservations=%d, blastConflicts=%d, blastReleases=%d, activeBlastReservations=%d"
 			.formatted(
 				metrics.sharedDangersReported(),

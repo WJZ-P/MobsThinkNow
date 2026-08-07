@@ -343,5 +343,7 @@
 	"mobsthinknow.config.squad_web_ambush_followup": "蛛网控场协同伏击",
 	"mobsthinknow.config.squad_web_ambush_followup.tooltip": "目标踩中本队蜘蛛放置的临时蛛网后，首领先给骷髅 6 tick 的错峰齐射窗口，再让近战、载具与爆破成员同步冲锋 24 tick。目标在口令前挣脱会取消冲锋，每队触发后冷却 120 tick。",
 	"mobsthinknow.config.squad_spider_casualty_transport": "蜘蛛战地救护",
-	"mobsthinknow.config.squad_spider_casualty_transport.tooltip": "没有健康盾卫时，空闲且智力至少 6 的蜘蛛会优先于无盾步行护卫。伤员会用可见跳跃登上蛛背，远离威胁后再从安全位置下客。"
+	"mobsthinknow.config.squad_spider_casualty_transport.tooltip": "没有健康盾卫时，空闲且智力至少 6 的蜘蛛会优先于无盾步行护卫。伤员会用可见跳跃登上蛛背，远离威胁后再从安全位置下客。",
+	"mobsthinknow.config.squad_shield_wall_rotation": "盾墙轮换出击",
+	"mobsthinknow.config.squad_shield_wall_rotation.tooltip": "盾楔或联合兵种方案中，两名以上正面盾卫会站入最多五只一排的独立阵位。持阵时全员举盾，突击与追击窗口每 16 tick 仅放行一名成员攻击，其余成员持续掩护。"
 }

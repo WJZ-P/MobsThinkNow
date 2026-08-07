@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadShieldOrder;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -47,10 +48,21 @@ final class ZombieShieldCombat {
 		this.zombie = zombie;
 	}
 
+	/** 保留单兵测试和旧调用入口；没有小队职责时行为与原状态机完全一致。 */
 	void tick(
 		final LivingEntity target,
 		final MobsThinkNowConfig config,
 		final boolean hasLineOfSight
+	) {
+		this.tick(target, config, hasLineOfSight, SquadShieldOrder.NONE, true);
+	}
+
+	void tick(
+		final LivingEntity target,
+		final MobsThinkNowConfig config,
+		final boolean hasLineOfSight,
+		final SquadShieldOrder squadOrder,
+		final boolean reachedShieldWallSlot
 	) {
 		// 新生成的盾卫立即带图案；旧存档中的普通原版盾也在首次进入盾牌状态机时平滑升级。
 		ZombieShieldDesign.decorateIfPlain(this.zombie);
@@ -66,6 +78,14 @@ final class ZombieShieldCombat {
 		}
 
 		double distanceSquared = this.zombie.distanceToSqr(target);
+		if (squadOrder == SquadShieldOrder.GUARD) {
+			this.tickSquadGuard(target, reachedShieldWallSlot);
+			return;
+		}
+		if (squadOrder == SquadShieldOrder.STRIKE) {
+			this.tickSquadStrike(target, now, distanceSquared);
+			return;
+		}
 		if (this.phase == Phase.INACTIVE) {
 			if (distanceSquared > SHIELD_RAISE_DISTANCE_SQUARED) {
 				return;
@@ -119,6 +139,66 @@ final class ZombieShieldCombat {
 				this.beginStrike(now);
 			}
 		}
+	}
+
+	/**
+	 * 盾墙闭合时始终举盾；在抵达自己的横向槽位前仍允许导航，避免旧版一进入近战距离
+	 * 就停步，导致多名盾卫再次堆回同一个点。
+	 */
+	private void tickSquadGuard(final LivingEntity target, final boolean reachedShieldWallSlot) {
+		this.cancelOffensiveState();
+		ZombieShieldMemory.discard(this.zombie);
+		this.raiseShield();
+		if (reachedShieldWallSlot && this.zombie.isWithinMeleeAttackRange(target)) {
+			this.phase = Phase.GUARDING;
+			this.zombie.getNavigation().stop();
+			return;
+		}
+		this.phase = Phase.APPROACHING;
+	}
+
+	/** 唯一轮到的出击者明确放盾；若武器仍在冷却，则先守住缝隙而不是空挥。 */
+	private void tickSquadStrike(
+		final LivingEntity target,
+		final long now,
+		final double distanceSquared
+	) {
+		if (distanceSquared > SHIELD_LOWER_DISTANCE_SQUARED) {
+			this.deactivate();
+			return;
+		}
+		if (this.phase == Phase.RECOVERING && now < this.strikeDeadline) {
+			this.lowerShield();
+			return;
+		}
+		if (!this.zombie.isWithinMeleeAttackRange(target)) {
+			this.cancelOffensiveState();
+			this.lowerShield();
+			this.phase = Phase.APPROACHING;
+			return;
+		}
+		if (now < this.nextStrikeAt) {
+			this.cancelOffensiveState();
+			this.raiseShield();
+			this.phase = Phase.GUARDING;
+			this.zombie.getNavigation().stop();
+			return;
+		}
+		if (this.phase != Phase.STRIKING || now >= this.strikeDeadline) {
+			this.beginStrike(now);
+		}
+		this.lowerShield();
+	}
+
+	private void cancelOffensiveState() {
+		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SHIELD_BASH);
+		this.guardDeadline = Long.MIN_VALUE;
+		this.counterStrikeAt = Long.MIN_VALUE;
+		this.strikeDeadline = Long.MIN_VALUE;
+		this.bashHitAt = Long.MIN_VALUE;
+		this.counterPending = false;
+		this.bashPending = false;
+		this.bashHitApplied = false;
 	}
 
 	void onAttackPerformed(final LivingEntity target) {

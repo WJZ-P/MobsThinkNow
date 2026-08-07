@@ -729,6 +729,93 @@ public final class SquadBattlefieldCoordinationGameTests implements CustomTestMe
 		});
 	}
 
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 220, padding = 4)
+	public void shieldWallUsesDistinctSlotsAndRotatesOneStriker(final GameTestHelper helper) {
+		Zombie firstShield = helper.spawn(EntityType.ZOMBIE, 2, 2, 2);
+		Zombie secondShield = helper.spawn(EntityType.ZOMBIE, 3, 2, 3);
+		Skeleton fireSupport = helper.spawn(EntityType.SKELETON, 4, 2, 2);
+		Villager target = helper.spawn(EntityType.VILLAGER, 14, 2, 2);
+		List<Mob> members = List.of(firstShield, secondShield, fireSupport);
+		prepare(target);
+		prepare(firstShield, target);
+		prepare(secondShield, target);
+		prepare(fireSupport, target);
+		firstShield.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+		secondShield.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+		ZombieIntelligence.set(firstShield, 10);
+		ZombieIntelligence.set(secondShield, 9);
+		SkeletonIntelligence.set(fireSupport, 8);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		long rotationsBefore = SmartZombieMetrics.snapshot().shieldWallRotations();
+		boolean[] checkedFormation = {false};
+		int[] firstStrikerId = {0};
+		long[] firstStrikeAt = {Long.MIN_VALUE};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			heartbeat(coordinator, members, target, now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(firstShield);
+			if (view == null) {
+				return;
+			}
+
+			SquadDirective firstOrder = coordinator.directiveFor(firstShield);
+			SquadDirective secondOrder = coordinator.directiveFor(secondShield);
+			helper.assertTrue(firstOrder != null && secondOrder != null, "Shield-wall members lost their directives.");
+			helper.assertTrue(view.shieldWallActive(), "A two-shield wedge was not registered as an active wall.");
+
+			if (view.state() != SquadState.ENGAGING) {
+				if (view.state() == SquadState.DEPLOYING) {
+					helper.assertTrue(
+						firstOrder.shieldOrder() == SquadShieldOrder.GUARD
+							&& secondOrder.shieldOrder() == SquadShieldOrder.GUARD,
+						"A deploying shield wall opened before the synchronized assault."
+					);
+					helper.assertTrue(
+						firstOrder.destination() != null && secondOrder.destination() != null,
+						"Shield-wall deployment omitted a member slot."
+					);
+					helper.assertTrue(
+						horizontalDistance(firstOrder.destination(), secondOrder.destination()) >= 1.20,
+						"Two shield bearers were still stacked on the same destination."
+					);
+					checkedFormation[0] = true;
+				}
+				for (Mob member : members) {
+					SquadDirective order = coordinator.directiveFor(member);
+					if (order != null && order.destination() != null) {
+						Vec3 destination = order.destination();
+						member.snapTo(destination.x, destination.y, destination.z, member.getYRot(), member.getXRot());
+					}
+				}
+				return;
+			}
+
+			helper.assertTrue(checkedFormation[0], "The squad skipped readable shield-wall deployment.");
+			int strikeCount = (firstOrder.shieldOrder() == SquadShieldOrder.STRIKE ? 1 : 0)
+				+ (secondOrder.shieldOrder() == SquadShieldOrder.STRIKE ? 1 : 0);
+			helper.assertTrue(strikeCount == 1, "The attack window opened zero or multiple holes in the shield wall.");
+			int currentStrikerId = firstOrder.shieldOrder() == SquadShieldOrder.STRIKE
+				? firstShield.getId()
+				: secondShield.getId();
+			if (firstStrikerId[0] == 0) {
+				firstStrikerId[0] = currentStrikerId;
+				firstStrikeAt[0] = now;
+				return;
+			}
+			if (now - firstStrikeAt[0] < SquadShieldWallPlanner.ROTATION_TICKS) {
+				return;
+			}
+			helper.assertTrue(currentStrikerId != firstStrikerId[0], "The same shield bearer kept every attack turn.");
+			helper.assertTrue(
+				SmartZombieMetrics.snapshot().shieldWallRotations() > rotationsBefore,
+				"Shield-wall rotation was absent from diagnostics."
+			);
+			helper.succeed();
+		});
+	}
+
 	@Override
 	public void invokeTestMethod(final GameTestHelper helper, final Method method) throws ReflectiveOperationException {
 		method.invoke(this, helper);

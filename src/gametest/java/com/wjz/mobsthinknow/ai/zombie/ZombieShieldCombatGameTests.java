@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadShieldOrder;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.lang.reflect.Method;
@@ -16,6 +17,24 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 public final class ZombieShieldCombatGameTests implements CustomTestMethodInvoker {
+	@GameTest(maxTicks = 20)
+	public void squadShieldOrderKeepsMovingUntilSlotThenOpensOneStrike(final GameTestHelper helper) {
+		ShieldFixture fixture = this.createFixture(helper);
+
+		fixture.combat().tick(fixture.target(), fixture.config(), true, SquadShieldOrder.GUARD, false);
+		helper.assertTrue(fixture.zombie().isUsingItem(), "A moving wall member did not raise its shield.");
+		helper.assertTrue(!fixture.combat().holdsPosition(), "A wall member stopped before reaching its own slot.");
+
+		fixture.combat().tick(fixture.target(), fixture.config(), true, SquadShieldOrder.GUARD, true);
+		helper.assertTrue(fixture.combat().holdsPosition(), "A wall member did not lock its reached slot.");
+		helper.assertTrue(!fixture.combat().isStrikeWindow(), "Guard duty accidentally opened an attack window.");
+
+		fixture.combat().tick(fixture.target(), fixture.config(), true, SquadShieldOrder.STRIKE, true);
+		helper.assertTrue(fixture.combat().isStrikeWindow(), "Strike duty did not release the selected wall member.");
+		helper.assertTrue(!fixture.zombie().isUsingItem(), "The selected striker attacked without lowering its shield.");
+		helper.succeed();
+	}
+
 	@GameTest(maxTicks = 40)
 	public void fullyBlockedHitDoesNotRestartHurtAnimation(final GameTestHelper helper) {
 		ShieldFixture fixture = this.createFixture(helper);

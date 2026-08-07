@@ -187,6 +187,16 @@ public final class ZombieSquadCoordinator {
 			.count()).sum();
 	}
 
+	public static int activeShieldWalls() {
+		if (!ConfigManager.get().squadShieldWallRotation) {
+			return 0;
+		}
+		return COORDINATORS.values().stream().mapToInt(coordinator -> (int)coordinator.squads.values().stream()
+			.filter(squad -> squad.shieldWallMemberIds.size() >= 2
+				&& (squad.state == SquadState.DEPLOYING || squad.state == SquadState.ENGAGING))
+			.count()).sum();
+	}
+
 	/**
 	 * 死亡结算前恢复职业名牌，避免每只小队僵尸阵亡都触发原版
 	 * “Named entity ... died” 的 INFO 日志（那是给玩家命名牌实体保留的行为）。
@@ -394,6 +404,13 @@ public final class ZombieSquadCoordinator {
 			now,
 			ConfigManager.get().targetMemoryTicks
 		);
+		SquadShieldOrder shieldOrder = this.shieldOrderFor(
+			squad,
+			mob.getId(),
+			combatWindow,
+			now,
+			ConfigManager.get()
+		);
 
 		return new SquadDirective(
 			squad.id,
@@ -410,6 +427,7 @@ public final class ZombieSquadCoordinator {
 			role,
 			destination,
 			focusPosition,
+			shieldOrder,
 			sharedMemoryIsFresh
 		);
 	}
@@ -801,6 +819,7 @@ public final class ZombieSquadCoordinator {
 			combatWindow.beat(),
 			combatWindow.executeAt(),
 			squad.webAmbushStartedAt != Long.MIN_VALUE,
+			squad.shieldWallMemberIds.size() >= 2,
 			squad.deploymentReadyFraction,
 			squad.memberIds.size()
 		);
@@ -895,21 +914,11 @@ public final class ZombieSquadCoordinator {
 		final ZombieSquad squad,
 		final ObservedTargetTactic tactic
 	) {
-		MemberRecord leader = this.members.get(squad.leaderId);
-		int intelligence = leader == null ? 1 : intelligenceOf(leader.mob);
-		SquadAssaultPlan previousPlan = squad.assaultPlan;
 		squad.observedTargetTactic = tactic;
-		squad.assaultPlan = SquadAdaptiveAssaultPlanner.adapt(
-			squad.baseAssaultPlan,
-			tactic,
-			squad.composition,
-			intelligence
-		);
+		// 从基础职位重新规划，确保切入/退出盾楔时盾卫会同步加入/离开正面，而不是遗留旧职位。
+		this.rebuildRoles(squad);
 		squad.planEpoch++;
 		SmartZombieMetrics.targetTacticChanged();
-		if (previousPlan != squad.assaultPlan) {
-			SmartZombieMetrics.assaultPlanChosen(squad.assaultPlan);
-		}
 	}
 
 	private void observeThreat(
@@ -1503,6 +1512,7 @@ public final class ZombieSquadCoordinator {
 			case ENGAGING -> {
 				this.refreshWebAmbushOpportunity(squad, config, now);
 				SquadCombatCadence.Window combatWindow = this.combatWindowFor(squad, now);
+				this.refreshShieldWallRotation(squad, config, combatWindow, now);
 				if (combatWindow.beat() != squad.lastCombatBeat) {
 					this.transitionCombatBeat(squad, config, combatWindow.beat(), now);
 				}
@@ -1901,8 +1911,112 @@ public final class ZombieSquadCoordinator {
 			squad.composition,
 			intelligence
 		);
+		this.rebuildShieldWallAssignments(squad, ordered);
 		if (squad.assaultPlan != previousPlan || squad.planEpoch == 0) {
 			SmartZombieMetrics.assaultPlanChosen(squad.assaultPlan);
+		}
+	}
+
+	/**
+	 * 只在重编职位或总攻方案切换时构造一次稳定盾墙顺序；每名成员读取命令时均为 O(1)。
+	 * 辅助兵和载具不被强行拉回盾墙，避免水桶救火、蜘蛛运输与正面阵位互相争抢。
+	 * 其余盾卫统一改为 PRESSURER，让三名以上盾卫也能真正组成完整多排阵线。
+	 */
+	private void rebuildShieldWallAssignments(final ZombieSquad squad, final List<Integer> ordered) {
+		squad.shieldWallMemberIds.clear();
+		squad.shieldWallRanks.clear();
+		squad.shieldWallStrikerId = 0;
+		if (!SquadShieldWallPlanner.supports(squad.assaultPlan)) {
+			return;
+		}
+		Set<Integer> reservedPassengers = new LinkedHashSet<>(squad.transportPartners.values());
+		for (List<Integer> payloadIds : squad.giantHandPayloads.values()) {
+			reservedPassengers.addAll(payloadIds);
+		}
+		for (int memberId : ordered) {
+			MemberRecord member = this.members.get(memberId);
+			SquadRole role = squad.roles.getOrDefault(memberId, SquadRole.PRESSURER);
+			if (member == null
+				|| !(member.mob instanceof Zombie zombie)
+				|| !ZombieArmory.hasShield(zombie)
+				|| role == SquadRole.SUPPORT
+				|| role == SquadRole.CARRIER
+				|| reservedPassengers.contains(memberId)) {
+				continue;
+			}
+			if (memberId != squad.leaderId) {
+				squad.roles.put(memberId, SquadRole.PRESSURER);
+			}
+			int rank = squad.shieldWallMemberIds.size();
+			squad.shieldWallMemberIds.add(memberId);
+			squad.shieldWallRanks.put(memberId, rank);
+		}
+	}
+
+	private SquadShieldOrder shieldOrderFor(
+		final ZombieSquad squad,
+		final int memberId,
+		final SquadCombatCadence.Window combatWindow,
+		final long now,
+		final MobsThinkNowConfig config
+	) {
+		Integer rank = squad.shieldWallRanks.get(memberId);
+		int memberCount = squad.shieldWallMemberIds.size();
+		if (!config.squadShieldWallRotation
+			|| rank == null
+			|| memberCount < 2
+			|| (squad.state != SquadState.DEPLOYING && squad.state != SquadState.ENGAGING)) {
+			return SquadShieldOrder.NONE;
+		}
+		int strikerRank = squad.state == SquadState.ENGAGING
+			? SquadShieldWallPlanner.strikerRank(
+				combatWindow.beat(),
+				combatWindow.cycle(),
+				now - combatWindow.startedAt(),
+				memberCount
+			)
+			: -1;
+		return SquadShieldWallPlanner.orderFor(rank, strikerRank, memberCount);
+	}
+
+	/** 只在轮换人选真正变化时发出一次轻量盾击声，避免每名成员各自播放形成噪声风暴。 */
+	private void refreshShieldWallRotation(
+		final ZombieSquad squad,
+		final MobsThinkNowConfig config,
+		final SquadCombatCadence.Window combatWindow,
+		final long now
+	) {
+		int memberCount = squad.shieldWallMemberIds.size();
+		int strikerRank = config.squadShieldWallRotation
+			? SquadShieldWallPlanner.strikerRank(
+				combatWindow.beat(),
+				combatWindow.cycle(),
+				now - combatWindow.startedAt(),
+				memberCount
+			)
+			: -1;
+		int nextStrikerId = strikerRank < 0 ? 0 : squad.shieldWallMemberIds.get(strikerRank);
+		if (nextStrikerId == squad.shieldWallStrikerId) {
+			return;
+		}
+		int previousStrikerId = squad.shieldWallStrikerId;
+		squad.shieldWallStrikerId = nextStrikerId;
+		if (nextStrikerId == 0) {
+			return;
+		}
+		SmartZombieMetrics.shieldWallRotation();
+		MemberRecord striker = this.members.get(nextStrikerId);
+		if (striker != null && striker.mob.level() instanceof ServerLevel level) {
+			level.playSound(
+				null,
+				striker.mob.getX(),
+				striker.mob.getY(),
+				striker.mob.getZ(),
+				SoundEvents.SHIELD_BLOCK.value(),
+				SoundSource.HOSTILE,
+				previousStrikerId == 0 ? 0.48F : 0.36F,
+				0.72F + striker.mob.getRandom().nextFloat() * 0.10F
+			);
 		}
 	}
 
@@ -2459,13 +2573,16 @@ public final class ZombieSquadCoordinator {
 				if (engaging) {
 					yield null; // 交战阶段让原版 MeleeAttackGoal 接手最后几格的追击与挥击。
 				}
-				boolean shieldWedge = (squad.assaultPlan == SquadAssaultPlan.SHIELD_WEDGE
-					|| squad.assaultPlan == SquadAssaultPlan.COMBINED_ARMS)
-					&& member != null
-					&& member.mob instanceof Zombie zombie
-					&& ZombieArmory.hasShield(zombie);
-				double side = shieldWedge ? 0.0 : pressureIndex == 0 ? 0.0 : (pressureIndex % 2 == 0 ? 0.8 : -0.8);
-				double depth = shieldWedge ? config.formationRadius - 0.75 : config.formationRadius + 0.35;
+				Integer shieldRank = member == null ? null : squad.shieldWallRanks.get(member.mob.getId());
+				SquadShieldWallPlanner.Slot shieldSlot = shieldRank == null
+					? null
+					: SquadShieldWallPlanner.slotFor(shieldRank, squad.shieldWallMemberIds.size());
+				double side = shieldSlot == null
+					? pressureIndex == 0 ? 0.0 : (pressureIndex % 2 == 0 ? 0.8 : -0.8)
+					: shieldSlot.lateralOffset();
+				double depth = shieldSlot == null
+					? config.formationRadius + 0.35
+					: config.formationRadius - 0.75 + shieldSlot.depthOffset();
 				yield targetPosition.add(forward.scale(depth)).add(lateral.scale(side));
 			}
 			case FLANK_LEFT -> targetPosition
@@ -3051,6 +3168,7 @@ public final class ZombieSquadCoordinator {
 		SquadCombatBeat combatBeat,
 		long combatExecuteAt,
 		boolean webAmbushActive,
+		boolean shieldWallActive,
 		double deploymentReadyFraction,
 		int memberCount
 	) {
@@ -3088,6 +3206,9 @@ public final class ZombieSquadCoordinator {
 		private final Map<Integer, Integer> giantHeadRiders = new HashMap<>();
 		private final Map<Integer, List<Integer>> giantHandPayloads = new HashMap<>();
 		private final Map<Integer, SquadCasualtyDirective> casualtyDirectives = new HashMap<>();
+		private final List<Integer> shieldWallMemberIds = new ArrayList<>();
+		private final Map<Integer, Integer> shieldWallRanks = new HashMap<>();
+		private int shieldWallStrikerId;
 		private int casualtyId;
 		private int casualtyEscortId;
 		private long casualtyResponseEndsAt = Long.MIN_VALUE;

@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCombatUrgency;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadShieldOrder;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadState;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -182,7 +183,13 @@ final class ZombieTacticalController {
 		}
 
 		long now = this.zombie.level().getGameTime();
-		this.shieldCombat.tick(target, config, this.hasLineOfSight);
+		SquadShieldOrder shieldOrder = this.squadDirective == null
+			? SquadShieldOrder.NONE
+			: this.squadDirective.shieldOrder();
+		boolean reachedShieldWallSlot = this.squadDirective == null
+			|| this.squadDirective.destination() == null
+			|| this.zombie.position().distanceToSqr(this.squadDirective.destination()) <= DESTINATION_REACHED_DISTANCE_SQUARED;
+		this.shieldCombat.tick(target, config, this.hasLineOfSight, shieldOrder, reachedShieldWallSlot);
 
 		if (this.squadDirective != null) {
 			this.executeSquadDirective(target, config, now);
