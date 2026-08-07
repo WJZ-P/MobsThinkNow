@@ -10,6 +10,9 @@ public final class SmartCreeperMetrics {
 	private static final AtomicLong MOVING_FUSES = new AtomicLong();
 	private static final AtomicLong BREACH_FUSES = new AtomicLong();
 	private static final AtomicLong ABORTED_FUSES = new AtomicLong();
+	private static final AtomicLong FEINTS = new AtomicLong();
+	private static final AtomicLong COMPLETED_FEINTS = new AtomicLong();
+	private static final AtomicLong SHIELD_BAITS = new AtomicLong();
 	private static final AtomicLong SQUAD_EVACUATIONS = new AtomicLong();
 	private static final AtomicLong BLAST_RESERVATIONS_ACQUIRED = new AtomicLong();
 	private static final AtomicLong BLAST_RESERVATION_CONFLICTS = new AtomicLong();
@@ -19,7 +22,7 @@ public final class SmartCreeperMetrics {
 	}
 
 	public static void goalsInstalled() {
-		INSTALLED_GOALS.addAndGet(3L);
+		INSTALLED_GOALS.addAndGet(4L);
 	}
 
 	public static void flankStarted() {
@@ -40,6 +43,17 @@ public final class SmartCreeperMetrics {
 
 	public static void fuseAborted() {
 		ABORTED_FUSES.incrementAndGet();
+	}
+
+	public static void feintStarted(final boolean targetWasBlocking) {
+		FEINTS.incrementAndGet();
+		if (targetWasBlocking) {
+			SHIELD_BAITS.incrementAndGet();
+		}
+	}
+
+	public static void feintCompleted() {
+		COMPLETED_FEINTS.incrementAndGet();
 	}
 
 	public static void squadEvacuationStarted() {
@@ -66,6 +80,9 @@ public final class SmartCreeperMetrics {
 			MOVING_FUSES.get(),
 			BREACH_FUSES.get(),
 			ABORTED_FUSES.get(),
+			FEINTS.get(),
+			COMPLETED_FEINTS.get(),
+			SHIELD_BAITS.get(),
 			SQUAD_EVACUATIONS.get(),
 			BLAST_RESERVATIONS_ACQUIRED.get(),
 			BLAST_RESERVATION_CONFLICTS.get(),
@@ -80,6 +97,9 @@ public final class SmartCreeperMetrics {
 		long movingFuses,
 		long breachFuses,
 		long abortedFuses,
+		long feints,
+		long completedFeints,
+		long shieldBaits,
 		long squadEvacuations,
 		long blastReservationsAcquired,
 		long blastReservationConflicts,

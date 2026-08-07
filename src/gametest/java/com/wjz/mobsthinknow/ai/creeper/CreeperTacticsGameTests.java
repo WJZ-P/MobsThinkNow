@@ -13,13 +13,13 @@ import net.minecraft.world.level.block.Blocks;
 /** 从真实实体、感知与地面导航验证苦力怕接敌和引信状态机。 */
 public final class CreeperTacticsGameTests implements CustomTestMethodInvoker {
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
-	public void creeperMixinInstallsThreeGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
+	public void creeperMixinInstallsFourGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
 		long before = SmartCreeperMetrics.snapshot().installedGoals();
 		Creeper creeper = helper.spawn(EntityType.CREEPER, 2, 2, 2);
 
 		helper.assertTrue(
-			SmartCreeperMetrics.snapshot().installedGoals() == before + 3,
-			"Creeper construction did not install evacuation plus smart approach and swell goals."
+			SmartCreeperMetrics.snapshot().installedGoals() == before + 4,
+			"Creeper construction did not install evacuation, feint, approach and swell goals."
 		);
 		int intelligence = CreeperIntelligence.get(creeper);
 		helper.assertTrue(intelligence >= 1 && intelligence <= 10, "Creeper intelligence escaped the 1-10 range.");
@@ -31,9 +31,48 @@ public final class CreeperTacticsGameTests implements CustomTestMethodInvoker {
 	}
 
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
-	public void watchedTargetMakesSkilledCreeperChooseARealFlankPath(final GameTestHelper helper) {
+	public void watchedTargetTriggersShortFeintThenSideRearReposition(final GameTestHelper helper) {
 		Creeper creeper = helper.spawn(EntityType.CREEPER, 2, 2, 2);
 		Villager target = helper.spawn(EntityType.VILLAGER, 8, 2, 2);
+		creeper.setNoAi(true);
+		target.setNoAi(true);
+		creeper.setOnGround(true);
+		target.setYRot(90.0F);
+		target.setYHeadRot(90.0F);
+		CreeperIntelligence.set(creeper, 10);
+		creeper.setTarget(target);
+
+		CreeperTacticalController controller = new CreeperTacticalController(creeper);
+		SmartCreeperFuseFeintGoal goal = new SmartCreeperFuseFeintGoal(creeper, controller);
+		helper.assertTrue(goal.canUse(), "Watched IQ-10 creeper outside the fuse circle did not select a feint.");
+		goal.start();
+		helper.assertTrue(creeper.getSwellDir() == 1, "Feint never produced the readable priming pose.");
+		SmartCreeperSwellGoal realFuse = new SmartCreeperSwellGoal(creeper, controller);
+		helper.assertTrue(
+			!realFuse.canUse(),
+			"The real fuse goal stole a short feint and could have converted it into an explosion."
+		);
+		for (int tick = 0; tick < 8; tick++) {
+			goal.tick();
+		}
+
+		helper.assertTrue(goal.isRepositioning(), "Feint exceeded its eight-tick safety cap instead of defusing.");
+		helper.assertTrue(creeper.getSwellDir() == -1, "Feint did not reverse the fuse before repositioning.");
+		helper.assertTrue(goal.destination() != null, "Feint did not produce a side-rear navigation point.");
+		helper.assertTrue(
+			goal.destination().distanceTo(target.position()) > 4.5,
+			"Feint destination remained inside the true detonation staging circle."
+		);
+		goal.stop();
+		helper.assertTrue(!goal.canUse(), "A completed or interrupted feint ignored its anti-spam cooldown.");
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void watchedTargetMakesSkilledCreeperChooseARealFlankPath(final GameTestHelper helper) {
+		Creeper creeper = helper.spawn(EntityType.CREEPER, 2, 2, 2);
+		// 八格距离超出 IQ-8 的七格佯爆包络，因此这里专门验证常规观察感知绕后。
+		Villager target = helper.spawn(EntityType.VILLAGER, 10, 2, 2);
 		creeper.setNoAi(true);
 		target.setNoAi(true);
 		creeper.setOnGround(true);

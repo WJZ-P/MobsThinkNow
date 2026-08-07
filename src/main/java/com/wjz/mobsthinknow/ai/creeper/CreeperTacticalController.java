@@ -16,6 +16,8 @@ public final class CreeperTacticalController {
 	private long lastSeenAt = Long.MIN_VALUE;
 	private ApproachMode approachMode = ApproachMode.DIRECT;
 	private @Nullable Vec3 approachDestination;
+	private boolean feintActive;
+	private long nextFeintAt = Long.MIN_VALUE;
 
 	public CreeperTacticalController(final Creeper creeper) {
 		this.creeper = creeper;
@@ -65,5 +67,22 @@ public final class CreeperTacticalController {
 	public void clearApproach() {
 		this.approachMode = ApproachMode.DIRECT;
 		this.approachDestination = null;
+	}
+
+	public boolean canStartFeint(final long currentTick) {
+		return !this.feintActive && currentTick >= this.nextFeintAt;
+	}
+
+	public boolean isFeintActive() {
+		return this.feintActive;
+	}
+
+	public void beginFeint() {
+		this.feintActive = true;
+	}
+
+	public void finishFeint(final long currentTick, final int cooldownTicks) {
+		this.feintActive = false;
+		this.nextFeintAt = currentTick + Math.max(1, cooldownTicks);
 	}
 }

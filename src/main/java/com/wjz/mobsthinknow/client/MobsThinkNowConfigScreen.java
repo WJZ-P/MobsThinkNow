@@ -157,6 +157,24 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperMovingFuse = value))
 			.build());
 		creeperCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.creeper_fuse_feints"),
+			config.creeperFuseFeints
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_fuse_feints.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperFuseFeints = value))
+			.build());
+		creeperCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.creeper_fuse_feint_cooldown"),
+			config.creeperFuseFeintCooldownTicks,
+			MobsThinkNowConfig.MINIMUM_CREEPER_FUSE_FEINT_COOLDOWN_TICKS,
+			MobsThinkNowConfig.MAXIMUM_CREEPER_FUSE_FEINT_COOLDOWN_TICKS
+		)
+			.setDefaultValue(MobsThinkNowConfig.DEFAULT_CREEPER_FUSE_FEINT_COOLDOWN_TICKS)
+			.setTooltip(Component.translatable("mobsthinknow.config.creeper_fuse_feint_cooldown.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.creeperFuseFeintCooldownTicks = value))
+			.build());
+		creeperCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.creeper_squad_evacuation"),
 			config.creeperSquadEvacuation
 		)

@@ -42,7 +42,7 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 
 	@Override
 	public boolean canUse() {
-		if (SpiderCreeperCarrierGoal.isTransportControlled(this.creeper)) {
+		if (SpiderCreeperCarrierGoal.isTransportControlled(this.creeper) || this.controller.isFeintActive()) {
 			return false;
 		}
 		this.smartMode = smartAiEnabled();
@@ -69,7 +69,7 @@ public final class SmartCreeperSwellGoal extends SwellGoal {
 
 	@Override
 	public boolean canContinueToUse() {
-		if (SpiderCreeperCarrierGoal.isTransportControlled(this.creeper)) {
+		if (SpiderCreeperCarrierGoal.isTransportControlled(this.creeper) || this.controller.isFeintActive()) {
 			return false;
 		}
 		if (!this.smartMode) {

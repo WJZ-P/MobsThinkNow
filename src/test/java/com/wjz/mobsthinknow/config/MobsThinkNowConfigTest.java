@@ -26,6 +26,8 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.creeperAiEnabled);
 		assertEquals(true, config.creeperFlanking);
 		assertEquals(true, config.creeperMovingFuse);
+		assertEquals(true, config.creeperFuseFeints);
+		assertEquals(240, config.creeperFuseFeintCooldownTicks);
 		assertEquals(true, config.creeperSquadEvacuation);
 		assertEquals(true, config.creeperBlastReservations);
 		assertEquals(true, config.zombieProfessionSkins);
@@ -318,16 +320,20 @@ class MobsThinkNowConfigTest {
 		MobsThinkNowConfig config = new MobsThinkNowConfig();
 		config.creeperMaximumFuseStartDistance = 99.0;
 		config.creeperFuseMovementSpeed = 9.0;
+		config.creeperFuseFeintCooldownTicks = 9999;
 		config.validate();
 
 		assertEquals(5.0, config.creeperMaximumFuseStartDistance);
 		assertEquals(1.5, config.creeperFuseMovementSpeed);
+		assertEquals(600, config.creeperFuseFeintCooldownTicks);
 
 		config.creeperMaximumFuseStartDistance = Double.NaN;
 		config.creeperFuseMovementSpeed = -1.0;
+		config.creeperFuseFeintCooldownTicks = -1;
 		config.validate();
 		assertEquals(3.0, config.creeperMaximumFuseStartDistance);
 		assertEquals(1.0, config.creeperFuseMovementSpeed);
+		assertEquals(80, config.creeperFuseFeintCooldownTicks);
 	}
 
 	@Test

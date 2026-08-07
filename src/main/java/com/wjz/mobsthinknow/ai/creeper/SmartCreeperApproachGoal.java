@@ -41,6 +41,10 @@ public final class SmartCreeperApproachGoal extends MeleeAttackGoal {
 		if (!this.smartMode) {
 			return super.canUse();
 		}
+		if (this.controller.isFeintActive()
+			|| SmartCreeperFuseFeintGoal.shouldDeferApproach(this.creeper, this.controller)) {
+			return false;
+		}
 		return isValidTarget(this.creeper.getTarget()) && !this.creeper.isIgnited();
 	}
 
@@ -53,6 +57,8 @@ public final class SmartCreeperApproachGoal extends MeleeAttackGoal {
 			return !smartAiEnabled() && super.canContinueToUse();
 		}
 		return smartAiEnabled()
+			&& !this.controller.isFeintActive()
+			&& !SmartCreeperFuseFeintGoal.shouldDeferApproach(this.creeper, this.controller)
 			&& isValidTarget(this.currentTarget())
 			&& !this.creeper.isIgnited();
 	}

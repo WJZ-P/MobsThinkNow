@@ -6,6 +6,7 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligenceName;
 import com.wjz.mobsthinknow.ai.creeper.CreeperPowerAccess;
 import com.wjz.mobsthinknow.ai.creeper.CreeperTacticalController;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperApproachGoal;
+import com.wjz.mobsthinknow.ai.creeper.SmartCreeperFuseFeintGoal;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperMetrics;
 import com.wjz.mobsthinknow.ai.creeper.SmartCreeperSwellGoal;
 import com.wjz.mobsthinknow.ai.spider.CreeperTransportAccess;
@@ -37,7 +38,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** 普通苦力怕的智力、持久化和两个可热切换战术 Goal 接入点。 */
+/** 普通苦力怕的智力、持久化和三套可热切换战术 Goal 接入点。 */
 @Mixin(Creeper.class)
 public abstract class CreeperMixin extends Monster implements CreeperIntelligenceAccess, CreeperPowerAccess, CreeperTransportAccess {
 	@Unique
@@ -70,6 +71,8 @@ public abstract class CreeperMixin extends Monster implements CreeperIntelligenc
 		this.goalSelector.addGoal(1, new SquadPreparationGoal(creeper, 1.12));
 		this.goalSelector.addGoal(2, new SmartCreeperSwellGoal(creeper, this.mobsthinknow$tacticalController));
 		this.goalSelector.addGoal(3, new SquadFiringLaneClearGoal(creeper, 1.18));
+		// 与常规接敌同级，但接敌 Goal 会显式让位；猫/豹猫回避的优先级 3 仍可立即抢占佯爆。
+		this.goalSelector.addGoal(4, new SmartCreeperFuseFeintGoal(creeper, this.mobsthinknow$tacticalController));
 		this.goalSelector.addGoal(4, new SmartCreeperApproachGoal(creeper, this.mobsthinknow$tacticalController));
 		boolean hasVanillaHurtByGoal = this.targetSelector.getAvailableGoals().stream()
 			.anyMatch(wrapped -> wrapped.getGoal().getClass() == HurtByTargetGoal.class);

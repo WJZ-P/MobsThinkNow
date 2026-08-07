@@ -45,6 +45,9 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_CREEPER_FUSE_MOVEMENT_SPEED = 1.25;
 	public static final double MINIMUM_CREEPER_FUSE_MOVEMENT_SPEED = 1.0;
 	public static final double MAXIMUM_CREEPER_FUSE_MOVEMENT_SPEED = 1.5;
+	public static final int DEFAULT_CREEPER_FUSE_FEINT_COOLDOWN_TICKS = 240;
+	public static final int MINIMUM_CREEPER_FUSE_FEINT_COOLDOWN_TICKS = 80;
+	public static final int MAXIMUM_CREEPER_FUSE_FEINT_COOLDOWN_TICKS = 600;
 	public static final double DEFAULT_SPIDER_CREEPER_SEARCH_RADIUS = 8.0;
 	public static final double MINIMUM_SPIDER_CREEPER_SEARCH_RADIUS = 4.0;
 	public static final double MAXIMUM_SPIDER_CREEPER_SEARCH_RADIUS = 16.0;
@@ -125,6 +128,10 @@ public final class MobsThinkNowConfig {
 	public boolean creeperFlanking = true;
 	/** 引信鸣响后继续追向预测爆点；原版 30 tick 引信与首次嘶声保持不变。 */
 	public boolean creeperMovingFuse = true;
+	/** IQ 8～10 普通苦力怕可在真实起爆圈外短促点燃，主动退火后侧移骗取目标转向或举盾。 */
+	public boolean creeperFuseFeints = true;
+	/** 两次佯爆之间的基础冷却；个体会在 80%～120% 范围随机错峰。 */
+	public int creeperFuseFeintCooldownTicks = DEFAULT_CREEPER_FUSE_FEINT_COOLDOWN_TICKS;
 	/** 同队苦力怕进入引信后，其他僵尸、骷髅、苦力怕与蜘蛛会退出真实爆炸伤害范围。 */
 	public boolean creeperSquadEvacuation = true;
 	/** 同队同一目标或重叠区域只允许一个普通引信提交；外部强制点燃仍会被完整记录。 */
@@ -431,6 +438,11 @@ public final class MobsThinkNowConfig {
 			this.creeperFuseMovementSpeed,
 			MINIMUM_CREEPER_FUSE_MOVEMENT_SPEED,
 			MAXIMUM_CREEPER_FUSE_MOVEMENT_SPEED
+		);
+		this.creeperFuseFeintCooldownTicks = clamp(
+			this.creeperFuseFeintCooldownTicks,
+			MINIMUM_CREEPER_FUSE_FEINT_COOLDOWN_TICKS,
+			MAXIMUM_CREEPER_FUSE_FEINT_COOLDOWN_TICKS
 		);
 		this.spiderCreeperSearchRadius = clamp(
 			this.spiderCreeperSearchRadius,

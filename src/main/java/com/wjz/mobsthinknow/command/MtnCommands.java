@@ -376,7 +376,7 @@ public final class MtnCommands {
 		SmartEndermanMetrics.Snapshot endermanMetrics = SmartEndermanMetrics.snapshot();
 		SmartGiantMetrics.Snapshot giantMetrics = SmartGiantMetrics.snapshot();
 		SmartNetherMetrics.Snapshot netherMetrics = SmartNetherMetrics.snapshot();
-		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, activeActivities=%d, elections=%d, reelections=%d, candidateChecks=%d, assaultPlans=%d, crossfirePlans=%d, mountedBreachPlans=%d, combinedArmsPlans=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, swordFeints=%d, axeWindups=%d, shieldBashes=%d, shieldBashHits=%d, leaderSocialGestures=%d, memberSocialGestures=%d, briefingRouteChecks=%d, briefingRouteObjections=%d, briefingReplans=%d, combatRouteFailures=%d, combatRouteChecks=%d, combatReplans=%d, combatReplanSuppressed=%d, targetTacticChanges=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, friendlyShotsHeld=%d, explosiveShotsHeld=%d, firingLaneReplans=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d, creeperSquadEvacuations=%d"
+		String message = "Mobs Think Now | enabled=%s, zombieAI=%s, installed=%d, decisions=%d, flanks=%d, searches=%d, failedPaths=%d, squads=%d, activeActivities=%d, elections=%d, reelections=%d, candidateChecks=%d, assaultPlans=%d, crossfirePlans=%d, mountedBreachPlans=%d, combinedArmsPlans=%d, retreats=%d, terrainMined=%d, terrainPlaced=%d, perchedHits=%d, water=%d, lava=%d, fluidRecovered=%d, fluidLost=%d, engineerTnt=%d, engineerWater=%d, engineerLava=%d, engineerIgnitions=%d, swordFeints=%d, axeWindups=%d, shieldBashes=%d, shieldBashHits=%d, leaderSocialGestures=%d, memberSocialGestures=%d, briefingRouteChecks=%d, briefingRouteObjections=%d, briefingReplans=%d, combatRouteFailures=%d, combatRouteChecks=%d, combatReplans=%d, combatReplanSuppressed=%d, targetTacticChanges=%d, skeletonAI=%s, skeletonGoals=%d, skeletonEmergencyGoals=%d, skeletonEscapes=%d, skeletonCoverPlans=%d, skeletonCoverShots=%d, skeletonKites=%d, skeletonDodges=%d, skeletonShots=%d, skeletonPredictedShots=%d, skeletonCrossbowShots=%d, skeletonFireworkShots=%d, friendlyShotsHeld=%d, explosiveShotsHeld=%d, firingLaneReplans=%d, creeperAI=%s, creeperGoals=%d, creeperFlanks=%d, creeperIntercepts=%d, creeperMovingFuses=%d, creeperBreaches=%d, creeperAborts=%d, creeperFeints=%d, creeperCompletedFeints=%d, creeperShieldBaits=%d, creeperSquadEvacuations=%d"
 			.formatted(
 				config.enabled,
 				config.zombieAiEnabled,
@@ -442,6 +442,9 @@ public final class MtnCommands {
 				creeperMetrics.movingFuses(),
 				creeperMetrics.breachFuses(),
 				creeperMetrics.abortedFuses(),
+				creeperMetrics.feints(),
+				creeperMetrics.completedFeints(),
+				creeperMetrics.shieldBaits(),
 				creeperMetrics.squadEvacuations()
 			);
 		message += ", casualtyResponses=%d, casualtyResponsesFinished=%d, casualtyGoals=%d, casualtyEscortHits=%d, activeCasualtyResponses=%d"
