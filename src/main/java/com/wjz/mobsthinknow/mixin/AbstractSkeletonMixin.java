@@ -24,6 +24,7 @@ import com.wjz.mobsthinknow.ai.nether.SmartNetherMetrics;
 import com.wjz.mobsthinknow.ai.nether.SmartNetherUndeadMeleeGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadTheatrics;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadCasualtyResponseGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadFiringLaneClearGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
@@ -126,6 +127,7 @@ public abstract class AbstractSkeletonMixin extends Monster implements
 		// 受管理坐骑统一提供共享目标；既修复巨人头顶高度，也避免蜘蛛乘客运行自己的无效导航。
 		this.targetSelector.addGoal(0, new MountedSkeletonTargetGoal(skeleton));
 		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(skeleton));
+		this.goalSelector.addGoal(2, new SquadCasualtyResponseGoal(skeleton, 1.32, 1.10));
 		this.targetSelector.addGoal(1, new SquadSkeletonHurtByTargetGoal(skeleton));
 		this.goalSelector.addGoal(2, new GiantRiderBoardingGoal(skeleton));
 		this.goalSelector.addGoal(3, new SquadFiringLaneClearGoal(skeleton, 1.12));

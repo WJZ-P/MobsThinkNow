@@ -444,6 +444,14 @@ public final class MtnCommands {
 				creeperMetrics.abortedFuses(),
 				creeperMetrics.squadEvacuations()
 			);
+		message += ", casualtyResponses=%d, casualtyResponsesFinished=%d, casualtyGoals=%d, casualtyEscortHits=%d, activeCasualtyResponses=%d"
+			.formatted(
+				metrics.casualtyResponsesStarted(),
+				metrics.casualtyResponsesFinished(),
+				metrics.casualtyGoalsStarted(),
+				metrics.casualtyEscortHits(),
+				ZombieSquadCoordinator.activeCasualtyResponses()
+			);
 		message += ", sharedDangers=%d, dangersAvoided=%d, activeDangerCells=%d, secondaryThreats=%d, threatReassignments=%d, activeSecondaryTargets=%d, firingLanesReserved=%d, alliesClearedLanes=%d, activeFiringLanes=%d, blastReservations=%d, blastConflicts=%d, blastReleases=%d, activeBlastReservations=%d"
 			.formatted(
 				metrics.sharedDangersReported(),

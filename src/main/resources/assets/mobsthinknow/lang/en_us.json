@@ -329,5 +329,11 @@
 	"mobsthinknow.config.spider_web_trap_cooldown": "Web Trap Base Cooldown (ticks)",
 	"mobsthinknow.config.spider_web_trap_cooldown.tooltip": "Range: 80-600, default 240 (12 seconds). Intelligence and difficulty reduce at most 36 ticks, then each spider adds 0-40 ticks of desynchronizing jitter.",
 	"mobsthinknow.config.spider_web_trap_lifetime": "Temporary Web Lifetime (ticks)",
-	"mobsthinknow.config.spider_web_trap_lifetime.tooltip": "Range: 60-400, default 160 (8 seconds). Cleanup only restores blocks registered by this mod that are still cobwebs; player replacements are preserved."
+	"mobsthinknow.config.spider_web_trap_lifetime.tooltip": "Range: 60-400, default 160 (8 seconds). Cleanup only restores blocks registered by this mod that are still cobwebs; player replacements are preserved.",
+	"mobsthinknow.config.squad_casualty_extraction": "Covered Casualty Extraction",
+	"mobsthinknow.config.squad_casualty_extraction.tooltip": "During combat, select only the lowest-health non-creeper casualty. A healthy shield bearer moves between the threat and casualty, blocks and counterattacks at melee range, while the casualty runs forward out of contact. One pair per squad and no O(N squared) scans.",
+	"mobsthinknow.config.squad_casualty_health_threshold": "Casualty Health Threshold (%)",
+	"mobsthinknow.config.squad_casualty_health_threshold.tooltip": "Range: 10%-50%, default 30%. The response ends after recovery to threshold plus 20%, reaching 10 blocks from the threat, or timing out.",
+	"mobsthinknow.config.squad_casualty_response_ticks": "Extraction Window (ticks)",
+	"mobsthinknow.config.squad_casualty_response_ticks.tooltip": "Range: 40-120, default 60 (3 seconds). A fixed 80-tick cooldown after each response prevents a low-health member from retreating forever."
 }

@@ -7,6 +7,12 @@ public final class MobsThinkNowConfig {
 	public static final int DEFAULT_RETREAT_MAXIMUM_TICKS = 100;
 	public static final int MINIMUM_RETREAT_MAXIMUM_TICKS = 20;
 	public static final int MAXIMUM_RETREAT_MAXIMUM_TICKS = 200;
+	public static final double DEFAULT_SQUAD_CASUALTY_HEALTH_THRESHOLD = 0.30;
+	public static final double MINIMUM_SQUAD_CASUALTY_HEALTH_THRESHOLD = 0.10;
+	public static final double MAXIMUM_SQUAD_CASUALTY_HEALTH_THRESHOLD = 0.50;
+	public static final int DEFAULT_SQUAD_CASUALTY_RESPONSE_TICKS = 60;
+	public static final int MINIMUM_SQUAD_CASUALTY_RESPONSE_TICKS = 40;
+	public static final int MAXIMUM_SQUAD_CASUALTY_RESPONSE_TICKS = 120;
 	public static final double DEFAULT_RETREAT_SAFE_DISTANCE = 5.0;
 	public static final double MINIMUM_RETREAT_SAFE_DISTANCE = 2.0;
 	public static final double MAXIMUM_RETREAT_SAFE_DISTANCE = 16.0;
@@ -292,6 +298,11 @@ public final class MobsThinkNowConfig {
 	public boolean squadFiringLaneReservations = true;
 	/** 真实攻击者和可见新目标可吸引最多 40% 的合格成员，首领与多数成员保持主目标。 */
 	public boolean squadThreatDistribution = true;
+	/** 交战中只撤出生命最低的一名伤员，并由最近的健康盾兵/近战成员卡住追击路线。 */
+	public boolean squadCasualtyExtraction = true;
+	public double squadCasualtyHealthThreshold = DEFAULT_SQUAD_CASUALTY_HEALTH_THRESHOLD;
+	/** 单轮掩护撤离持续时间；结束后至少冷却四秒，避免低血成员永久脱离战斗。 */
+	public int squadCasualtyResponseTicks = DEFAULT_SQUAD_CASUALTY_RESPONSE_TICKS;
 	public int decisionIntervalTicks = 8;
 	public int targetMemoryTicks = 60;
 	public int maximumCoordinatedZombies = DEFAULT_MAXIMUM_COORDINATED_ZOMBIES;
@@ -341,6 +352,16 @@ public final class MobsThinkNowConfig {
 		this.flankBehindDistance = clamp(this.flankBehindDistance, 1.0, 6.0);
 		this.flankSideDistance = clamp(this.flankSideDistance, 1.0, 6.0);
 		this.tacticalSpeedModifier = clamp(this.tacticalSpeedModifier, 0.75, 1.35);
+		this.squadCasualtyHealthThreshold = clamp(
+			this.squadCasualtyHealthThreshold,
+			MINIMUM_SQUAD_CASUALTY_HEALTH_THRESHOLD,
+			MAXIMUM_SQUAD_CASUALTY_HEALTH_THRESHOLD
+		);
+		this.squadCasualtyResponseTicks = clamp(
+			this.squadCasualtyResponseTicks,
+			MINIMUM_SQUAD_CASUALTY_RESPONSE_TICKS,
+			MAXIMUM_SQUAD_CASUALTY_RESPONSE_TICKS
+		);
 		this.squadSpeedBonus = clamp(this.squadSpeedBonus, 0.0, 0.5);
 		this.zombieAnimationBlendTicks = clamp(this.zombieAnimationBlendTicks, 0, 8);
 		this.retreatHealthThreshold = clamp(this.retreatHealthThreshold, 0.05, 0.5);

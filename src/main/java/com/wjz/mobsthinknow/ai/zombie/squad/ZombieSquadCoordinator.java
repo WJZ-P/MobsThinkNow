@@ -149,6 +149,12 @@ public final class ZombieSquadCoordinator {
 			.sum()).sum();
 	}
 
+	public static int activeCasualtyResponses() {
+		return COORDINATORS.values().stream().mapToInt(coordinator -> (int)coordinator.squads.values().stream()
+			.filter(squad -> !squad.casualtyDirectives.isEmpty())
+			.count()).sum();
+	}
+
 	/**
 	 * 死亡结算前恢复职业名牌，避免每只小队僵尸阵亡都触发原版
 	 * “Named entity ... died” 的 INFO 日志（那是给玩家命名牌实体保留的行为）。
@@ -667,6 +673,19 @@ public final class ZombieSquadCoordinator {
 		}
 		int targetId = squad.targetAssignments.getOrDefault(mob.getId(), squad.target.getId());
 		return targetId == squad.target.getId() ? squad.target : squad.threatEntities.get(targetId);
+	}
+
+	/** 每只成员只读取自己的预计算伤员命令；此入口不会扫描队友。 */
+	public @Nullable SquadCasualtyDirective casualtyDirectiveFor(final Mob mob) {
+		MobsThinkNowConfig config = ConfigManager.get();
+		ZombieSquad squad = this.squadFor(mob);
+		if (!config.squadCasualtyExtraction
+			|| squad == null
+			|| squad.state != SquadState.ENGAGING
+			|| mob.level().getGameTime() >= squad.casualtyResponseEndsAt) {
+			return null;
+		}
+		return squad.casualtyDirectives.get(mob.getId());
 	}
 
 	private Vec3 socialFocusPosition(
@@ -1449,6 +1468,7 @@ public final class ZombieSquadCoordinator {
 				if (now >= squad.nextPlanRefreshAt) {
 					this.refreshThreatAssignments(squad, config, now);
 					this.updateObservedTargetTactics(squad, config, now);
+					this.refreshCasualtyResponse(squad, config, now);
 					this.refreshCombatOrders(
 						squad,
 						config,
@@ -1512,6 +1532,137 @@ public final class ZombieSquadCoordinator {
 			}
 		}
 		return candidates;
+	}
+
+	/**
+	 * 每个决策周期在单支队伍内做一次 O(K) 快照：最多冻结一名伤员和一名护卫，随后两个 Goal 都只读 Map。
+	 */
+	private void refreshCasualtyResponse(
+		final ZombieSquad squad,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		if (!config.squadCasualtyExtraction) {
+			this.clearCasualtyResponse(squad, now, false);
+			return;
+		}
+		MemberRecord activeCasualty = this.members.get(squad.casualtyId);
+		MemberRecord activeEscort = this.members.get(squad.casualtyEscortId);
+		if (squad.casualtyId != 0) {
+			boolean invalid = activeCasualty == null
+				|| activeEscort == null
+				|| !squad.memberIds.contains(squad.casualtyId)
+				|| !squad.memberIds.contains(squad.casualtyEscortId)
+				|| !activeCasualty.mob.isAlive()
+				|| !activeEscort.mob.isAlive();
+			double recoveryThreshold = Math.min(0.80, config.squadCasualtyHealthThreshold + 0.20);
+			boolean recovered = !invalid && healthFraction(activeCasualty.mob) > recoveryThreshold;
+			boolean safe = !invalid && SquadCasualtyPlanner.isSafe(activeCasualty.mob.position(), squad.target.position());
+			if (invalid || recovered || safe || now >= squad.casualtyResponseEndsAt) {
+				this.clearCasualtyResponse(squad, now, !invalid);
+			} else {
+				this.publishCasualtyDirectives(squad, activeCasualty, activeEscort);
+				return;
+			}
+		}
+		if (now < squad.nextCasualtyResponseAt) {
+			return;
+		}
+
+		List<SquadCasualtyPlanner.MemberSnapshot> snapshots = new ArrayList<>(squad.memberIds.size());
+		for (int memberId : squad.memberIds) {
+			MemberRecord member = this.members.get(memberId);
+			if (member != null && member.mob.isAlive()) {
+				snapshots.add(this.casualtySnapshot(member.mob));
+			}
+		}
+		SquadCasualtyPlanner.Response selected = SquadCasualtyPlanner.select(
+			snapshots,
+			squad.target.position(),
+			config.squadCasualtyHealthThreshold
+		);
+		if (selected == null) {
+			return;
+		}
+		MemberRecord casualty = this.members.get(selected.casualtyId());
+		MemberRecord escort = this.members.get(selected.escortId());
+		if (casualty == null || escort == null) {
+			return;
+		}
+		squad.casualtyId = selected.casualtyId();
+		squad.casualtyEscortId = selected.escortId();
+		squad.casualtyResponseEndsAt = now + config.squadCasualtyResponseTicks;
+		this.publishCasualtyDirectives(squad, casualty, escort);
+		SmartZombieMetrics.casualtyResponseStarted();
+	}
+
+	private void publishCasualtyDirectives(
+		final ZombieSquad squad,
+		final MemberRecord casualty,
+		final MemberRecord escort
+	) {
+		SquadCasualtyPlanner.Response response = SquadCasualtyPlanner.responseForPair(
+			this.casualtySnapshot(casualty.mob),
+			this.casualtySnapshot(escort.mob),
+			squad.target.position()
+		);
+		squad.casualtyDirectives.clear();
+		squad.casualtyDirectives.put(casualty.mob.getId(), new SquadCasualtyDirective(
+			squad.id,
+			casualty.mob.getId(),
+			escort.mob.getId(),
+			SquadCasualtyDirective.Role.EVACUEE,
+			response.casualtyDestination(),
+			response.focusPosition(),
+			squad.casualtyResponseEndsAt
+		));
+		squad.casualtyDirectives.put(escort.mob.getId(), new SquadCasualtyDirective(
+			squad.id,
+			casualty.mob.getId(),
+			escort.mob.getId(),
+			SquadCasualtyDirective.Role.ESCORT,
+			response.escortDestination(),
+			response.focusPosition(),
+			squad.casualtyResponseEndsAt
+		));
+	}
+
+	private SquadCasualtyPlanner.MemberSnapshot casualtySnapshot(final Mob mob) {
+		boolean unavailable = mob.isPassenger() || mob.isVehicle() || mob.isFallFlying();
+		boolean casualtyEligible = !unavailable && !isCreeperMember(mob) && !isGiantMember(mob);
+		boolean escortEligible = !unavailable
+			&& (OverworldUndeadFamilies.isZombieFamily(mob) || isSpiderMember(mob));
+		return new SquadCasualtyPlanner.MemberSnapshot(
+			mob.getId(),
+			mob.position(),
+			healthFraction(mob),
+			intelligenceOf(mob),
+			casualtyEligible,
+			escortEligible,
+			mob instanceof Zombie zombie && ZombieArmory.hasShield(zombie)
+		);
+	}
+
+	private void clearCasualtyResponse(
+		final ZombieSquad squad,
+		final long now,
+		final boolean finished
+	) {
+		boolean hadResponse = squad.casualtyId != 0 || !squad.casualtyDirectives.isEmpty();
+		squad.casualtyId = 0;
+		squad.casualtyEscortId = 0;
+		squad.casualtyResponseEndsAt = Long.MIN_VALUE;
+		squad.casualtyDirectives.clear();
+		if (hadResponse) {
+			squad.nextCasualtyResponseAt = now + 80L;
+			if (finished) {
+				SmartZombieMetrics.casualtyResponseFinished();
+			}
+		}
+	}
+
+	private static double healthFraction(final LivingEntity entity) {
+		return entity.getMaxHealth() <= 0.0F ? 0.0 : entity.getHealth() / entity.getMaxHealth();
 	}
 
 	private void rebuildRoles(final ZombieSquad squad) {
@@ -2343,6 +2494,9 @@ public final class ZombieSquadCoordinator {
 		final MobsThinkNowConfig config,
 		final String reason
 	) {
+		if (state != SquadState.ENGAGING && !squad.casualtyDirectives.isEmpty()) {
+			this.clearCasualtyResponse(squad, now, false);
+		}
 		squad.state = state;
 		squad.stateStartedAt = now;
 		squad.stateDeadline = deadline;
@@ -2362,6 +2516,10 @@ public final class ZombieSquadCoordinator {
 			squad.blastReservations.release(member.mob.getId());
 			squad.roles.remove(member.mob.getId());
 			squad.orders.remove(member.mob.getId());
+			squad.casualtyDirectives.remove(member.mob.getId());
+			if (member.mob.getId() == squad.casualtyId || member.mob.getId() == squad.casualtyEscortId) {
+				this.clearCasualtyResponse(squad, member.mob.level().getGameTime(), false);
+			}
 			squad.briefingReports.remove(member.mob.getId());
 			squad.briefingDestinations.remove(member.mob.getId());
 			boolean removedCarrier = squad.transportPartners.remove(member.mob.getId()) != null;
@@ -2717,6 +2875,11 @@ public final class ZombieSquadCoordinator {
 		private final Map<Integer, Integer> transportPartners = new HashMap<>();
 		private final Map<Integer, Integer> giantHeadRiders = new HashMap<>();
 		private final Map<Integer, List<Integer>> giantHandPayloads = new HashMap<>();
+		private final Map<Integer, SquadCasualtyDirective> casualtyDirectives = new HashMap<>();
+		private int casualtyId;
+		private int casualtyEscortId;
+		private long casualtyResponseEndsAt = Long.MIN_VALUE;
+		private long nextCasualtyResponseAt = Long.MIN_VALUE;
 		private int leaderId;
 		private int term;
 		private int planEpoch;

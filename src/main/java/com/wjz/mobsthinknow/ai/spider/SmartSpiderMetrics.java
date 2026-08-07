@@ -25,7 +25,7 @@ public final class SmartSpiderMetrics {
 	}
 
 	public static void goalsInstalled() {
-		INSTALLED_GOALS.addAndGet(7L);
+		INSTALLED_GOALS.addAndGet(8L);
 	}
 
 	public static void flankStarted() {

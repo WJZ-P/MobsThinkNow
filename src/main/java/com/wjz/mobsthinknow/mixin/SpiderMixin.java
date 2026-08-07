@@ -13,6 +13,7 @@ import com.wjz.mobsthinknow.ai.spider.SpiderSquadTransportAccess;
 import com.wjz.mobsthinknow.ai.spider.SpiderWebTrapGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadFriendlyFireGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadCreeperEvadeGoal;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadCasualtyResponseGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadFiringLaneClearGoal;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadMemberHeartbeat;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadPreparationGoal;
@@ -67,6 +68,7 @@ public abstract class SpiderMixin extends Monster implements SpiderIntelligenceA
 		this.goalSelector.removeAllGoals(goal -> goal.getClass() == LeapAtTargetGoal.class
 			|| goal.getClass().getName().equals("net.minecraft.world.entity.monster.spider.Spider$SpiderAttackGoal"));
 		this.goalSelector.addGoal(0, new SquadCreeperEvadeGoal(spider));
+		this.goalSelector.addGoal(1, new SquadCasualtyResponseGoal(spider, 1.46, 1.24));
 		this.goalSelector.addGoal(1, new SquadPreparationGoal(spider, 1.18));
 		this.goalSelector.addGoal(2, new SpiderCreeperCarrierGoal(spider));
 		this.goalSelector.addGoal(2, new SpiderSquadCarrierGoal(spider));

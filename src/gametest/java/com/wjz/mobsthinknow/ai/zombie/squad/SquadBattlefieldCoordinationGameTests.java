@@ -21,9 +21,13 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
+import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.animal.golem.IronGolem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
 /** 验证小队黑板、爆点预约、射击走廊与有限多目标分兵在真实服务器实体上的连接。 */
@@ -178,6 +182,101 @@ public final class SquadBattlefieldCoordinationGameTests implements CustomTestMe
 				members.size() - responding >= 3,
 				"The squad did not retain its guaranteed 60% pressure group on the primary target."
 			);
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 180, padding = 4)
+	public void woundedArcherWithdrawsBehindShieldEscort(final GameTestHelper helper) {
+		Zombie shieldEscort = helper.spawn(EntityType.ZOMBIE, 7, 2, 2);
+		Skeleton wounded = helper.spawn(EntityType.SKELETON, 8, 2, 2);
+		Spider wing = helper.spawn(EntityType.SPIDER, 6, 2, 3);
+		Villager target = helper.spawn(EntityType.VILLAGER, 14, 2, 2);
+		prepare(shieldEscort, target);
+		prepare(wounded, target);
+		prepare(wing, target);
+		prepare(target);
+		shieldEscort.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+		wounded.setHealth(4.0F);
+		ZombieIntelligence.set(shieldEscort, 9);
+		SkeletonIntelligence.set(wounded, 10);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		Vec3 originalTargetPosition = target.position();
+		boolean[] madeEmergencyContact = {false};
+		boolean[] restoredBattleDistance = {false};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			heartbeat(coordinator, List.of(shieldEscort, wounded, wing), target, now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(wounded);
+			if (view == null) {
+				return;
+			}
+			if (view.state() != SquadState.ENGAGING) {
+				if (!madeEmergencyContact[0]) {
+					madeEmergencyContact[0] = true;
+					target.snapTo(
+						wounded.getX() + 1.5,
+						wounded.getY(),
+						wounded.getZ(),
+						target.getYRot(),
+						target.getXRot()
+					);
+				}
+				return;
+			}
+			if (!restoredBattleDistance[0]) {
+				restoredBattleDistance[0] = true;
+				target.snapTo(
+					originalTargetPosition.x,
+					originalTargetPosition.y,
+					originalTargetPosition.z,
+					target.getYRot(),
+					target.getXRot()
+				);
+				return;
+			}
+
+			SquadCasualtyDirective casualtyOrder = coordinator.casualtyDirectiveFor(wounded);
+			SquadCasualtyDirective escortOrder = coordinator.casualtyDirectiveFor(shieldEscort);
+			if (casualtyOrder == null || escortOrder == null) {
+				return;
+			}
+			helper.assertTrue(
+				casualtyOrder.role() == SquadCasualtyDirective.Role.EVACUEE,
+				"The lowest-health archer was not selected as the one bounded casualty."
+			);
+			helper.assertTrue(
+				escortOrder.role() == SquadCasualtyDirective.Role.ESCORT
+					&& escortOrder.escortId() == shieldEscort.getId(),
+				"The healthy shield bearer was not preferred over the unshielded spider."
+			);
+			helper.assertTrue(
+				horizontalDistance(target.position(), casualtyOrder.destination())
+					> horizontalDistance(target.position(), wounded.position()),
+				"The casualty destination did not increase distance from the threat."
+			);
+			helper.assertTrue(
+				horizontalDistance(target.position(), escortOrder.destination())
+					< horizontalDistance(target.position(), wounded.position()),
+				"The escort was not ordered into the screen between threat and casualty."
+			);
+
+			SquadCasualtyResponseGoal escortGoal = new SquadCasualtyResponseGoal(shieldEscort, 1.38, 1.16);
+			SquadCasualtyResponseGoal casualtyGoal = new SquadCasualtyResponseGoal(wounded, 1.32, 1.10);
+			helper.assertTrue(escortGoal.canUse(), "Shield escort did not accept its precomputed response directive.");
+			helper.assertTrue(casualtyGoal.canUse(), "Wounded archer did not accept its evacuation directive.");
+			escortGoal.start();
+			casualtyGoal.start();
+			escortGoal.tick();
+			casualtyGoal.tick();
+			helper.assertTrue(
+				shieldEscort.isUsingItem() && shieldEscort.getUsedItemHand() == net.minecraft.world.InteractionHand.OFF_HAND,
+				"Shield escort reached the screening phase without raising its shield."
+			);
+			escortGoal.stop();
+			casualtyGoal.stop();
 			helper.succeed();
 		});
 	}

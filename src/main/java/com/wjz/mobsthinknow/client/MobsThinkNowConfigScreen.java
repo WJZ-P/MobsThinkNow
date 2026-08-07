@@ -581,6 +581,34 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.squad_threat_distribution.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadThreatDistribution = value))
 			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_casualty_extraction"),
+			config.squadCasualtyExtraction
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_casualty_extraction.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadCasualtyExtraction = value))
+			.build());
+		squadCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.squad_casualty_health_threshold"),
+			(int)Math.round(config.squadCasualtyHealthThreshold * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MINIMUM_SQUAD_CASUALTY_HEALTH_THRESHOLD * 100.0),
+			(int)Math.round(MobsThinkNowConfig.MAXIMUM_SQUAD_CASUALTY_HEALTH_THRESHOLD * 100.0)
+		)
+			.setDefaultValue((int)Math.round(MobsThinkNowConfig.DEFAULT_SQUAD_CASUALTY_HEALTH_THRESHOLD * 100.0))
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_casualty_health_threshold.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadCasualtyHealthThreshold = value / 100.0))
+			.build());
+		squadCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.squad_casualty_response_ticks"),
+			config.squadCasualtyResponseTicks,
+			MobsThinkNowConfig.MINIMUM_SQUAD_CASUALTY_RESPONSE_TICKS,
+			MobsThinkNowConfig.MAXIMUM_SQUAD_CASUALTY_RESPONSE_TICKS
+		)
+			.setDefaultValue(MobsThinkNowConfig.DEFAULT_SQUAD_CASUALTY_RESPONSE_TICKS)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_casualty_response_ticks.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadCasualtyResponseTicks = value))
+			.build());
 		squadCategory.addEntry(entries.startIntSlider(
 			Component.translatable("mobsthinknow.config.briefing_ticks"),
 			config.briefingTicks,

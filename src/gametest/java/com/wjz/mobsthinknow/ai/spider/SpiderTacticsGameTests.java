@@ -33,13 +33,13 @@ import net.minecraft.world.level.block.Blocks;
 /** 从真实实体、GoalSelector、骑乘关系和引信数据验证蜘蛛战术。 */
 public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
-	public void spiderMixinInstallsSevenGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
+	public void spiderMixinInstallsEightGoalsAndAppliesPersistentIdentity(final GameTestHelper helper) {
 		long before = SmartSpiderMetrics.snapshot().installedGoals();
 		Spider spider = helper.spawn(EntityType.SPIDER, 2, 2, 2);
 
 		helper.assertTrue(
-			SmartSpiderMetrics.snapshot().installedGoals() == before + 7,
-			"Spider construction did not install evacuation, preparation, web ambush, personal combat, and carrier goals."
+			SmartSpiderMetrics.snapshot().installedGoals() == before + 8,
+			"Spider construction did not install blast/casualty evacuation, preparation, web ambush, combat, and carrier goals."
 		);
 		int intelligence = SpiderIntelligence.get(spider);
 		helper.assertTrue(intelligence >= 1 && intelligence <= 10, "Spider intelligence escaped the 1-10 range.");

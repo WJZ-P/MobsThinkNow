@@ -50,6 +50,10 @@ public final class SmartZombieMetrics {
 	private static final AtomicLong SHARED_DANGERS_AVOIDED = new AtomicLong();
 	private static final AtomicLong SECONDARY_THREATS_OBSERVED = new AtomicLong();
 	private static final AtomicLong THREAT_ASSIGNMENTS_CHANGED = new AtomicLong();
+	private static final AtomicLong CASUALTY_RESPONSES_STARTED = new AtomicLong();
+	private static final AtomicLong CASUALTY_RESPONSES_FINISHED = new AtomicLong();
+	private static final AtomicLong CASUALTY_GOALS_STARTED = new AtomicLong();
+	private static final AtomicLong CASUALTY_ESCORT_HITS = new AtomicLong();
 
 	private SmartZombieMetrics() {
 	}
@@ -227,6 +231,22 @@ public final class SmartZombieMetrics {
 		THREAT_ASSIGNMENTS_CHANGED.addAndGet(Math.max(0, members));
 	}
 
+	public static void casualtyResponseStarted() {
+		CASUALTY_RESPONSES_STARTED.incrementAndGet();
+	}
+
+	public static void casualtyResponseFinished() {
+		CASUALTY_RESPONSES_FINISHED.incrementAndGet();
+	}
+
+	public static void casualtyGoalStarted() {
+		CASUALTY_GOALS_STARTED.incrementAndGet();
+	}
+
+	public static void casualtyEscortHit() {
+		CASUALTY_ESCORT_HITS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -273,7 +293,11 @@ public final class SmartZombieMetrics {
 			SHARED_DANGERS_REPORTED.get(),
 			SHARED_DANGERS_AVOIDED.get(),
 			SECONDARY_THREATS_OBSERVED.get(),
-			THREAT_ASSIGNMENTS_CHANGED.get()
+			THREAT_ASSIGNMENTS_CHANGED.get(),
+			CASUALTY_RESPONSES_STARTED.get(),
+			CASUALTY_RESPONSES_FINISHED.get(),
+			CASUALTY_GOALS_STARTED.get(),
+			CASUALTY_ESCORT_HITS.get()
 		);
 	}
 
@@ -322,7 +346,11 @@ public final class SmartZombieMetrics {
 		long sharedDangersReported,
 		long sharedDangersAvoided,
 		long secondaryThreatsObserved,
-		long threatAssignmentsChanged
+		long threatAssignmentsChanged,
+		long casualtyResponsesStarted,
+		long casualtyResponsesFinished,
+		long casualtyGoalsStarted,
+		long casualtyEscortHits
 	) {
 	}
 }

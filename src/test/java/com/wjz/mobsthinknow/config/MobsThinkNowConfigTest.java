@@ -36,6 +36,9 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.squadSharedDangerMemory);
 		assertEquals(true, config.squadFiringLaneReservations);
 		assertEquals(true, config.squadThreatDistribution);
+		assertEquals(true, config.squadCasualtyExtraction);
+		assertEquals(0.30, config.squadCasualtyHealthThreshold);
+		assertEquals(60, config.squadCasualtyResponseTicks);
 		assertEquals(true, config.swordFeints);
 		assertEquals(7, config.swordFeintMinimumIntelligence);
 		assertEquals(0.35, config.swordFeintChance);
@@ -236,6 +239,22 @@ class MobsThinkNowConfigTest {
 		config.squadSpeedBonus = -1.0;
 		config.validate();
 		assertEquals(0.0, config.squadSpeedBonus);
+	}
+
+	@Test
+	void clampsCasualtyResponseEnvelope() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.squadCasualtyHealthThreshold = 9.0;
+		config.squadCasualtyResponseTicks = 500;
+		config.validate();
+		assertEquals(0.50, config.squadCasualtyHealthThreshold);
+		assertEquals(120, config.squadCasualtyResponseTicks);
+
+		config.squadCasualtyHealthThreshold = Double.NaN;
+		config.squadCasualtyResponseTicks = 1;
+		config.validate();
+		assertEquals(0.10, config.squadCasualtyHealthThreshold);
+		assertEquals(40, config.squadCasualtyResponseTicks);
 	}
 
 	@Test
