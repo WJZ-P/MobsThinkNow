@@ -77,4 +77,30 @@ class SpiderWebTrapPlannerTest {
 		assertEquals(244, SpiderWebTrapPlanner.cooldownTicks(240, 10, 3, 40));
 		assertEquals(60, SpiderWebTrapPlanner.cooldownTicks(10, 10, 3, 0));
 	}
+
+	@Test
+	void blastContainmentCoversTheEscapeLaneAwayFromTheCreeper() {
+		Vec3 blast = new Vec3(0.0, 2.0, 0.0);
+		Vec3 target = new Vec3(3.0, 2.0, 0.0);
+		List<Vec3> candidates = SpiderWebTrapPlanner.blastEscapeCandidateCenters(
+			target,
+			new Vec3(0.15, 0.0, 0.04),
+			blast,
+			1
+		);
+
+		assertEquals(5, candidates.size());
+		assertTrue(candidates.getFirst().x > target.x + 1.9);
+		assertTrue(candidates.stream().allMatch(candidate -> candidate.distanceToSqr(blast) > target.distanceToSqr(blast)));
+		assertTrue(candidates.stream().anyMatch(candidate -> candidate.z > 0.7));
+		assertTrue(candidates.stream().anyMatch(candidate -> candidate.z < -0.7));
+	}
+
+	@Test
+	void eachNewPrimedCreeperCanRequestOneEmergencyWebDuringCooldown() {
+		assertTrue(SpiderWebTrapPlanner.mayBypassCooldownForBlast(false, 42, 0));
+		assertFalse(SpiderWebTrapPlanner.mayBypassCooldownForBlast(false, 42, 42));
+		assertTrue(SpiderWebTrapPlanner.mayBypassCooldownForBlast(false, 43, 42));
+		assertTrue(SpiderWebTrapPlanner.mayBypassCooldownForBlast(true, 0, 0));
+	}
 }

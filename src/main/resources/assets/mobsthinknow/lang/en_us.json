@@ -345,5 +345,7 @@
 	"mobsthinknow.config.squad_spider_casualty_transport": "Spider Casualty Transport",
 	"mobsthinknow.config.squad_spider_casualty_transport.tooltip": "When no healthy shield bearer is available, an idle spider with intelligence 6 or higher is preferred over an unshielded walking escort. The casualty visibly leaps onto its back, rides away from the threat, and dismounts at a safe position.",
 	"mobsthinknow.config.squad_shield_wall_rotation": "Rotating Shield Wall",
-	"mobsthinknow.config.squad_shield_wall_rotation.tooltip": "In shield-wedge or combined-arms plans, two or more frontal shield bearers take distinct slots in rows of up to five. Everyone guards while holding formation; during commit and exploit windows only one member attacks every 16 ticks while the others maintain cover."
+	"mobsthinknow.config.squad_shield_wall_rotation.tooltip": "In shield-wedge or combined-arms plans, two or more frontal shield bearers take distinct slots in rows of up to five. Everyone guards while holding formation; during commit and exploit windows only one member attacks every 16 ticks while the others maintain cover.",
+	"mobsthinknow.config.squad_creeper_web_containment": "Creeper Blast Web Containment",
+	"mobsthinknow.config.squad_creeper_web_containment.tooltip": "When a squad creeper primes, an unladen spider with intelligence 7 or higher reads the creeper's approach and target velocity, then prioritizes the escape lane away from the blast. Each new fuse may bypass one normal web cooldown; spiders already inside the blast radius still evacuate first."
 }

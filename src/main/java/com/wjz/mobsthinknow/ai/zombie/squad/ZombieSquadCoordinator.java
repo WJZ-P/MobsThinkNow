@@ -1099,6 +1099,46 @@ public final class ZombieSquadCoordinator {
 		return threat == null ? null : threat.creeper;
 	}
 
+	/**
+	 * 供空闲蜘蛛读取同队正在追击同一目标的引信。与撤离查询不同，这里不要求蜘蛛已经进入爆炸圈；
+	 * 目标是提前封住逃生线。每队只遍历已引信 ID 集合 O(P)，并顺手剔除失效记录。
+	 */
+	public @Nullable SquadBlastThreat activeBlastForContainment(final Mob mob, final LivingEntity target) {
+		ZombieSquad squad = this.squadFor(mob);
+		if (squad == null || squad.primedCreeperIds.isEmpty()) {
+			return null;
+		}
+		SquadBlastThreat selected = null;
+		double nearestToTarget = Double.POSITIVE_INFINITY;
+		long now = mob.level().getGameTime();
+		Iterator<Integer> iterator = squad.primedCreeperIds.iterator();
+		while (iterator.hasNext()) {
+			int candidateId = iterator.next();
+			MemberRecord candidate = this.members.get(candidateId);
+			if (candidate == null
+				|| candidate.squadId != squad.id
+				|| !(candidate.mob instanceof Creeper creeper)
+				|| !isPrimedCreeper(creeper)) {
+				iterator.remove();
+				continue;
+			}
+			SquadBlastReservationBook.Reservation reservation = squad.blastReservations.reservationFor(candidateId, now);
+			boolean sameTarget = reservation == null
+				? creeper.getTarget() == target
+				: reservation.targetId() == target.getId();
+			if (!sameTarget || creeper.getVehicle() == mob || mob.getVehicle() == creeper) {
+				continue;
+			}
+			double distanceSquared = target.distanceToSqr(creeper);
+			if (distanceSquared < nearestToTarget) {
+				nearestToTarget = distanceSquared;
+				// 玩家最容易读懂并躲避的是苦力怕当前来向；蛛网因此封住其反方向，而非不可见预测点。
+				selected = new SquadBlastThreat(creeper, creeper.position(), creeper.isPowered());
+			}
+		}
+		return selected;
+	}
+
 	/** 返回真实引信实体和预约的预测爆点，使队友不是只会远离苦力怕当前脚下位置。 */
 	public @Nullable SquadBlastThreat nearestBlastThreatFor(final Mob mob) {
 		MemberRecord member = this.members.get(mob.getId());

@@ -29,6 +29,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.creeperFuseFeints);
 		assertEquals(240, config.creeperFuseFeintCooldownTicks);
 		assertEquals(true, config.squadWebAmbushFollowup);
+		assertEquals(true, config.squadCreeperWebContainment);
 		assertEquals(true, config.squadShieldWallRotation);
 		assertEquals(true, config.creeperSquadEvacuation);
 		assertEquals(true, config.creeperBlastReservations);

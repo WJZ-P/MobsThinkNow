@@ -600,6 +600,14 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadWebAmbushFollowup = value))
 			.build());
 		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_creeper_web_containment"),
+			config.squadCreeperWebContainment
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_creeper_web_containment.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadCreeperWebContainment = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.squad_shield_wall_rotation"),
 			config.squadShieldWallRotation
 		)

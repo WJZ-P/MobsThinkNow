@@ -15,6 +15,7 @@ public final class SpiderWebTrapPlanner {
 	private static final double MAXIMUM_TARGET_DISTANCE_SQUARED = 9.0 * 9.0;
 	private static final double MAXIMUM_HORIZONTAL_LEAD = 3.25;
 	private static final double DODGE_LANE_OFFSET = 0.82;
+	private static final double CONTAINMENT_LANE_OFFSET = 0.96;
 
 	private SpiderWebTrapPlanner() {
 	}
@@ -86,6 +87,48 @@ public final class SpiderWebTrapPlanner {
 			predictedPosition.add(heading.scale(0.78)),
 			predictedPosition.add(heading.scale(-0.72))
 		);
+	}
+
+	/**
+	 * 同队苦力怕开始引信后，优先封住目标远离预测爆点的逃生线。目标已经在横移时会把
+	 * 真实速度轻量混入方向，但候选仍固定为五个，不增加世界扫描上界。
+	 */
+	public static List<Vec3> blastEscapeCandidateCenters(
+		final Vec3 targetPosition,
+		final Vec3 targetVelocity,
+		final Vec3 blastCenter,
+		final int stableSide
+	) {
+		Vec3 away = targetPosition.subtract(blastCenter).multiply(1.0, 0.0, 1.0);
+		if (away.horizontalDistanceSqr() < 1.0E-6) {
+			away = new Vec3(targetVelocity.x, 0.0, targetVelocity.z);
+		}
+		if (away.horizontalDistanceSqr() < 1.0E-6) {
+			away = new Vec3(1.0, 0.0, 0.0);
+		} else {
+			away = away.normalize();
+		}
+		Vec3 velocity = new Vec3(targetVelocity.x, 0.0, targetVelocity.z);
+		if (velocity.horizontalDistanceSqr() >= 0.0025 && velocity.dot(away) > 0.0) {
+			away = away.scale(0.72).add(velocity.normalize().scale(0.28)).normalize();
+		}
+		Vec3 side = new Vec3(-away.z, 0.0, away.x).scale(stableSide < 0 ? -1.0 : 1.0);
+		Vec3 escape = targetPosition.add(away.scale(2.05));
+		return List.of(
+			escape,
+			escape.add(side.scale(CONTAINMENT_LANE_OFFSET)),
+			escape.add(side.scale(-CONTAINMENT_LANE_OFFSET)),
+			escape.add(away.scale(0.78)),
+			escape.add(away.scale(-0.72))
+		);
+	}
+
+	public static boolean mayBypassCooldownForBlast(
+		final boolean cooldownReady,
+		final int activeCreeperId,
+		final int lastSupportedCreeperId
+	) {
+		return cooldownReady || (activeCreeperId > 0 && activeCreeperId != lastSupportedCreeperId);
 	}
 
 	/** 智力和难度只小幅压缩冷却；配置值仍是决定世界蛛网密度的主上限。 */

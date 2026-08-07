@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.spider;
 
 import com.wjz.mobsthinknow.ai.activity.TacticalActivity;
 import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.EnumSet;
@@ -41,6 +42,9 @@ public final class SpiderWebTrapGoal extends Goal {
 	private int actionTicks;
 	private boolean placed;
 	private boolean acquired;
+	private boolean blastContainment;
+	private int plannedCreeperId;
+	private int lastSupportedCreeperId;
 
 	public SpiderWebTrapGoal(final Spider spider) {
 		this.spider = spider;
@@ -53,8 +57,7 @@ public final class SpiderWebTrapGoal extends Goal {
 		MobsThinkNowConfig config = ConfigManager.get();
 		if (!enabled(config)
 			|| !(this.spider.level() instanceof ServerLevel level)
-			|| !level.getGameRules().get(GameRules.MOB_GRIEFING)
-			|| level.getGameTime() < this.nextTrapTick) {
+			|| !level.getGameRules().get(GameRules.MOB_GRIEFING)) {
 			return false;
 		}
 		LivingEntity currentTarget = this.spider.getTarget();
@@ -71,7 +74,25 @@ public final class SpiderWebTrapGoal extends Goal {
 			return false;
 		}
 
-		BlockPos candidate = this.findPlacement(level, currentTarget, intelligence);
+		ZombieSquadCoordinator.SquadBlastThreat activeBlast = config.squadCreeperWebContainment
+			? ZombieSquadCoordinator.forLevel(level).activeBlastForContainment(this.spider, currentTarget)
+			: null;
+		int activeCreeperId = activeBlast == null ? 0 : activeBlast.creeper().getId();
+		boolean containmentOpportunity = activeCreeperId > 0 && activeCreeperId != this.lastSupportedCreeperId;
+		if (!SpiderWebTrapPlanner.mayBypassCooldownForBlast(
+			level.getGameTime() >= this.nextTrapTick,
+			containmentOpportunity ? activeCreeperId : 0,
+			this.lastSupportedCreeperId
+		)) {
+			return false;
+		}
+
+		BlockPos candidate = this.findPlacement(
+			level,
+			currentTarget,
+			intelligence,
+			containmentOpportunity ? activeBlast : null
+		);
 		if (candidate == null) {
 			// 不可用地形只短暂退避重新评估，避免 canUse 每 tick 重复做 20 次方块检查。
 			this.nextTrapTick = level.getGameTime() + 20L;
@@ -79,6 +100,12 @@ public final class SpiderWebTrapGoal extends Goal {
 		}
 		this.target = currentTarget;
 		this.plannedPosition = candidate;
+		this.blastContainment = containmentOpportunity;
+		this.plannedCreeperId = containmentOpportunity ? activeCreeperId : 0;
+		if (containmentOpportunity) {
+			// 预订发生在 canUse 成功时，防止 GoalSelector 多次试探同一引信并绕过冷却。
+			this.lastSupportedCreeperId = activeCreeperId;
+		}
 		return true;
 	}
 
@@ -151,6 +178,9 @@ public final class SpiderWebTrapGoal extends Goal {
 				level.getGameTime(),
 				config.spiderWebTrapLifetimeTicks
 			);
+			if (this.placed && this.blastContainment) {
+				SmartSpiderMetrics.blastContainmentWeb();
+			}
 			this.nextTrapTick = level.getGameTime() + SpiderWebTrapPlanner.cooldownTicks(
 				config.spiderWebTrapCooldownTicks,
 				SpiderIntelligence.get(this.spider),
@@ -171,6 +201,8 @@ public final class SpiderWebTrapGoal extends Goal {
 		this.actionTicks = 0;
 		this.placed = false;
 		this.acquired = false;
+		this.blastContainment = false;
+		this.plannedCreeperId = 0;
 		this.activityLease.release(this.spider);
 	}
 
@@ -182,20 +214,32 @@ public final class SpiderWebTrapGoal extends Goal {
 	private @Nullable BlockPos findPlacement(
 		final ServerLevel level,
 		final LivingEntity currentTarget,
-		final int intelligence
+		final int intelligence,
+		final ZombieSquadCoordinator.@Nullable SquadBlastThreat activeBlast
 	) {
-		Vec3 predicted = SpiderWebTrapPlanner.predictedPosition(
-			currentTarget.position(),
-			currentTarget.getDeltaMovement(),
-			currentTarget.getLookAngle(),
-			intelligence
-		);
-		for (Vec3 center : SpiderWebTrapPlanner.candidateCenters(
-			currentTarget.position(),
-			predicted,
-			currentTarget.getLookAngle(),
-			this.stableSide
-		)) {
+		Iterable<Vec3> centers;
+		if (activeBlast != null) {
+			centers = SpiderWebTrapPlanner.blastEscapeCandidateCenters(
+				currentTarget.position(),
+				currentTarget.getDeltaMovement(),
+				activeBlast.center(),
+				this.stableSide
+			);
+		} else {
+			Vec3 predicted = SpiderWebTrapPlanner.predictedPosition(
+				currentTarget.position(),
+				currentTarget.getDeltaMovement(),
+				currentTarget.getLookAngle(),
+				intelligence
+			);
+			centers = SpiderWebTrapPlanner.candidateCenters(
+				currentTarget.position(),
+				predicted,
+				currentTarget.getLookAngle(),
+				this.stableSide
+			);
+		}
+		for (Vec3 center : centers) {
 			for (int yOffset : VERTICAL_SEARCH_ORDER) {
 				BlockPos pos = BlockPos.containing(center.x, currentTarget.getBoundingBox().minY + yOffset, center.z);
 				if (this.isUsefulPlacement(level, pos, currentTarget)) {
@@ -204,6 +248,15 @@ public final class SpiderWebTrapGoal extends Goal {
 			}
 		}
 		return null;
+	}
+
+	/** GameTest/诊断只读：返回本轮已经通过地形校验的绝对落点。 */
+	public @Nullable BlockPos plannedPosition() {
+		return this.plannedPosition;
+	}
+
+	public boolean isBlastContainmentPlan() {
+		return this.blastContainment && this.plannedCreeperId > 0;
 	}
 
 	private boolean isUsefulPlacement(

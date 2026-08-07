@@ -11,6 +11,7 @@ public final class SmartSpiderMetrics {
 	private static final AtomicLong WEB_TRAP_WINDUPS = new AtomicLong();
 	private static final AtomicLong WEB_TRAPS_PLACED = new AtomicLong();
 	private static final AtomicLong WEB_TRAPS_EXPIRED = new AtomicLong();
+	private static final AtomicLong BLAST_CONTAINMENT_WEBS = new AtomicLong();
 	private static final AtomicLong CARRIER_SEARCHES = new AtomicLong();
 	private static final AtomicLong CARRIER_CANDIDATE_CHECKS = new AtomicLong();
 	private static final AtomicLong CREEPERS_MOUNTED = new AtomicLong();
@@ -52,6 +53,10 @@ public final class SmartSpiderMetrics {
 
 	public static void webTrapExpired() {
 		WEB_TRAPS_EXPIRED.incrementAndGet();
+	}
+
+	public static void blastContainmentWeb() {
+		BLAST_CONTAINMENT_WEBS.incrementAndGet();
 	}
 
 	public static void carrierSearch() {
@@ -109,6 +114,7 @@ public final class SmartSpiderMetrics {
 			WEB_TRAP_WINDUPS.get(),
 			WEB_TRAPS_PLACED.get(),
 			WEB_TRAPS_EXPIRED.get(),
+			BLAST_CONTAINMENT_WEBS.get(),
 			CARRIER_SEARCHES.get(),
 			CARRIER_CANDIDATE_CHECKS.get(),
 			CREEPERS_MOUNTED.get(),
@@ -131,6 +137,7 @@ public final class SmartSpiderMetrics {
 		long webTrapWindups,
 		long webTrapsPlaced,
 		long webTrapsExpired,
+		long blastContainmentWebs,
 		long carrierSearches,
 		long carrierCandidateChecks,
 		long creepersMounted,

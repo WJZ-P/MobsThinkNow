@@ -522,6 +522,90 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		});
 	}
 
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 100, padding = 4)
+	public void squadSpiderWebsTheEscapeLaneOfAPrimedCreeper(final GameTestHelper helper) {
+		Spider carrier = helper.spawn(EntityType.SPIDER, 3, 2, 3);
+		Spider spider = helper.spawn(EntityType.SPIDER, 4, 2, 2);
+		Creeper creeper = helper.spawn(EntityType.CREEPER, 9, 2, 2);
+		Villager target = helper.spawn(EntityType.VILLAGER, 12, 2, 2);
+		carrier.setNoAi(true);
+		spider.setNoAi(true);
+		creeper.setNoAi(true);
+		target.setNoAi(true);
+		SpiderIntelligence.set(carrier, 10);
+		SpiderIntelligence.set(spider, 9);
+		CreeperIntelligence.set(creeper, 8);
+		carrier.setTarget(target);
+		spider.setTarget(target);
+		creeper.setTarget(target);
+		target.setDeltaMovement(0.12, 0.0, 0.02);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		SpiderWebTrapGoal webGoal = new SpiderWebTrapGoal(spider);
+		long containmentBefore = SmartSpiderMetrics.snapshot().blastContainmentWebs();
+		boolean[] started = {false};
+		BlockPos[] planned = {null};
+		int[] actionTicks = {0};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			coordinator.heartbeat(carrier, target, true, target.position(), now);
+			coordinator.heartbeat(spider, target, true, target.position(), now);
+			coordinator.heartbeat(creeper, target, true, target.position(), now);
+			if (coordinator.viewFor(spider) == null) {
+				ZombieSquadCoordinator.tickLevel(helper.getLevel());
+				return;
+			}
+
+			creeper.setSwellDir(1);
+			coordinator.heartbeat(creeper, target, true, target.position(), now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			spider.setOnGround(true);
+			spider.getSensing().tick();
+			if (!started[0]) {
+				helper.assertTrue(
+					coordinator.assignedTransportPartnerFor(spider) == null,
+					"The containment fixture accidentally selected the creeper's assigned carrier instead of an idle spider."
+				);
+				ZombieSquadCoordinator.SquadBlastThreat threat = coordinator.activeBlastForContainment(spider, target);
+				helper.assertTrue(threat != null && threat.creeper() == creeper, "The primed creeper was absent from its squad blast index.");
+				helper.assertTrue(
+					webGoal.canUse(),
+					"An idle high-IQ spider ignored its squad creeper's active fuse: onGround=" + spider.onGround()
+						+ ",visible=" + spider.getSensing().hasLineOfSight(target)
+						+ ",vehicle=" + spider.isVehicle()
+						+ ",distance2=" + spider.distanceToSqr(target)
+						+ ",lease=" + TacticalActivityLease.snapshot(spider, now)
+				);
+				helper.assertTrue(webGoal.isBlastContainmentPlan(), "The fuse only triggered an ordinary personal web plan.");
+				planned[0] = webGoal.plannedPosition();
+				helper.assertTrue(planned[0] != null, "Blast containment found no bounded escape-lane placement.");
+				helper.assertTrue(
+					planned[0].getX() > target.getX(),
+					"The spider placed behind the fleeing target instead of beyond it away from the creeper."
+				);
+				webGoal.start();
+				started[0] = true;
+				return;
+			}
+
+			webGoal.tick();
+			actionTicks[0]++;
+			if (actionTicks[0] < 8) {
+				return;
+			}
+			helper.assertTrue(
+				helper.getLevel().getBlockState(planned[0]).is(Blocks.COBWEB),
+				"The visible containment windup did not release a web onto the planned escape lane."
+			);
+			helper.assertTrue(
+				SmartSpiderMetrics.snapshot().blastContainmentWebs() > containmentBefore,
+				"Blast-containment web placement was absent from diagnostics."
+			);
+			webGoal.stop();
+			helper.succeed();
+		});
+	}
+
 	@Override
 	public void invokeTestMethod(final GameTestHelper helper, final Method method) throws ReflectiveOperationException {
 		method.invoke(this, helper);

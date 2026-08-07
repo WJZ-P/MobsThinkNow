@@ -345,5 +345,7 @@
 	"mobsthinknow.config.squad_spider_casualty_transport": "蜘蛛战地救护",
 	"mobsthinknow.config.squad_spider_casualty_transport.tooltip": "没有健康盾卫时，空闲且智力至少 6 的蜘蛛会优先于无盾步行护卫。伤员会用可见跳跃登上蛛背，远离威胁后再从安全位置下客。",
 	"mobsthinknow.config.squad_shield_wall_rotation": "盾墙轮换出击",
-	"mobsthinknow.config.squad_shield_wall_rotation.tooltip": "盾楔或联合兵种方案中，两名以上正面盾卫会站入最多五只一排的独立阵位。持阵时全员举盾，突击与追击窗口每 16 tick 仅放行一名成员攻击，其余成员持续掩护。"
+	"mobsthinknow.config.squad_shield_wall_rotation.tooltip": "盾楔或联合兵种方案中，两名以上正面盾卫会站入最多五只一排的独立阵位。持阵时全员举盾，突击与追击窗口每 16 tick 仅放行一名成员攻击，其余成员持续掩护。",
+	"mobsthinknow.config.squad_creeper_web_containment": "苦力怕爆点蛛网封锁",
+	"mobsthinknow.config.squad_creeper_web_containment.tooltip": "同队苦力怕开始引信时，智力至少 7 且未载客的蜘蛛会读取苦力怕来向和目标速度，把本轮蛛网优先投到目标远离爆点的逃生线上。每个新引信至多额外绕过一次普通蛛网冷却；处于爆炸圈内的蜘蛛仍优先撤离。"
 }
