@@ -608,6 +608,24 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadCreeperWebContainment = value))
 			.build());
 		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_spider_pounce_staggering"),
+			config.squadSpiderPounceStaggering
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_spider_pounce_staggering.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadSpiderPounceStaggering = value))
+			.build());
+		squadCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.squad_spider_pounce_interval"),
+			config.squadSpiderPounceIntervalTicks,
+			MobsThinkNowConfig.MINIMUM_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS,
+			MobsThinkNowConfig.MAXIMUM_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS
+		)
+			.setDefaultValue(MobsThinkNowConfig.DEFAULT_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_spider_pounce_interval.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadSpiderPounceIntervalTicks = value))
+			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
 			Component.translatable("mobsthinknow.config.squad_shield_wall_rotation"),
 			config.squadShieldWallRotation
 		)

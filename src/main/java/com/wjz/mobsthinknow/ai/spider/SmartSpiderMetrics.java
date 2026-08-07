@@ -7,6 +7,7 @@ public final class SmartSpiderMetrics {
 	private static final AtomicLong INSTALLED_GOALS = new AtomicLong();
 	private static final AtomicLong FLANKS = new AtomicLong();
 	private static final AtomicLong POUNCES = new AtomicLong();
+	private static final AtomicLong COORDINATED_POUNCES = new AtomicLong();
 	private static final AtomicLong REPOSITIONS = new AtomicLong();
 	private static final AtomicLong WEB_TRAP_WINDUPS = new AtomicLong();
 	private static final AtomicLong WEB_TRAPS_PLACED = new AtomicLong();
@@ -37,6 +38,10 @@ public final class SmartSpiderMetrics {
 
 	public static void pounceStarted() {
 		POUNCES.incrementAndGet();
+	}
+
+	public static void coordinatedPounceStarted() {
+		COORDINATED_POUNCES.incrementAndGet();
 	}
 
 	public static void repositionStarted() {
@@ -110,6 +115,7 @@ public final class SmartSpiderMetrics {
 			INSTALLED_GOALS.get(),
 			FLANKS.get(),
 			POUNCES.get(),
+			COORDINATED_POUNCES.get(),
 			REPOSITIONS.get(),
 			WEB_TRAP_WINDUPS.get(),
 			WEB_TRAPS_PLACED.get(),
@@ -133,6 +139,7 @@ public final class SmartSpiderMetrics {
 		long installedGoals,
 		long flanks,
 		long pounces,
+		long coordinatedPounces,
 		long repositions,
 		long webTrapWindups,
 		long webTrapsPlaced,

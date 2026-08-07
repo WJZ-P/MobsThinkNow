@@ -347,5 +347,9 @@
 	"mobsthinknow.config.squad_shield_wall_rotation": "Rotating Shield Wall",
 	"mobsthinknow.config.squad_shield_wall_rotation.tooltip": "In shield-wedge or combined-arms plans, two or more frontal shield bearers take distinct slots in rows of up to five. Everyone guards while holding formation; during commit and exploit windows only one member attacks every 16 ticks while the others maintain cover.",
 	"mobsthinknow.config.squad_creeper_web_containment": "Creeper Blast Web Containment",
-	"mobsthinknow.config.squad_creeper_web_containment.tooltip": "When a squad creeper primes, an unladen spider with intelligence 7 or higher reads the creeper's approach and target velocity, then prioritizes the escape lane away from the blast. Each new fuse may bypass one normal web cooldown; spiders already inside the blast radius still evacuate first."
+	"mobsthinknow.config.squad_creeper_web_containment.tooltip": "When a squad creeper primes, an unladen spider with intelligence 7 or higher reads the creeper's approach and target velocity, then prioritizes the escape lane away from the blast. Each new fuse may bypass one normal web cooldown; spiders already inside the blast radius still evacuate first.",
+	"mobsthinknow.config.squad_spider_pounce_staggering": "Stagger Squad Spider Pounces",
+	"mobsthinknow.config.squad_spider_pounce_staggering.tooltip": "Squad spiders share an O(1) pounce token: while one spider remains airborne, the others keep circling instead of launching together. Landing releases airborne ownership immediately, while abnormal states self-expire after 30 ticks. Unsquadded spiders keep their original cadence.",
+	"mobsthinknow.config.squad_spider_pounce_interval": "Squad Pounce Interval (ticks)",
+	"mobsthinknow.config.squad_spider_pounce_interval.tooltip": "Range: 4-20, default 8. This is the minimum delay between two squad spider launches; if the first spider remains airborne, the actual delay extends until it lands."
 }

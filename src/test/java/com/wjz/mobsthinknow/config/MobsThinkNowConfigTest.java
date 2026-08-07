@@ -30,6 +30,8 @@ class MobsThinkNowConfigTest {
 		assertEquals(240, config.creeperFuseFeintCooldownTicks);
 		assertEquals(true, config.squadWebAmbushFollowup);
 		assertEquals(true, config.squadCreeperWebContainment);
+		assertEquals(true, config.squadSpiderPounceStaggering);
+		assertEquals(8, config.squadSpiderPounceIntervalTicks);
 		assertEquals(true, config.squadShieldWallRotation);
 		assertEquals(true, config.creeperSquadEvacuation);
 		assertEquals(true, config.creeperBlastReservations);
@@ -372,6 +374,18 @@ class MobsThinkNowConfigTest {
 		config.validate();
 		assertEquals(80, config.spiderWebTrapCooldownTicks);
 		assertEquals(400, config.spiderWebTrapLifetimeTicks);
+	}
+
+	@Test
+	void clampsSquadSpiderPounceInterval() {
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		config.squadSpiderPounceIntervalTicks = 100;
+		config.validate();
+		assertEquals(20, config.squadSpiderPounceIntervalTicks);
+
+		config.squadSpiderPounceIntervalTicks = -1;
+		config.validate();
+		assertEquals(4, config.squadSpiderPounceIntervalTicks);
 	}
 
 	@Test

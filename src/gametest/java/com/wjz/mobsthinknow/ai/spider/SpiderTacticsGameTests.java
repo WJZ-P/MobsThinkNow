@@ -133,6 +133,94 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		helper.succeed();
 	}
 
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 100, padding = 4)
+	public void squadSpidersTakeTurnsPouncingInsteadOfColliding(final GameTestHelper helper) {
+		Spider first = helper.spawn(EntityType.SPIDER, 3, 2, 2);
+		Spider second = helper.spawn(EntityType.SPIDER, 3, 2, 4);
+		Spider anchor = helper.spawn(EntityType.SPIDER, 2, 2, 3);
+		Villager target = helper.spawn(EntityType.VILLAGER, 8, 2, 3);
+		first.setNoAi(true);
+		second.setNoAi(true);
+		anchor.setNoAi(true);
+		target.setNoAi(true);
+		SpiderIntelligence.set(first, 10);
+		SpiderIntelligence.set(second, 9);
+		SpiderIntelligence.set(anchor, 5);
+		first.setTarget(target);
+		second.setTarget(target);
+		anchor.setTarget(target);
+
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		SmartSpiderPounceGoal firstGoal = new SmartSpiderPounceGoal(first);
+		SmartSpiderPounceGoal secondGoal = new SmartSpiderPounceGoal(second);
+		long coordinatedBefore = SmartSpiderMetrics.snapshot().coordinatedPounces();
+		long[] firstLaunchAt = {Long.MIN_VALUE};
+		boolean[] releasedFirst = {false};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			coordinator.heartbeat(first, target, true, target.position(), now);
+			coordinator.heartbeat(second, target, true, target.position(), now);
+			coordinator.heartbeat(anchor, target, true, target.position(), now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView firstView = coordinator.viewFor(first);
+			ZombieSquadCoordinator.SquadView secondView = coordinator.viewFor(second);
+			if (firstView == null || secondView == null) {
+				return;
+			}
+			helper.assertTrue(
+				firstView.squadId() == secondView.squadId(),
+				"The pounce fixture formed separate squads instead of sharing one token."
+			);
+			first.setOnGround(true);
+			second.setOnGround(true);
+			first.getSensing().tick();
+			second.getSensing().tick();
+
+			if (!releasedFirst[0]) {
+				helper.assertTrue(firstGoal.canUse(), "The first prepared squad spider could not acquire a pounce slot.");
+				firstGoal.start();
+				firstLaunchAt[0] = now;
+				helper.assertTrue(
+					coordinator.ownsSpiderPounceReservation(first),
+					"Starting the first pounce did not expose an active squad token."
+				);
+				helper.assertTrue(
+					!secondGoal.canUse(),
+					"A second squad spider launched in the same frame as the active owner."
+				);
+				helper.assertTrue(
+					SmartSpiderMetrics.snapshot().coordinatedPounces() == coordinatedBefore + 1,
+					"The first coordinated pounce was absent from diagnostics."
+				);
+				firstGoal.stop();
+				helper.assertTrue(
+					!coordinator.ownsSpiderPounceReservation(first),
+					"Landing did not release the airborne pounce owner."
+				);
+				releasedFirst[0] = true;
+				return;
+			}
+
+			long interval = ConfigManager.get().squadSpiderPounceIntervalTicks;
+			if (now < firstLaunchAt[0] + interval) {
+				helper.assertTrue(
+					!secondGoal.canUse(),
+					"The second spider ignored the configured minimum launch spacing."
+				);
+				return;
+			}
+			helper.assertTrue(secondGoal.canUse(), "The next squad spider remained deadlocked after the stagger window.");
+			secondGoal.start();
+			helper.assertTrue(
+				SmartSpiderMetrics.snapshot().coordinatedPounces() == coordinatedBefore + 2,
+				"The second staggered launch was absent from diagnostics."
+			);
+			secondGoal.stop();
+			helper.succeed();
+		});
+	}
+
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
 	public void skilledSpiderPerformsReadableWindupAndTrapsPredictedFootfall(final GameTestHelper helper) {
 		for (int x = 1; x <= 12; x++) {

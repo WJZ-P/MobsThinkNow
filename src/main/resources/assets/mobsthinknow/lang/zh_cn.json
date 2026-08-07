@@ -347,5 +347,9 @@
 	"mobsthinknow.config.squad_shield_wall_rotation": "盾墙轮换出击",
 	"mobsthinknow.config.squad_shield_wall_rotation.tooltip": "盾楔或联合兵种方案中，两名以上正面盾卫会站入最多五只一排的独立阵位。持阵时全员举盾，突击与追击窗口每 16 tick 仅放行一名成员攻击，其余成员持续掩护。",
 	"mobsthinknow.config.squad_creeper_web_containment": "苦力怕爆点蛛网封锁",
-	"mobsthinknow.config.squad_creeper_web_containment.tooltip": "同队苦力怕开始引信时，智力至少 7 且未载客的蜘蛛会读取苦力怕来向和目标速度，把本轮蛛网优先投到目标远离爆点的逃生线上。每个新引信至多额外绕过一次普通蛛网冷却；处于爆炸圈内的蜘蛛仍优先撤离。"
+	"mobsthinknow.config.squad_creeper_web_containment.tooltip": "同队苦力怕开始引信时，智力至少 7 且未载客的蜘蛛会读取苦力怕来向和目标速度，把本轮蛛网优先投到目标远离爆点的逃生线上。每个新引信至多额外绕过一次普通蛛网冷却；处于爆炸圈内的蜘蛛仍优先撤离。",
+	"mobsthinknow.config.squad_spider_pounce_staggering": "蜘蛛跳扑错峰",
+	"mobsthinknow.config.squad_spider_pounce_staggering.tooltip": "同队蜘蛛共享一个 O(1) 跳扑令牌：前一只仍在空中时，其他蜘蛛继续绕行而不会同时起跳。落地会立即释放空中所有权，异常状态最多保留 30 tick。脱队蜘蛛保持原节奏。",
+	"mobsthinknow.config.squad_spider_pounce_interval": "小队跳扑间隔（tick）",
+	"mobsthinknow.config.squad_spider_pounce_interval.tooltip": "范围 4～20，默认 8。控制相邻两只蜘蛛起跳的最小时间差；如果前一只仍在空中，实际等待会继续延长到其落地。"
 }

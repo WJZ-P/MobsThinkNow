@@ -13,6 +13,9 @@ public final class MobsThinkNowConfig {
 	public static final int DEFAULT_SQUAD_CASUALTY_RESPONSE_TICKS = 60;
 	public static final int MINIMUM_SQUAD_CASUALTY_RESPONSE_TICKS = 40;
 	public static final int MAXIMUM_SQUAD_CASUALTY_RESPONSE_TICKS = 120;
+	public static final int DEFAULT_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS = 8;
+	public static final int MINIMUM_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS = 4;
+	public static final int MAXIMUM_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS = 20;
 	public static final double DEFAULT_RETREAT_SAFE_DISTANCE = 5.0;
 	public static final double MINIMUM_RETREAT_SAFE_DISTANCE = 2.0;
 	public static final double MAXIMUM_RETREAT_SAFE_DISTANCE = 16.0;
@@ -307,6 +310,10 @@ public final class MobsThinkNowConfig {
 	public boolean squadWebAmbushFollowup = true;
 	/** 同队苦力怕起爆时，高智力空闲蜘蛛可无视一次普通冷却，在目标逃离爆点的方向补网。 */
 	public boolean squadCreeperWebContainment = true;
+	/** 同队蜘蛛共享一个短期跳扑令牌，前一只落地前不会让下一只同时起跳。 */
+	public boolean squadSpiderPounceStaggering = true;
+	/** 两只同队蜘蛛开始跳扑之间的最小 tick 间隔；空中所有权可能把实际间隔继续延长。 */
+	public int squadSpiderPounceIntervalTicks = DEFAULT_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS;
 	/** 两名以上盾卫组成多排盾墙，持阵时全员举盾，进攻窗口每次只轮换一人放盾出击。 */
 	public boolean squadShieldWallRotation = true;
 	/** 真实攻击者和可见新目标可吸引最多 40% 的合格成员，首领与多数成员保持主目标。 */
@@ -376,6 +383,11 @@ public final class MobsThinkNowConfig {
 			this.squadCasualtyResponseTicks,
 			MINIMUM_SQUAD_CASUALTY_RESPONSE_TICKS,
 			MAXIMUM_SQUAD_CASUALTY_RESPONSE_TICKS
+		);
+		this.squadSpiderPounceIntervalTicks = clamp(
+			this.squadSpiderPounceIntervalTicks,
+			MINIMUM_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS,
+			MAXIMUM_SQUAD_SPIDER_POUNCE_INTERVAL_TICKS
 		);
 		this.squadSpeedBonus = clamp(this.squadSpeedBonus, 0.0, 0.5);
 		this.zombieAnimationBlendTicks = clamp(this.zombieAnimationBlendTicks, 0, 8);

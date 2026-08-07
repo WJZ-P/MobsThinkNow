@@ -84,6 +84,8 @@ public final class ZombieSquadCoordinator {
 	private static final int MAXIMUM_DANGER_PATH_SAMPLES = 16;
 	private static final long BLAST_RESERVATION_TICKS = 8L;
 	private static final long FIRING_LANE_RESERVATION_TICKS = 5L;
+	/** 防止实体卸载或 Goal 异常切换后遗留跳扑令牌；正常落地会更早主动释放。 */
+	private static final int MAXIMUM_SPIDER_POUNCE_RESERVATION_TICKS = 30;
 	private static final double FIRING_LANE_CLEARANCE = 0.35;
 	private static final Direction[] TACTIC_CARDINAL_DIRECTIONS = {
 		Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST
@@ -194,6 +196,15 @@ public final class ZombieSquadCoordinator {
 		return COORDINATORS.values().stream().mapToInt(coordinator -> (int)coordinator.squads.values().stream()
 			.filter(squad -> squad.shieldWallMemberIds.size() >= 2
 				&& (squad.state == SquadState.DEPLOYING || squad.state == SquadState.ENGAGING))
+			.count()).sum();
+	}
+
+	public static int activeSpiderPounceReservations() {
+		if (!ConfigManager.get().squadSpiderPounceStaggering) {
+			return 0;
+		}
+		return COORDINATORS.values().stream().mapToInt(coordinator -> (int)coordinator.squads.values().stream()
+			.filter(squad -> squad.spiderPounceCadence.isActive(coordinator.lastTickAt))
 			.count()).sum();
 	}
 
@@ -1137,6 +1148,67 @@ public final class ZombieSquadCoordinator {
 			}
 		}
 		return selected;
+	}
+
+	/**
+	 * 无副作用检查同队跳扑令牌。脱队蜘蛛、关闭功能或攻击不同世界目标时保持原来的单体节奏；
+	 * 已组队蜘蛛只做一次 O(1) 状态读取，不扫描附近实体或全队成员。
+	 */
+	public boolean canStartSpiderPounce(final Spider spider, final LivingEntity target) {
+		MobsThinkNowConfig config = ConfigManager.get();
+		if (!config.squadSpiderPounceStaggering || target.level() != spider.level()) {
+			return true;
+		}
+		ZombieSquad squad = this.squadFor(spider);
+		if (squad == null || this.assignedTargetEntity(squad, spider.getId()) != target) {
+			return true;
+		}
+		return squad.spiderPounceCadence.canReserve(
+			spider.getId(),
+			target.getId(),
+			spider.level().getGameTime()
+		);
+	}
+
+	/**
+	 * 在真正起跳帧提交令牌。GoalSelector 同处服务端主线程，因此第一个成功提交者会让同 tick
+	 * 后续蜘蛛立刻等待；租约同时受最小起跳间隔与最长空中时间双重约束。
+	 */
+	public boolean tryStartSpiderPounce(final Spider spider, final LivingEntity target) {
+		MobsThinkNowConfig config = ConfigManager.get();
+		if (!config.squadSpiderPounceStaggering || target.level() != spider.level()) {
+			return true;
+		}
+		ZombieSquad squad = this.squadFor(spider);
+		if (squad == null || this.assignedTargetEntity(squad, spider.getId()) != target) {
+			return true;
+		}
+		boolean reserved = squad.spiderPounceCadence.tryReserve(
+			spider.getId(),
+			target.getId(),
+			spider.level().getGameTime(),
+			config.squadSpiderPounceIntervalTicks,
+			MAXIMUM_SPIDER_POUNCE_RESERVATION_TICKS
+		);
+		if (reserved) {
+			SmartSpiderMetrics.coordinatedPounceStarted();
+		}
+		return reserved;
+	}
+
+	/** 落地或被更高优先级活动打断时释放空中所有权；最小起跳间隔仍然保留。 */
+	public void releaseSpiderPounce(final Spider spider) {
+		ZombieSquad squad = this.squadFor(spider);
+		if (squad != null) {
+			squad.spiderPounceCadence.release(spider.getId());
+		}
+	}
+
+	/** GameTest 与状态诊断只读：检查该蜘蛛是否正持有自己小队的空中令牌。 */
+	public boolean ownsSpiderPounceReservation(final Spider spider) {
+		ZombieSquad squad = this.squadFor(spider);
+		return squad != null
+			&& squad.spiderPounceCadence.ownerId(spider.level().getGameTime()) == spider.getId();
 	}
 
 	/** 返回真实引信实体和预约的预测爆点，使队友不是只会远离苦力怕当前脚下位置。 */
@@ -3275,6 +3347,7 @@ public final class ZombieSquadCoordinator {
 		private final SquadDangerMemory dangerMemory = new SquadDangerMemory();
 		private final SquadBlastReservationBook blastReservations = new SquadBlastReservationBook();
 		private final SquadFiringLaneRegistry firingLanes = new SquadFiringLaneRegistry();
+		private final SquadPounceCadence spiderPounceCadence = new SquadPounceCadence();
 		private ObservedTargetTactic observedTargetTactic = ObservedTargetTactic.NONE;
 		private long stateStartedAt;
 		private long stateDeadline;

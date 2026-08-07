@@ -484,12 +484,14 @@ public final class MtnCommands {
 				creeperMetrics.blastReservationsReleased(),
 				ZombieSquadCoordinator.activeBlastReservationCount()
 			);
-		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderWebWindups=%d, spiderWebsPlaced=%d, spiderWebsExpired=%d, spiderBlastContainmentWebs=%d, activeSpiderWebs=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d, spiderBreachStaging=%d, spiderMobileFireSupport=%d, spiderRouteChecks=%d, spiderRouteRejections=%d, spiderSafeDismounts=%d, spiderCasualtyPickups=%d, spiderCasualtyDropoffs=%d, activeSpiderCasualtyTransports=%d"
+		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, coordinatedSpiderPounces=%d, activeSpiderPounceSlots=%d, spiderRepositions=%d, spiderWebWindups=%d, spiderWebsPlaced=%d, spiderWebsExpired=%d, spiderBlastContainmentWebs=%d, activeSpiderWebs=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d, spiderBreachStaging=%d, spiderMobileFireSupport=%d, spiderRouteChecks=%d, spiderRouteRejections=%d, spiderSafeDismounts=%d, spiderCasualtyPickups=%d, spiderCasualtyDropoffs=%d, activeSpiderCasualtyTransports=%d"
 			.formatted(
 				config.spiderAiEnabled,
 				spiderMetrics.installedGoals(),
 				spiderMetrics.flanks(),
 				spiderMetrics.pounces(),
+				spiderMetrics.coordinatedPounces(),
+				ZombieSquadCoordinator.activeSpiderPounceReservations(),
 				spiderMetrics.repositions(),
 				spiderMetrics.webTrapWindups(),
 				spiderMetrics.webTrapsPlaced(),
