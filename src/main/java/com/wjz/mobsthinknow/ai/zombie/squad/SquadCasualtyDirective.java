@@ -14,6 +14,8 @@ public record SquadCasualtyDirective(
 ) {
 	public enum Role {
 		EVACUEE,
-		ESCORT
+		ESCORT,
+		/** 高智力蜘蛛先接取伤员，再把乘员背到撤离目的地。 */
+		CARRIER
 	}
 }

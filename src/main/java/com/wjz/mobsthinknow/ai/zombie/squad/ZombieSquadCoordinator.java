@@ -11,6 +11,9 @@ import com.wjz.mobsthinknow.ai.skeleton.SkeletonShotSafety;
 import com.wjz.mobsthinknow.ai.skeleton.SmartSkeletonMetrics;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
+import com.wjz.mobsthinknow.ai.spider.SmartSpiderMetrics;
+import com.wjz.mobsthinknow.ai.spider.SpiderSquadTransportAccess;
+import com.wjz.mobsthinknow.ai.spider.SpiderTransportRouteEvaluator;
 import com.wjz.mobsthinknow.ai.spider.SpiderWebTrapRegistry;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
 import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
@@ -115,11 +118,17 @@ public final class ZombieSquadCoordinator {
 
 	/** 服务器停止时主动释放实体引用，避免同一 JVM 内切换存档后保留旧世界。 */
 	public static void clearAll() {
+		for (ZombieSquadCoordinator coordinator : COORDINATORS.values()) {
+			coordinator.reset();
+		}
 		COORDINATORS.clear();
 	}
 
 	public static void unloadLevel(final ServerLevel level) {
-		COORDINATORS.remove(level);
+		ZombieSquadCoordinator coordinator = COORDINATORS.remove(level);
+		if (coordinator != null) {
+			coordinator.reset();
+		}
 	}
 
 	/** 命令诊断使用；调用方同样位于服务器主线程。 */
@@ -156,6 +165,19 @@ public final class ZombieSquadCoordinator {
 	public static int activeCasualtyResponses() {
 		return COORDINATORS.values().stream().mapToInt(coordinator -> (int)coordinator.squads.values().stream()
 			.filter(squad -> !squad.casualtyDirectives.isEmpty())
+			.count()).sum();
+	}
+
+	public static int activeCasualtyTransports() {
+		return COORDINATORS.values().stream().mapToInt(coordinator -> (int)coordinator.squads.values().stream()
+			.filter(squad -> {
+				MemberRecord casualty = coordinator.members.get(squad.casualtyId);
+				MemberRecord escort = coordinator.members.get(squad.casualtyEscortId);
+				return casualty != null
+					&& escort != null
+					&& escort.mob instanceof Spider
+					&& casualty.mob.getVehicle() == escort.mob;
+			})
 			.count()).sum();
 	}
 
@@ -1711,7 +1733,7 @@ public final class ZombieSquadCoordinator {
 			if (invalid || recovered || safe || now >= squad.casualtyResponseEndsAt) {
 				this.clearCasualtyResponse(squad, now, !invalid);
 			} else {
-				this.publishCasualtyDirectives(squad, activeCasualty, activeEscort);
+				this.publishCasualtyDirectives(squad, activeCasualty, activeEscort, config);
 				return;
 			}
 		}
@@ -1723,7 +1745,7 @@ public final class ZombieSquadCoordinator {
 		for (int memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
 			if (member != null && member.mob.isAlive()) {
-				snapshots.add(this.casualtySnapshot(member.mob));
+				snapshots.add(this.casualtySnapshot(member.mob, config.squadSpiderCasualtyTransport));
 			}
 		}
 		SquadCasualtyPlanner.Response selected = SquadCasualtyPlanner.select(
@@ -1742,20 +1764,28 @@ public final class ZombieSquadCoordinator {
 		squad.casualtyId = selected.casualtyId();
 		squad.casualtyEscortId = selected.escortId();
 		squad.casualtyResponseEndsAt = now + config.squadCasualtyResponseTicks;
-		this.publishCasualtyDirectives(squad, casualty, escort);
+		this.publishCasualtyDirectives(squad, casualty, escort, config);
 		SmartZombieMetrics.casualtyResponseStarted();
 	}
 
 	private void publishCasualtyDirectives(
 		final ZombieSquad squad,
 		final MemberRecord casualty,
-		final MemberRecord escort
+		final MemberRecord escort,
+		final MobsThinkNowConfig config
 	) {
 		SquadCasualtyPlanner.Response response = SquadCasualtyPlanner.responseForPair(
-			this.casualtySnapshot(casualty.mob),
-			this.casualtySnapshot(escort.mob),
+			this.casualtySnapshot(casualty.mob, false),
+			this.casualtySnapshot(escort.mob, false),
 			squad.target.position()
 		);
+		boolean spiderCarrier = config.squadSpiderCasualtyTransport
+			&& escort.mob instanceof Spider
+			&& (OverworldUndeadFamilies.isZombieFamily(casualty.mob)
+				|| OverworldUndeadFamilies.isSkeletonFamily(casualty.mob));
+		if (!spiderCarrier) {
+			this.releaseCasualtyMount(squad);
+		}
 		squad.casualtyDirectives.clear();
 		squad.casualtyDirectives.put(casualty.mob.getId(), new SquadCasualtyDirective(
 			squad.id,
@@ -1770,14 +1800,17 @@ public final class ZombieSquadCoordinator {
 			squad.id,
 			casualty.mob.getId(),
 			escort.mob.getId(),
-			SquadCasualtyDirective.Role.ESCORT,
-			response.escortDestination(),
+			spiderCarrier ? SquadCasualtyDirective.Role.CARRIER : SquadCasualtyDirective.Role.ESCORT,
+			spiderCarrier ? response.casualtyDestination() : response.escortDestination(),
 			response.focusPosition(),
 			squad.casualtyResponseEndsAt
 		));
 	}
 
-	private SquadCasualtyPlanner.MemberSnapshot casualtySnapshot(final Mob mob) {
+	private SquadCasualtyPlanner.MemberSnapshot casualtySnapshot(
+		final Mob mob,
+		final boolean spiderTransportEnabled
+	) {
 		boolean unavailable = mob.isPassenger() || mob.isVehicle() || mob.isFallFlying();
 		boolean casualtyEligible = !unavailable && !isCreeperMember(mob) && !isGiantMember(mob);
 		boolean escortEligible = !unavailable
@@ -1789,7 +1822,8 @@ public final class ZombieSquadCoordinator {
 			intelligenceOf(mob),
 			casualtyEligible,
 			escortEligible,
-			mob instanceof Zombie zombie && ZombieArmory.hasShield(zombie)
+			mob instanceof Zombie zombie && ZombieArmory.hasShield(zombie),
+			spiderTransportEnabled && mob instanceof Spider spider && SpiderIntelligence.get(spider) >= 6
 		);
 	}
 
@@ -1799,6 +1833,7 @@ public final class ZombieSquadCoordinator {
 		final boolean finished
 	) {
 		boolean hadResponse = squad.casualtyId != 0 || !squad.casualtyDirectives.isEmpty();
+		this.releaseCasualtyMount(squad);
 		squad.casualtyId = 0;
 		squad.casualtyEscortId = 0;
 		squad.casualtyResponseEndsAt = Long.MIN_VALUE;
@@ -1809,6 +1844,25 @@ public final class ZombieSquadCoordinator {
 				SmartZombieMetrics.casualtyResponseFinished();
 			}
 		}
+	}
+
+	/** 结束、换图或功能热关闭时精确拆除本轮救护骑乘，避免伤员永久留在蛛背。 */
+	private void releaseCasualtyMount(final ZombieSquad squad) {
+		MemberRecord casualty = this.members.get(squad.casualtyId);
+		MemberRecord escort = this.members.get(squad.casualtyEscortId);
+		if (casualty == null
+			|| escort == null
+			|| !(escort.mob instanceof Spider spider)
+			|| casualty.mob.getVehicle() != spider) {
+			return;
+		}
+		Vec3 safeDismount = SpiderTransportRouteEvaluator.findSafeDismount(spider, casualty.mob);
+		casualty.mob.stopRiding();
+		if (safeDismount != null) {
+			casualty.mob.setPos(safeDismount.x, safeDismount.y, safeDismount.z);
+		}
+		((SpiderSquadTransportAccess)spider).mobsthinknow$clearSquadPassenger();
+		SmartSpiderMetrics.casualtyDropoff();
 	}
 
 	private static double healthFraction(final LivingEntity entity) {
@@ -2695,6 +2749,7 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private void disband(final ZombieSquad squad, final MobsThinkNowConfig config, final String reason) {
+		this.releaseCasualtyMount(squad);
 		this.releaseMembers(squad);
 		this.squads.remove(squad.id);
 		SmartZombieMetrics.squadDisbanded();
@@ -2713,6 +2768,9 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private void reset() {
+		for (ZombieSquad squad : this.squads.values()) {
+			this.releaseCasualtyMount(squad);
+		}
 		for (MemberRecord member : this.members.values()) {
 			member.squadId = 0L;
 			this.theatrics.restoreName(member.mob);

@@ -8,8 +8,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * 混编小队伤员撤离的纯快照规划器。
  *
- * <p>每轮只选生命比例最低的一名伤员和一名护卫，避免多人同时后撤。盾兵优先，其次才比较距离、
- * 生命和智力；输出的护卫点始终位于威胁与伤员之间。</p>
+ * <p>每轮只选生命比例最低的一名伤员和一名护卫，避免多人同时后撤。盾兵优先；没有盾兵时，能够
+ * 载人的高智力蜘蛛优先于普通步行护卫，其次才比较距离、生命和智力。输出的护卫点始终位于威胁与
+ * 伤员之间。</p>
  */
 public final class SquadCasualtyPlanner {
 	public static final double DEFAULT_MAXIMUM_ACTIVATION_DISTANCE = 12.0;
@@ -47,6 +48,7 @@ public final class SquadCasualtyPlanner {
 			.filter(member -> member.healthFraction() >= 0.55)
 			.filter(member -> member.position().distanceToSqr(casualty.position()) <= MAXIMUM_ESCORT_DISTANCE_SQUARED)
 			.min(Comparator.comparing((MemberSnapshot member) -> !member.hasShield())
+				.thenComparing(member -> !member.mobileCarrier())
 				.thenComparingDouble(member -> member.position().distanceToSqr(casualty.position()))
 				.thenComparing(Comparator.comparingDouble(MemberSnapshot::healthFraction).reversed())
 				.thenComparing(Comparator.comparingInt(MemberSnapshot::intelligence).reversed())
@@ -105,7 +107,8 @@ public final class SquadCasualtyPlanner {
 		int intelligence,
 		boolean casualtyEligible,
 		boolean escortEligible,
-		boolean hasShield
+		boolean hasShield,
+		boolean mobileCarrier
 	) {
 	}
 

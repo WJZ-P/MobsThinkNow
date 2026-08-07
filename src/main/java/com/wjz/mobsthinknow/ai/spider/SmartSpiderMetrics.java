@@ -20,6 +20,8 @@ public final class SmartSpiderMetrics {
 	private static final AtomicLong TRANSPORT_ROUTE_CHECKS = new AtomicLong();
 	private static final AtomicLong TRANSPORT_ROUTE_REJECTIONS = new AtomicLong();
 	private static final AtomicLong TRANSPORT_SAFE_DISMOUNTS = new AtomicLong();
+	private static final AtomicLong CASUALTY_PICKUPS = new AtomicLong();
+	private static final AtomicLong CASUALTY_DROPOFFS = new AtomicLong();
 
 	private SmartSpiderMetrics() {
 	}
@@ -90,6 +92,14 @@ public final class SmartSpiderMetrics {
 		}
 	}
 
+	public static void casualtyPickup() {
+		CASUALTY_PICKUPS.incrementAndGet();
+	}
+
+	public static void casualtyDropoff() {
+		CASUALTY_DROPOFFS.incrementAndGet();
+	}
+
 	public static Snapshot snapshot() {
 		return new Snapshot(
 			INSTALLED_GOALS.get(),
@@ -107,7 +117,9 @@ public final class SmartSpiderMetrics {
 			MOBILE_FIRE_SUPPORT_MOVES.get(),
 			TRANSPORT_ROUTE_CHECKS.get(),
 			TRANSPORT_ROUTE_REJECTIONS.get(),
-			TRANSPORT_SAFE_DISMOUNTS.get()
+			TRANSPORT_SAFE_DISMOUNTS.get(),
+			CASUALTY_PICKUPS.get(),
+			CASUALTY_DROPOFFS.get()
 		);
 	}
 
@@ -127,7 +139,9 @@ public final class SmartSpiderMetrics {
 		long mobileFireSupportMoves,
 		long transportRouteChecks,
 		long transportRouteRejections,
-		long transportSafeDismounts
+		long transportSafeDismounts,
+		long casualtyPickups,
+		long casualtyDropoffs
 	) {
 	}
 }

@@ -40,6 +40,7 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.squadFiringLaneReservations);
 		assertEquals(true, config.squadThreatDistribution);
 		assertEquals(true, config.squadCasualtyExtraction);
+		assertEquals(true, config.squadSpiderCasualtyTransport);
 		assertEquals(0.30, config.squadCasualtyHealthThreshold);
 		assertEquals(60, config.squadCasualtyResponseTicks);
 		assertEquals(true, config.swordFeints);

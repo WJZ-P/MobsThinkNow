@@ -341,5 +341,7 @@
 	"mobsthinknow.config.squad_casualty_response_ticks": "掩护撤离时长（tick）",
 	"mobsthinknow.config.squad_casualty_response_ticks.tooltip": "范围 40～120，默认 60（3 秒）。每次响应结束后固定冷却 80 tick，防止低血量成员无限撤退。",
 	"mobsthinknow.config.squad_web_ambush_followup": "蛛网控场协同伏击",
-	"mobsthinknow.config.squad_web_ambush_followup.tooltip": "目标踩中本队蜘蛛放置的临时蛛网后，首领先给骷髅 6 tick 的错峰齐射窗口，再让近战、载具与爆破成员同步冲锋 24 tick。目标在口令前挣脱会取消冲锋，每队触发后冷却 120 tick。"
+	"mobsthinknow.config.squad_web_ambush_followup.tooltip": "目标踩中本队蜘蛛放置的临时蛛网后，首领先给骷髅 6 tick 的错峰齐射窗口，再让近战、载具与爆破成员同步冲锋 24 tick。目标在口令前挣脱会取消冲锋，每队触发后冷却 120 tick。",
+	"mobsthinknow.config.squad_spider_casualty_transport": "蜘蛛战地救护",
+	"mobsthinknow.config.squad_spider_casualty_transport.tooltip": "没有健康盾卫时，空闲且智力至少 6 的蜘蛛会优先于无盾步行护卫。伤员会用可见跳跃登上蛛背，远离威胁后再从安全位置下客。"
 }

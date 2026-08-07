@@ -27,7 +27,7 @@ class SquadCasualtyPlannerTest {
 	@Test
 	void neverUsesIneligibleCreeperLikeMemberAsCasualtyOrEscort() {
 		SquadCasualtyPlanner.Response response = SquadCasualtyPlanner.select(List.of(
-			new SquadCasualtyPlanner.MemberSnapshot(1, new Vec3(3.0, 0.0, 0.0), 0.10, 10, false, false, false),
+			new SquadCasualtyPlanner.MemberSnapshot(1, new Vec3(3.0, 0.0, 0.0), 0.10, 10, false, false, false, false),
 			member(2, 4.0, 0.20, 8, true, false, false),
 			member(3, 5.0, 0.90, 7, true, true, false)
 		), Vec3.ZERO, 0.30);
@@ -35,6 +35,18 @@ class SquadCasualtyPlannerTest {
 		assertTrue(response != null);
 		assertEquals(2, response.casualtyId());
 		assertEquals(3, response.escortId());
+	}
+
+	@Test
+	void prefersMobileSpiderCarrierWhenNoHealthyShieldEscortExists() {
+		SquadCasualtyPlanner.Response response = SquadCasualtyPlanner.select(List.of(
+			member(1, 5.0, 0.18, 9, true, false, false),
+			member(2, 5.8, 0.95, 8, true, true, false),
+			member(3, 8.5, 0.90, 7, true, true, false, true)
+		), Vec3.ZERO, 0.30);
+
+		assertTrue(response != null);
+		assertEquals(3, response.escortId(), "A qualified casualty carrier should outrank a closer unshielded walker.");
 	}
 
 	@Test
@@ -80,6 +92,19 @@ class SquadCasualtyPlannerTest {
 		final boolean escortEligible,
 		final boolean shield
 	) {
+		return member(id, x, health, intelligence, casualtyEligible, escortEligible, shield, false);
+	}
+
+	private static SquadCasualtyPlanner.MemberSnapshot member(
+		final int id,
+		final double x,
+		final double health,
+		final int intelligence,
+		final boolean casualtyEligible,
+		final boolean escortEligible,
+		final boolean shield,
+		final boolean mobileCarrier
+	) {
 		return new SquadCasualtyPlanner.MemberSnapshot(
 			id,
 			new Vec3(x, 0.0, 0.0),
@@ -87,7 +112,8 @@ class SquadCasualtyPlannerTest {
 			intelligence,
 			casualtyEligible,
 			escortEligible,
-			shield
+			shield,
+			mobileCarrier
 		);
 	}
 }

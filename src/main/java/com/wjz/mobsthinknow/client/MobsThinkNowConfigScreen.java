@@ -615,6 +615,14 @@ public final class MobsThinkNowConfigScreen {
 			.setTooltip(Component.translatable("mobsthinknow.config.squad_casualty_extraction.tooltip"))
 			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadCasualtyExtraction = value))
 			.build());
+		squadCategory.addEntry(entries.startBooleanToggle(
+			Component.translatable("mobsthinknow.config.squad_spider_casualty_transport"),
+			config.squadSpiderCasualtyTransport
+		)
+			.setDefaultValue(true)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_spider_casualty_transport.tooltip"))
+			.setSaveConsumer(value -> ConfigManager.update(updated -> updated.squadSpiderCasualtyTransport = value))
+			.build());
 		squadCategory.addEntry(entries.startIntSlider(
 			Component.translatable("mobsthinknow.config.squad_casualty_health_threshold"),
 			(int)Math.round(config.squadCasualtyHealthThreshold * 100.0),

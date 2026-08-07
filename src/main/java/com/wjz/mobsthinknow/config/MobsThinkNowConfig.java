@@ -309,6 +309,8 @@ public final class MobsThinkNowConfig {
 	public boolean squadThreatDistribution = true;
 	/** 交战中只撤出生命最低的一名伤员，并由最近的健康盾兵/近战成员卡住追击路线。 */
 	public boolean squadCasualtyExtraction = true;
+	/** 没有健康盾卫时，允许智力至少 6 的蜘蛛背负伤员撤到安全距离。 */
+	public boolean squadSpiderCasualtyTransport = true;
 	public double squadCasualtyHealthThreshold = DEFAULT_SQUAD_CASUALTY_HEALTH_THRESHOLD;
 	/** 单轮掩护撤离持续时间；结束后至少冷却四秒，避免低血成员永久脱离战斗。 */
 	public int squadCasualtyResponseTicks = DEFAULT_SQUAD_CASUALTY_RESPONSE_TICKS;

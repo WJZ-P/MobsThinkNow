@@ -479,7 +479,7 @@ public final class MtnCommands {
 				creeperMetrics.blastReservationsReleased(),
 				ZombieSquadCoordinator.activeBlastReservationCount()
 			);
-		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderWebWindups=%d, spiderWebsPlaced=%d, spiderWebsExpired=%d, activeSpiderWebs=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d, spiderBreachStaging=%d, spiderMobileFireSupport=%d, spiderRouteChecks=%d, spiderRouteRejections=%d, spiderSafeDismounts=%d"
+		message += ", spiderAI=%s, spiderGoals=%d, spiderFlanks=%d, spiderPounces=%d, spiderRepositions=%d, spiderWebWindups=%d, spiderWebsPlaced=%d, spiderWebsExpired=%d, activeSpiderWebs=%d, spiderCarrierSearches=%d, spiderCandidateChecks=%d, spiderCreepersMounted=%d, spiderDeliveryFuses=%d, spiderBreachStaging=%d, spiderMobileFireSupport=%d, spiderRouteChecks=%d, spiderRouteRejections=%d, spiderSafeDismounts=%d, spiderCasualtyPickups=%d, spiderCasualtyDropoffs=%d, activeSpiderCasualtyTransports=%d"
 			.formatted(
 				config.spiderAiEnabled,
 				spiderMetrics.installedGoals(),
@@ -498,7 +498,10 @@ public final class MtnCommands {
 				spiderMetrics.mobileFireSupportMoves(),
 				spiderMetrics.transportRouteChecks(),
 				spiderMetrics.transportRouteRejections(),
-				spiderMetrics.transportSafeDismounts()
+				spiderMetrics.transportSafeDismounts(),
+				spiderMetrics.casualtyPickups(),
+				spiderMetrics.casualtyDropoffs(),
+				ZombieSquadCoordinator.activeCasualtyTransports()
 			);
 		message += ", endermanAI=%s, endermanGoals=%d, endermanCarrierSearches=%d, endermanCandidateChecks=%d, endermanPayloadsPickedUp=%d, endermanDeliveryTeleports=%d, endermanPayloadsIgnited=%d, endermanCombatTeleports=%d, endermanShieldBlocks=%d, endermanShieldCounterHits=%d, endermanSpearCharges=%d, endermanProfessionHits=%d"
 			.formatted(

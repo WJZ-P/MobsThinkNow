@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligence;
+import com.wjz.mobsthinknow.ai.spider.SmartSpiderMetrics;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligence;
 import com.wjz.mobsthinknow.ai.spider.SpiderWebTrapRegistry;
 import com.wjz.mobsthinknow.ai.zombie.SmartZombieMetrics;
@@ -282,6 +283,104 @@ public final class SquadBattlefieldCoordinationGameTests implements CustomTestMe
 			);
 			escortGoal.stop();
 			casualtyGoal.stop();
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 240, padding = 4)
+	public void smartSpiderCarriesWoundedSquadmateToSafety(final GameTestHelper helper) {
+		Spider carrier = helper.spawn(EntityType.SPIDER, 6, 2, 3);
+		Skeleton wounded = helper.spawn(EntityType.SKELETON, 8, 2, 2);
+		Zombie unavailableWalker = helper.spawn(EntityType.ZOMBIE, 7, 2, 4);
+		Villager target = helper.spawn(EntityType.VILLAGER, 14, 2, 2);
+		prepare(carrier, target);
+		prepare(wounded, target);
+		prepare(unavailableWalker, target);
+		prepare(target);
+		carrier.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
+		wounded.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
+		unavailableWalker.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
+		wounded.setHealth(4.0F);
+		unavailableWalker.setHealth(10.0F);
+		SpiderIntelligence.set(carrier, 10);
+		SkeletonIntelligence.set(wounded, 9);
+		ZombieIntelligence.set(unavailableWalker, 5);
+		ZombieSquadCoordinator coordinator = ZombieSquadCoordinator.forLevel(helper.getLevel());
+		Vec3 originalTargetPosition = target.position();
+		double initialThreatDistance = horizontalDistance(target.position(), wounded.position());
+		long pickupsBefore = SmartSpiderMetrics.snapshot().casualtyPickups();
+		long dropoffsBefore = SmartSpiderMetrics.snapshot().casualtyDropoffs();
+		boolean[] madeEmergencyContact = {false};
+		boolean[] restoredBattleDistance = {false};
+		boolean[] releasedAi = {false};
+		boolean[] sawMounted = {false};
+
+		helper.onEachTick(() -> {
+			long now = helper.getLevel().getGameTime();
+			heartbeat(coordinator, List.of(carrier, wounded, unavailableWalker), target, now);
+			ZombieSquadCoordinator.tickLevel(helper.getLevel());
+			ZombieSquadCoordinator.SquadView view = coordinator.viewFor(wounded);
+			if (view == null) {
+				return;
+			}
+			if (view.state() != SquadState.ENGAGING) {
+				if (!madeEmergencyContact[0]) {
+					madeEmergencyContact[0] = true;
+					target.snapTo(wounded.getX() + 1.5, wounded.getY(), wounded.getZ(), 0.0F, 0.0F);
+				}
+				return;
+			}
+			if (!restoredBattleDistance[0]) {
+				restoredBattleDistance[0] = true;
+				target.snapTo(
+					originalTargetPosition.x,
+					originalTargetPosition.y,
+					originalTargetPosition.z,
+					target.getYRot(),
+					target.getXRot()
+				);
+				return;
+			}
+
+			SquadCasualtyDirective woundedOrder = coordinator.casualtyDirectiveFor(wounded);
+			SquadCasualtyDirective carrierOrder = coordinator.casualtyDirectiveFor(carrier);
+			if (!releasedAi[0]) {
+				if (woundedOrder == null || carrierOrder == null) {
+					return;
+				}
+				helper.assertTrue(
+					woundedOrder.role() == SquadCasualtyDirective.Role.EVACUEE,
+					"The wounded skeleton was not selected as the evacuation passenger."
+				);
+				helper.assertTrue(
+					carrierOrder.role() == SquadCasualtyDirective.Role.CARRIER,
+					"A healthy high-intelligence spider was not assigned as the mobile casualty carrier."
+				);
+				releasedAi[0] = true;
+				carrier.setNoAi(false);
+				wounded.setNoAi(false);
+				return;
+			}
+
+			if (!sawMounted[0] && wounded.getVehicle() == carrier) {
+				sawMounted[0] = true;
+				helper.assertTrue(
+					SmartSpiderMetrics.snapshot().casualtyPickups() > pickupsBefore,
+					"The visible casualty pickup was absent from diagnostics."
+				);
+				return;
+			}
+			if (!sawMounted[0] || wounded.isPassenger()) {
+				return;
+			}
+			helper.assertTrue(
+				SmartSpiderMetrics.snapshot().casualtyDropoffs() > dropoffsBefore,
+				"The completed casualty drop-off was absent from diagnostics."
+			);
+			helper.assertTrue(
+				horizontalDistance(target.position(), wounded.position()) >= initialThreatDistance + 2.0,
+				"The spider released its casualty without materially increasing distance from the threat."
+			);
 			helper.succeed();
 		});
 	}
