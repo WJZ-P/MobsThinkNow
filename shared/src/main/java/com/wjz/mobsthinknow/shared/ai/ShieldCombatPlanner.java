@@ -62,6 +62,20 @@ public final class ShieldCombatPlanner {
 		return dot >= minimumDot;
 	}
 
+	public static long disabledUntil(final long now, final long durationTicks) {
+		if (durationTicks < 0L) {
+			throw new IllegalArgumentException("shield disable duration must be non-negative");
+		}
+		if (Long.MAX_VALUE - now < durationTicks) {
+			return Long.MAX_VALUE;
+		}
+		return now + durationTicks;
+	}
+
+	public static boolean isDisabled(final long now, final long disabledUntil) {
+		return now < disabledUntil;
+	}
+
 	public static boolean shouldScheduleBash(
 		final boolean enabled,
 		final int intelligence,

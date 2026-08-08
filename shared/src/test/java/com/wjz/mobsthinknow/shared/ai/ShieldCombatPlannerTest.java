@@ -58,4 +58,13 @@ class ShieldCombatPlannerTest {
 		assertFalse(ShieldCombatPlanner.canGuardDirection(Double.NaN, 1.0, 0.0, 1.0, 0.0));
 		assertFalse(ShieldCombatPlanner.canGuardDirection(0.0, 1.0, 0.0, 1.0, 2.0));
 	}
+
+	@Test
+	void shieldDisableWindowsAreExclusiveAndOverflowSafe() {
+		assertEquals(160L, ShieldCombatPlanner.disabledUntil(100L, 60L));
+		assertTrue(ShieldCombatPlanner.isDisabled(159L, 160L));
+		assertFalse(ShieldCombatPlanner.isDisabled(160L, 160L));
+		assertEquals(Long.MAX_VALUE, ShieldCombatPlanner.disabledUntil(Long.MAX_VALUE - 2L, 10L));
+		assertThrows(IllegalArgumentException.class, () -> ShieldCombatPlanner.disabledUntil(10L, -1L));
+	}
 }

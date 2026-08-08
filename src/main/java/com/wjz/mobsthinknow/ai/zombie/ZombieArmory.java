@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.WeaponClass;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.shared.ai.ShieldCombatPlanner;
 import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.core.component.DataComponents;
@@ -103,7 +104,10 @@ public final class ZombieArmory {
 
 		zombie.stopUsingItem();
 		long now = zombie.level().getGameTime();
-		SHIELD_DISABLED_UNTIL.put(zombie.getId(), now + (long)(config.armedShieldBreakSeconds * 20.0));
+		SHIELD_DISABLED_UNTIL.put(
+			zombie.getId(),
+			ShieldCombatPlanner.disabledUntil(now, (long)(config.armedShieldBreakSeconds * 20.0))
+		);
 		if (SHIELD_DISABLED_UNTIL.size() > 256) {
 			SHIELD_DISABLED_UNTIL.values().removeIf(until -> until <= now);
 		}
@@ -112,7 +116,7 @@ public final class ZombieArmory {
 	/** 盾卫 AI 在禁用窗口内不允许重新举盾。 */
 	public static boolean isShieldDisabled(final Zombie zombie) {
 		Long until = SHIELD_DISABLED_UNTIL.get(zombie.getId());
-		return until != null && zombie.level().getGameTime() < until;
+		return until != null && ShieldCombatPlanner.isDisabled(zombie.level().getGameTime(), until);
 	}
 
 	/** 服务器停止时清空禁用表，避免同一 JVM 内切换存档后实体 ID 撞车。 */
