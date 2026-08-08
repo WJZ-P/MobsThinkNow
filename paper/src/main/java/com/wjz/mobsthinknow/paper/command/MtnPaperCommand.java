@@ -6,6 +6,7 @@ import com.wjz.mobsthinknow.paper.PaperMobLifecycle;
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -28,6 +29,7 @@ public final class MtnPaperCommand implements TabExecutor {
 	private final PaperMobLifecycle lifecycle;
 	private final PaperDamageMemory damageMemory;
 	private final PaperBlastReservationBoard blastReservations;
+	private final PaperPounceCoordinator pounceCoordinator;
 	private final PaperMetrics metrics;
 
 	public MtnPaperCommand(
@@ -36,6 +38,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		final PaperMobLifecycle lifecycle,
 		final PaperDamageMemory damageMemory,
 		final PaperBlastReservationBoard blastReservations,
+		final PaperPounceCoordinator pounceCoordinator,
 		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
@@ -43,6 +46,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		this.lifecycle = lifecycle;
 		this.damageMemory = damageMemory;
 		this.blastReservations = blastReservations;
+		this.pounceCoordinator = pounceCoordinator;
 		this.metrics = metrics;
 	}
 
@@ -112,6 +116,15 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", blastConflicts=" + snapshot.blastReservationConflicts()
 				+ ", blastSaturations=" + snapshot.blastReservationSaturations()
 				+ ", activeBlastReservations=" + this.blastReservations.activeCount()
+				+ ", spiderGoalsInstalled=" + snapshot.spiderGoalsInstalled()
+				+ ", spiderGoalsRemoved=" + snapshot.spiderGoalsRemoved()
+				+ ", spiderFlanks=" + snapshot.spiderFlanks()
+				+ ", spiderHitAndRuns=" + snapshot.spiderHitAndRuns()
+				+ ", spiderPounces=" + snapshot.spiderPounces()
+				+ ", spiderPounceWaits=" + snapshot.spiderPounceWaits()
+				+ ", unsafeLandings=" + snapshot.spiderUnsafeLandingsRejected()
+				+ ", pounceConflicts=" + snapshot.spiderPounceReservationConflicts()
+				+ ", activePounceReservations=" + this.pounceCoordinator.activeCount()
 				+ ", pendingDamageMemories=" + this.damageMemory.pendingCount(),
 			NamedTextColor.AQUA
 		));

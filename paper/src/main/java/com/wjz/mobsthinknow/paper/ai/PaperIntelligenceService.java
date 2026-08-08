@@ -13,6 +13,7 @@ import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Spider;
 import org.bukkit.entity.Zombie;
+import org.bukkit.entity.EntityType;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -36,7 +37,10 @@ public final class PaperIntelligenceService {
 	}
 
 	public boolean supports(final Mob mob) {
-		return mob instanceof Zombie || mob instanceof AbstractSkeleton || mob instanceof Creeper || mob instanceof Spider;
+		return mob instanceof Zombie
+			|| mob instanceof AbstractSkeleton
+			|| mob instanceof Creeper
+			|| (mob instanceof Spider && mob.getType() == EntityType.SPIDER);
 	}
 
 	public int ensure(final Mob mob) {

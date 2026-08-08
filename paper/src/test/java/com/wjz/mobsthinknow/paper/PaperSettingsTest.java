@@ -33,6 +33,13 @@ class PaperSettingsTest {
 			99.0,
 			999,
 			0,
+			999,
+			true,
+			99,
+			true,
+			true,
+			999,
+			0,
 			999
 		);
 
@@ -55,6 +62,10 @@ class PaperSettingsTest {
 		assertEquals(80, settings.creeperBlastSeparationTicks());
 		assertEquals(10, settings.creeperBlastReservationLeaseTicks());
 		assertEquals(64, settings.creeperBlastMaximumChecks());
+		assertEquals(10, settings.spiderMinimumIntelligence());
+		assertEquals(40, settings.spiderPounceStaggerTicks());
+		assertEquals(5, settings.spiderPounceLeaseTicks());
+		assertEquals(80, settings.spiderPounceMaximumAirTicks());
 	}
 
 	@Test
@@ -62,7 +73,8 @@ class PaperSettingsTest {
 		PaperSettings settings = PaperSettings.validated(
 			true, true, true, 1, 0.20, 0.30, 100, 5.0, 1.50, 20,
 			true, 1, 10.0, 80, 20,
-			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32
+			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32,
+			true, 1, true, true, 10, 20, 40
 		);
 
 		assertEquals(0.20, settings.retreatHealthThreshold());
@@ -77,5 +89,8 @@ class PaperSettingsTest {
 		assertEquals(1.25, settings.creeperMaximumFuseMovementSpeed());
 		assertEquals(6.0, settings.creeperBlastConflictRadius());
 		assertEquals(24, settings.creeperBlastSeparationTicks());
+		assertEquals(10, settings.spiderPounceStaggerTicks());
+		assertEquals(20, settings.spiderPounceLeaseTicks());
+		assertEquals(40, settings.spiderPounceMaximumAirTicks());
 	}
 }

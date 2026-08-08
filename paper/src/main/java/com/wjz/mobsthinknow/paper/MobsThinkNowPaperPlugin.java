@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
+import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.command.MtnPaperCommand;
 import java.util.Objects;
 import org.bukkit.command.PluginCommand;
@@ -17,6 +18,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private PaperIntelligenceService intelligence;
 	private PaperSkeletonProfile skeletonProfile;
 	private PaperBlastReservationBoard blastReservations;
+	private PaperPounceCoordinator pounceCoordinator;
 	private PaperMobLifecycle mobLifecycle;
 
 	@Override
@@ -26,12 +28,14 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.intelligence = new PaperIntelligenceService(this, this::settings, this.metrics);
 		this.skeletonProfile = new PaperSkeletonProfile(this);
 		this.blastReservations = new PaperBlastReservationBoard(this::settings, this.metrics);
+		this.pounceCoordinator = new PaperPounceCoordinator(this::settings, this.metrics);
 		this.mobLifecycle = new PaperMobLifecycle(
 			this,
 			this::settings,
 			this.intelligence,
 			this.skeletonProfile,
 			this.blastReservations,
+			this.pounceCoordinator,
 			this.damageMemory,
 			this.metrics
 		);
@@ -42,6 +46,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.mobLifecycle,
 			this.damageMemory,
 			this.blastReservations,
+			this.pounceCoordinator,
 			this.metrics
 		);
 		PluginCommand command = Objects.requireNonNull(
@@ -65,6 +70,9 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		if (this.blastReservations != null) {
 			this.blastReservations.clear();
 		}
+		if (this.pounceCoordinator != null) {
+			this.pounceCoordinator.clear();
+		}
 	}
 
 	public PaperSettings settings() {
@@ -76,6 +84,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.settings = this.readSettings();
 		this.damageMemory.clear();
 		this.blastReservations.clear();
+		this.pounceCoordinator.clear();
 		this.mobLifecycle.refreshLoadedEntities();
 	}
 
@@ -105,7 +114,14 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getDouble("creeper.blast-reservation.conflict-radius", 6.0),
 			this.getConfig().getInt("creeper.blast-reservation.separation-ticks", 24),
 			this.getConfig().getInt("creeper.blast-reservation.lease-ticks", 40),
-			this.getConfig().getInt("creeper.blast-reservation.maximum-checks", 32)
+			this.getConfig().getInt("creeper.blast-reservation.maximum-checks", 32),
+			this.getConfig().getBoolean("spider.tactics.enabled", true),
+			this.getConfig().getInt("spider.tactics.minimum-intelligence", 1),
+			this.getConfig().getBoolean("spider.tactics.predictive-pounce", true),
+			this.getConfig().getBoolean("spider.tactics.hit-and-run", true),
+			this.getConfig().getInt("spider.tactics.pounce-stagger-ticks", 10),
+			this.getConfig().getInt("spider.tactics.pounce-lease-ticks", 20),
+			this.getConfig().getInt("spider.tactics.maximum-air-ticks", 40)
 		);
 	}
 }

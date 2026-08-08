@@ -26,7 +26,14 @@ public record PaperSettings(
 	double creeperBlastConflictRadius,
 	int creeperBlastSeparationTicks,
 	int creeperBlastReservationLeaseTicks,
-	int creeperBlastMaximumChecks
+	int creeperBlastMaximumChecks,
+	boolean spiderTacticsEnabled,
+	int spiderMinimumIntelligence,
+	boolean spiderPredictivePounceEnabled,
+	boolean spiderHitAndRunEnabled,
+	int spiderPounceStaggerTicks,
+	int spiderPounceLeaseTicks,
+	int spiderPounceMaximumAirTicks
 ) {
 	public static PaperSettings validated(
 		final boolean enabled,
@@ -53,7 +60,14 @@ public record PaperSettings(
 		final double creeperBlastConflictRadius,
 		final int creeperBlastSeparationTicks,
 		final int creeperBlastReservationLeaseTicks,
-		final int creeperBlastMaximumChecks
+		final int creeperBlastMaximumChecks,
+		final boolean spiderTacticsEnabled,
+		final int spiderMinimumIntelligence,
+		final boolean spiderPredictivePounceEnabled,
+		final boolean spiderHitAndRunEnabled,
+		final int spiderPounceStaggerTicks,
+		final int spiderPounceLeaseTicks,
+		final int spiderPounceMaximumAirTicks
 	) {
 		return new PaperSettings(
 			enabled,
@@ -80,7 +94,14 @@ public record PaperSettings(
 			finiteClamp(creeperBlastConflictRadius, 3.0, 12.0),
 			Math.clamp(creeperBlastSeparationTicks, 5, 80),
 			Math.clamp(creeperBlastReservationLeaseTicks, 10, 100),
-			Math.clamp(creeperBlastMaximumChecks, 4, 64)
+			Math.clamp(creeperBlastMaximumChecks, 4, 64),
+			spiderTacticsEnabled,
+			Math.clamp(spiderMinimumIntelligence, 1, 10),
+			spiderPredictivePounceEnabled,
+			spiderHitAndRunEnabled,
+			Math.clamp(spiderPounceStaggerTicks, 2, 40),
+			Math.clamp(spiderPounceLeaseTicks, 5, 40),
+			Math.clamp(spiderPounceMaximumAirTicks, 20, 80)
 		);
 	}
 

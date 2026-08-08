@@ -43,3 +43,14 @@ creeper:
     lease-ticks: 40
     # A saturated 3x3 spatial query is conservatively treated as occupied; work never grows with mob count.
     maximum-checks: 32
+
+spider:
+  tactics:
+    enabled: true
+    minimum-intelligence: 1
+    predictive-pounce: true
+    hit-and-run: true
+    # One O(1) target lease staggers spiders attacking the same victim.
+    pounce-stagger-ticks: 10
+    pounce-lease-ticks: 20
+    maximum-air-ticks: 40

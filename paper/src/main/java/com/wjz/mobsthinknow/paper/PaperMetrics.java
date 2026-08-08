@@ -25,6 +25,16 @@ public final class PaperMetrics {
 	private final AtomicLong blastReservationConflicts = new AtomicLong();
 	private final AtomicLong blastReservationSaturations = new AtomicLong();
 	private final AtomicLong blastReservationsReleased = new AtomicLong();
+	private final AtomicLong spiderGoalsInstalled = new AtomicLong();
+	private final AtomicLong spiderGoalsRemoved = new AtomicLong();
+	private final AtomicLong spiderFlanks = new AtomicLong();
+	private final AtomicLong spiderHitAndRuns = new AtomicLong();
+	private final AtomicLong spiderPounces = new AtomicLong();
+	private final AtomicLong spiderPounceWaits = new AtomicLong();
+	private final AtomicLong spiderUnsafeLandingsRejected = new AtomicLong();
+	private final AtomicLong spiderPounceReservationsAcquired = new AtomicLong();
+	private final AtomicLong spiderPounceReservationConflicts = new AtomicLong();
+	private final AtomicLong spiderPounceReservationsReleased = new AtomicLong();
 
 	public void intelligenceAssigned() {
 		this.intelligenceAssignments.incrementAndGet();
@@ -110,6 +120,46 @@ public final class PaperMetrics {
 		this.blastReservationsReleased.incrementAndGet();
 	}
 
+	public void spiderGoalInstalled() {
+		this.spiderGoalsInstalled.incrementAndGet();
+	}
+
+	public void spiderGoalRemoved() {
+		this.spiderGoalsRemoved.incrementAndGet();
+	}
+
+	public void spiderFlankStarted() {
+		this.spiderFlanks.incrementAndGet();
+	}
+
+	public void spiderHitAndRunStarted() {
+		this.spiderHitAndRuns.incrementAndGet();
+	}
+
+	public void spiderPounceStarted() {
+		this.spiderPounces.incrementAndGet();
+	}
+
+	public void spiderPounceWait() {
+		this.spiderPounceWaits.incrementAndGet();
+	}
+
+	public void spiderUnsafeLandingRejected() {
+		this.spiderUnsafeLandingsRejected.incrementAndGet();
+	}
+
+	public void spiderPounceReservationAcquired() {
+		this.spiderPounceReservationsAcquired.incrementAndGet();
+	}
+
+	public void spiderPounceReservationConflict() {
+		this.spiderPounceReservationConflicts.incrementAndGet();
+	}
+
+	public void spiderPounceReservationReleased() {
+		this.spiderPounceReservationsReleased.incrementAndGet();
+	}
+
 	public Snapshot snapshot() {
 		return new Snapshot(
 			this.intelligenceAssignments.get(),
@@ -132,7 +182,17 @@ public final class PaperMetrics {
 			this.blastReservationsAcquired.get(),
 			this.blastReservationConflicts.get(),
 			this.blastReservationSaturations.get(),
-			this.blastReservationsReleased.get()
+			this.blastReservationsReleased.get(),
+			this.spiderGoalsInstalled.get(),
+			this.spiderGoalsRemoved.get(),
+			this.spiderFlanks.get(),
+			this.spiderHitAndRuns.get(),
+			this.spiderPounces.get(),
+			this.spiderPounceWaits.get(),
+			this.spiderUnsafeLandingsRejected.get(),
+			this.spiderPounceReservationsAcquired.get(),
+			this.spiderPounceReservationConflicts.get(),
+			this.spiderPounceReservationsReleased.get()
 		);
 	}
 
@@ -157,7 +217,17 @@ public final class PaperMetrics {
 		long blastReservationsAcquired,
 		long blastReservationConflicts,
 		long blastReservationSaturations,
-		long blastReservationsReleased
+		long blastReservationsReleased,
+		long spiderGoalsInstalled,
+		long spiderGoalsRemoved,
+		long spiderFlanks,
+		long spiderHitAndRuns,
+		long spiderPounces,
+		long spiderPounceWaits,
+		long spiderUnsafeLandingsRejected,
+		long spiderPounceReservationsAcquired,
+		long spiderPounceReservationConflicts,
+		long spiderPounceReservationsReleased
 	) {
 	}
 }
