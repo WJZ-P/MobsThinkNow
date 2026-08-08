@@ -39,6 +39,9 @@ public final class PaperMetrics {
 	private final AtomicLong squadRangedGoalsInstalled = new AtomicLong();
 	private final AtomicLong squadRangedGoalsRemoved = new AtomicLong();
 	private final AtomicLong coordinatedShots = new AtomicLong();
+	private final AtomicLong crossbowCharges = new AtomicLong();
+	private final AtomicLong crossbowChargePoseTicks = new AtomicLong();
+	private final AtomicLong crossbowShots = new AtomicLong();
 	private final AtomicLong friendlyLaneBlocks = new AtomicLong();
 	private final AtomicLong firingLaneRepositions = new AtomicLong();
 	private final AtomicLong firingLanePathFailures = new AtomicLong();
@@ -211,6 +214,18 @@ public final class PaperMetrics {
 		this.coordinatedShots.incrementAndGet();
 	}
 
+	public void crossbowChargeStarted() {
+		this.crossbowCharges.incrementAndGet();
+	}
+
+	public void crossbowChargePoseTick() {
+		this.crossbowChargePoseTicks.incrementAndGet();
+	}
+
+	public void crossbowShot() {
+		this.crossbowShots.incrementAndGet();
+	}
+
 	public void friendlyLaneBlocked() {
 		this.friendlyLaneBlocks.incrementAndGet();
 	}
@@ -372,6 +387,9 @@ public final class PaperMetrics {
 			this.squadRangedGoalsInstalled.get(),
 			this.squadRangedGoalsRemoved.get(),
 			this.coordinatedShots.get(),
+			this.crossbowCharges.get(),
+			this.crossbowChargePoseTicks.get(),
+			this.crossbowShots.get(),
 			this.friendlyLaneBlocks.get(),
 			this.firingLaneRepositions.get(),
 			this.firingLanePathFailures.get(),
@@ -442,6 +460,9 @@ public final class PaperMetrics {
 		long squadRangedGoalsInstalled,
 		long squadRangedGoalsRemoved,
 		long coordinatedShots,
+		long crossbowCharges,
+		long crossbowChargePoseTicks,
+		long crossbowShots,
 		long friendlyLaneBlocks,
 		long firingLaneRepositions,
 		long firingLanePathFailures,

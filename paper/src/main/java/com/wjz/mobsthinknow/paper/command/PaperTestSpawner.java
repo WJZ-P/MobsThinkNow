@@ -15,7 +15,6 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Zombie;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Vector;
 
@@ -58,7 +57,8 @@ public final class PaperTestSpawner {
 	private static final Map<String, Preset> PRESETS = Map.of(
 		"zombie_swordsman", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, null, 7),
 		"zombie_axeman", new Preset(EntityType.ZOMBIE, Material.IRON_AXE, null, 10),
-		"zombie_shieldguard", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, Material.SHIELD, 10)
+		"zombie_shieldguard", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, Material.SHIELD, 10),
+		"skeleton_crossbow", new Preset(EntityType.SKELETON, Material.CROSSBOW, null, 10)
 	);
 
 	private final PaperIntelligenceService intelligence;
@@ -155,16 +155,13 @@ public final class PaperTestSpawner {
 	}
 
 	private void configurePreset(final Mob mob, final Preset preset) {
-		if (!(mob instanceof Zombie zombie)) {
-			throw new IllegalStateException("weapon preset requires zombie, got " + mob.getType());
-		}
-		zombie.getEquipment().setItemInMainHand(new ItemStack(preset.weapon()));
-		zombie.getEquipment().setItemInMainHandDropChance(0.085F);
+		mob.getEquipment().setItemInMainHand(new ItemStack(preset.weapon()));
+		mob.getEquipment().setItemInMainHandDropChance(0.085F);
 		if (preset.offhand() != null) {
-			zombie.getEquipment().setItemInOffHand(new ItemStack(preset.offhand()));
-			zombie.getEquipment().setItemInOffHandDropChance(0.085F);
+			mob.getEquipment().setItemInOffHand(new ItemStack(preset.offhand()));
+			mob.getEquipment().setItemInOffHandDropChance(0.085F);
 		}
-		this.intelligence.set(zombie, preset.intelligence());
+		this.intelligence.set(mob, preset.intelligence());
 	}
 
 	private List<Location> planPlacements(final Player player, final int count) {

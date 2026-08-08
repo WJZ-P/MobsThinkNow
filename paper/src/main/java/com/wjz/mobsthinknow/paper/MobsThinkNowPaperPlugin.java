@@ -165,6 +165,17 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 				this.getConfig().getDouble("zombie.shield-tactics.block.minimum-facing-dot", 0.0),
 				this.getConfig().getDouble("zombie.shield-tactics.axe-disable-seconds", 3.0)
 			),
+			PaperCrossbowSettings.validated(
+				this.getConfig().getBoolean("skeleton.crossbow.enabled", true),
+				this.getConfig().getInt("skeleton.crossbow.minimum-intelligence", 3),
+				this.getConfig().getInt("skeleton.crossbow.charge-ticks", 25),
+				this.getConfig().getInt("skeleton.crossbow.aim.minimum-ticks", 4),
+				this.getConfig().getInt("skeleton.crossbow.aim.maximum-ticks", 10),
+				this.getConfig().getDouble("skeleton.crossbow.projectile-speed", 3.15),
+				this.getConfig().getDouble("skeleton.crossbow.projectile-spread", 2.0),
+				this.getConfig().getDouble("skeleton.crossbow.maximum-lead-ticks", 20.0),
+				this.getConfig().getDouble("skeleton.crossbow.gravity-per-tick-squared", 0.05)
+			),
 			this.getConfig().getBoolean("skeleton.spacing.enabled", true),
 			this.getConfig().getInt("skeleton.spacing.minimum-intelligence", 1),
 			this.getConfig().getDouble("skeleton.spacing.preferred-range", 10.0),

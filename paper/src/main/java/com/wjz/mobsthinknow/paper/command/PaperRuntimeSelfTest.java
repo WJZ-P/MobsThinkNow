@@ -19,6 +19,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
+import org.bukkit.entity.AbstractSkeleton;
 import org.bukkit.entity.Zombie;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.entity.IronGolem;
@@ -100,6 +101,7 @@ public final class PaperRuntimeSelfTest {
 			this.activeEntities.add(target);
 
 			List<Mob> mobs = new ArrayList<>(CORE_TYPES.size());
+			int skeletonIndex = 0;
 			for (int index = 0; index < CORE_TYPES.size(); index++) {
 				int xOffset = (int)Math.round((index - (CORE_TYPES.size() - 1) * 0.5) * 1.8);
 				Location mobLocation = safeSurface(world, anchor.getBlockX() + xOffset, anchor.getBlockZ());
@@ -117,6 +119,9 @@ public final class PaperRuntimeSelfTest {
 				}
 				if (mob instanceof Zombie zombie) {
 					zombie.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_SWORD));
+				}
+				if (mob instanceof AbstractSkeleton skeleton && skeletonIndex++ == 1) {
+					skeleton.getEquipment().setItemInMainHand(new ItemStack(Material.CROSSBOW));
 				}
 				this.intelligence.set(mob, 10);
 				this.squads.observeTarget(mob, target);
@@ -240,6 +245,9 @@ public final class PaperRuntimeSelfTest {
 					&& directive.state() == MixedSquadState.ENGAGING);
 			PaperMetrics.Snapshot current = this.metrics.snapshot();
 			long coordinatedShots = current.coordinatedShots() - baseline.coordinatedShots();
+			long crossbowCharges = current.crossbowCharges() - baseline.crossbowCharges();
+			long crossbowPoseTicks = current.crossbowChargePoseTicks() - baseline.crossbowChargePoseTicks();
+			long crossbowShots = current.crossbowShots() - baseline.crossbowShots();
 			long weaponAttacks = current.weaponAttacks() - baseline.weaponAttacks();
 			long axeLeaps = current.axeLeaps() - baseline.axeLeaps();
 			long axeCriticals = current.axeCriticalAttacks() - baseline.axeCriticalAttacks();
@@ -258,6 +266,9 @@ public final class PaperRuntimeSelfTest {
 			long shieldDisables = current.shieldDisables() - baseline.shieldDisables();
 			if (!engaging
 				|| coordinatedShots <= 0L
+				|| crossbowCharges <= 0L
+				|| crossbowPoseTicks <= 0L
+				|| crossbowShots <= 0L
 				|| weaponAttacks <= 0L
 				|| axeLeaps <= 0L
 				|| mounted <= 0L
@@ -269,6 +280,9 @@ public final class PaperRuntimeSelfTest {
 					false,
 					"engaging=" + engaging
 						+ ", coordinatedShots=" + coordinatedShots
+						+ ", crossbowCharges=" + crossbowCharges
+						+ ", crossbowPoseTicks=" + crossbowPoseTicks
+						+ ", crossbowShots=" + crossbowShots
 						+ ", weaponAttacks=" + weaponAttacks
 						+ ", axeLeaps=" + axeLeaps
 						+ ", axeCriticals=" + axeCriticals
@@ -298,6 +312,9 @@ public final class PaperRuntimeSelfTest {
 				sender,
 				true,
 				"state=ENGAGING, plan=COMBINED_ARMS, coordinatedShots=" + coordinatedShots
+					+ ", crossbowCharges=" + crossbowCharges
+					+ ", crossbowPoseTicks=" + crossbowPoseTicks
+					+ ", crossbowShots=" + crossbowShots
 					+ ", weaponAttacks=" + weaponAttacks
 					+ ", axeLeaps=" + axeLeaps
 					+ ", axeCriticals=" + axeCriticals

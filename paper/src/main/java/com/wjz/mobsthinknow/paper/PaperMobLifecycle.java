@@ -529,7 +529,8 @@ public final class PaperMobLifecycle implements Listener {
 			this.metrics.skeletonDisengageGoalRemoved();
 		}
 
-		boolean shouldHaveSquadRangedGoal = config.enabled() && config.skeletonCoordinatedFireEnabled();
+		boolean shouldHaveSquadRangedGoal = config.enabled()
+			&& (config.skeletonCoordinatedFireEnabled() || config.skeletonCrossbowTactics().enabled());
 		boolean hasSquadRangedGoal = Bukkit.getMobGoals().hasGoal(skeleton, this.squadRangedGoalKey);
 		if (shouldHaveSquadRangedGoal && !hasSquadRangedGoal) {
 			Bukkit.getMobGoals().addGoal(

@@ -77,6 +77,18 @@ zombie:
       axe-disable-seconds: 3.0
 
 skeleton:
+  crossbow:
+    enabled: true
+    minimum-intelligence: 3
+    # Paper has no public API for installing the vanilla skeleton crossbow Goal, so the plugin drives a visible state machine.
+    charge-ticks: 25
+    aim:
+      minimum-ticks: 4
+      maximum-ticks: 10
+    projectile-speed: 3.15
+    projectile-spread: 2.0
+    maximum-lead-ticks: 20.0
+    gravity-per-tick-squared: 0.05
   spacing:
     enabled: true
     minimum-intelligence: 1

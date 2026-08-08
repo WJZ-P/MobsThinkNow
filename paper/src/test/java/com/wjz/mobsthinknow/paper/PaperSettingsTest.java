@@ -21,6 +21,7 @@ class PaperSettingsTest {
 			0,
 			PaperWeaponSettings.validated(true, 99, 99.0, 99.0, 0, 99, 0, 999, 99.0, Double.NaN),
 			PaperShieldSettings.validated(true, 99, 99.0, 0.0, 99.0, 0, 0, 999, 0, 999, 0, 999, 999, Double.NaN, 99.0),
+			PaperCrossbowSettings.validated(true, 99, 0, 0, 999, 99.0, 99.0, 99.0, Double.NaN),
 			true,
 			99,
 			100.0,
@@ -89,6 +90,14 @@ class PaperSettingsTest {
 		assertEquals(20, settings.zombieShieldTactics().minimumBlockUseTicks());
 		assertEquals(-0.5, settings.zombieShieldTactics().minimumFacingDot());
 		assertEquals(200, settings.zombieShieldTactics().axeDisableTicks());
+		assertEquals(10, settings.skeletonCrossbowTactics().minimumIntelligence());
+		assertEquals(12, settings.skeletonCrossbowTactics().chargeTicks());
+		assertEquals(1, settings.skeletonCrossbowTactics().minimumAimTicks());
+		assertEquals(40, settings.skeletonCrossbowTactics().maximumAimTicks());
+		assertEquals(5.0, settings.skeletonCrossbowTactics().projectileSpeed());
+		assertEquals(14.0, settings.skeletonCrossbowTactics().projectileSpread());
+		assertEquals(40.0, settings.skeletonCrossbowTactics().maximumLeadTicks());
+		assertEquals(0.0, settings.skeletonCrossbowTactics().gravityPerTickSquared());
 		assertEquals(10, settings.skeletonSpacingMinimumIntelligence());
 		assertEquals(24.0, settings.skeletonPreferredRange());
 		assertEquals(200, settings.skeletonDisengageMaximumTicks());
@@ -123,6 +132,7 @@ class PaperSettingsTest {
 			true, true, true, 1, 0.20, 0.30, 100, 5.0, 1.50, 20,
 			PaperWeaponSettings.validated(true, 3, 2.8, 1.15, 6, 6, 8, 30, 0.34, 1.50),
 			PaperShieldSettings.validated(true, 4, 6.0, 7.5, 1.10, 6, 12, 28, 2, 4, 10, 20, 5, 0.0, 3.0),
+			PaperCrossbowSettings.validated(true, 3, 25, 4, 10, 3.15, 2.0, 20.0, 0.05),
 			true, 1, 10.0, 80, 20,
 			true, 4, 24.0, 16, 28, 0.75, 20, 3.0,
 			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32,
@@ -144,6 +154,9 @@ class PaperSettingsTest {
 		assertEquals(2, settings.zombieShieldTactics().minimumCounterDelayTicks());
 		assertEquals(4, settings.zombieShieldTactics().maximumCounterDelayTicks());
 		assertEquals(60, settings.zombieShieldTactics().axeDisableTicks());
+		assertTrue(settings.skeletonCrossbowTactics().enabled());
+		assertEquals(25, settings.skeletonCrossbowTactics().chargeTicks());
+		assertEquals(3.15, settings.skeletonCrossbowTactics().projectileSpeed());
 		assertEquals(10.0, settings.skeletonPreferredRange());
 		assertEquals(80, settings.skeletonDisengageMaximumTicks());
 		assertEquals(20, settings.skeletonDisengageCooldownTicks());

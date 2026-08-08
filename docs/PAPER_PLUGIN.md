@@ -95,8 +95,12 @@ MobsThinkNow/
   `maximum-lane-checks` 硬限制，不查询全世界实体；
 - 自定义 Goal 只在交叉火力方案、交战阶段和左右射手职责同时成立时，以优先级 2 暂时接管 `MOVE/LOOK`。
   骷髅被贴身时优先级 1 的紧急脱离仍先执行；离队、换方案或关闭配置后原版弓/弩 Goal 自动恢复；
-- 最终射击调用 Paper 公开 `RangedEntity#rangedAttack`，没有 NMS 反射。普通事件级友伤拦截继续作为移动
-  中队友突然切入弹道时的第二层保护。
+- 弓箭最终调用 Paper 公开 `RangedEntity#rangedAttack`。持弩骷髅则使用共享 `CrossbowCombatPlanner` 的
+  `UNCHARGED → CHARGING → AIMING` 节奏：真实举起弩并播放装填声，装填完成后把箭写入公开
+  `CrossbowMeta`，短暂瞄准移动目标的速度提前量，再通过 `World#spawnArrow` 发射禁止拾取的真实箭矢；
+- 弩手即使暂时没有小队也能独立使用该状态机；加入小队后仍服从会议/交战阶段、错峰时隙和有界友军
+  射界。所有实现只依赖 Paper API，没有 NMS 反射；普通事件级友伤拦截继续作为队友突然切入弹道时的
+  第二层保护。
 
 ### 苦力怕战术引信与爆点预约
 
@@ -203,21 +207,21 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 | `/mtnpaper reload` | `mobsthinknow.admin` | 重载、校验配置并刷新已加载实体 |
 | `/mtnpaper setiq <1-10>` | `mobsthinknow.admin` | 修改附近受支持怪物的持久 IQ |
 | `/mtnpaper spawn <type> [1-100]` | `mobsthinknow.admin` | 在玩家前方事务式批量生成指定 Paper 智能怪物 |
-| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种，并追加剑手、斧手与盾卫测试预设 |
+| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种，并追加剑手、斧手、盾卫与弩手测试预设 |
 | `/mtnpaper assault [1-8]` | `mobsthinknow.admin` | 每组生成 IQ 10 僵尸、骷髅、苦力怕、蜘蛛以测试联合兵种 |
 | `/mtnpaper selftest` | `mobsthinknow.admin` | 控制台可用；真实 tick 验证联合编队、错峰射击和蜘蛛载客后自动清理 |
 
 `spawn` 类型为：`zombie`、`husk`、`drowned`、`zombie_villager`、`skeleton`、`stray`、`bogged`、
 `wither_skeleton`、`creeper`、`spider`，以及 `zombie_swordsman`、`zombie_axeman`、
-`zombie_shieldguard` 三个装备/IQ 预设；
+`zombie_shieldguard`、`skeleton_crossbow` 四个装备/IQ 预设；
 另可用 `spawn assault [组数]`。生成器先为整批实体规划有承重、
 两格净空、无液体/火焰/仙人掌等危险的互不重叠落点；任意实体生成失败会移除本批已经生成的实体，
 不会留下半套测试阵容。
 
-`selftest` 不要求在线玩家：它会临时保活测试区块，生成一只持剑僵尸、两只骷髅、一只苦力怕、一只蜘蛛
+`selftest` 不要求在线玩家：它会临时保活测试区块，生成一只持剑僵尸、一名弓手与一名弩手、一只苦力怕、一只蜘蛛
 和一个关闭 AI、无敌的铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后先要求
 五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后再运行 120 tick，要求
-两名射手至少实际释放一发协调箭，并要求苦力怕真实跳上蜘蛛。另有一只 IQ 10 斧手与关闭 AI 但仍可
+两名射手至少实际释放一发协调箭，且弩手必须累计真实举弩 tick、装填和发射，并要求苦力怕真实跳上蜘蛛。另有一只 IQ 10 斧手与关闭 AI 但仍可
 攻击的铁傀儡，在有界搜索所得的同高、2～3 格间距、四格净空自然通道中独立验证真实攻击和跳劈；另一个
 隔离通道生成 IQ 10 剑盾卫与铁傀儡，待盾牌连续举起至少 10 tick 后发射真实箭矢，强制验证正面格挡、
 一次性事件信号和 2～4 tick 延迟反击均至少发生一次；第三条通道由持铁斧的卫道士正面攻击成熟举盾者，
@@ -294,6 +298,17 @@ zombie:
       minimum-facing-dot: 0.0
     axe-disable-seconds: 3.0
 skeleton:
+  crossbow:
+    enabled: true
+    minimum-intelligence: 3
+    charge-ticks: 25
+    aim:
+      minimum-ticks: 4
+      maximum-ticks: 10
+    projectile-speed: 3.15
+    projectile-spread: 2.0
+    maximum-lead-ticks: 20.0
+    gravity-per-tick-squared: 0.05
   spacing:
     enabled: true
     minimum-intelligence: 1
