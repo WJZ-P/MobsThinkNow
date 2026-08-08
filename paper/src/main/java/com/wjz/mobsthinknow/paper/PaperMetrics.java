@@ -36,6 +36,14 @@ public final class PaperMetrics {
 	private final AtomicLong skeletonDisengageGoalsRemoved = new AtomicLong();
 	private final AtomicLong skeletonDisengageStarts = new AtomicLong();
 	private final AtomicLong skeletonDisengagePathFailures = new AtomicLong();
+	private final AtomicLong skeletonProjectileEvasionGoalsInstalled = new AtomicLong();
+	private final AtomicLong skeletonProjectileEvasionGoalsRemoved = new AtomicLong();
+	private final AtomicLong skeletonProjectileDodges = new AtomicLong();
+	private final AtomicLong skeletonProjectileDodgePathFailures = new AtomicLong();
+	private final AtomicLong projectileThreatQueries = new AtomicLong();
+	private final AtomicLong projectileThreatCandidatesChecked = new AtomicLong();
+	private final AtomicLong projectileThreatsDetected = new AtomicLong();
+	private final AtomicLong projectileTrackingCapacityRejects = new AtomicLong();
 	private final AtomicLong naturalSkeletonLoadoutInitializations = new AtomicLong();
 	private final AtomicLong naturalCrossbowsEquipped = new AtomicLong();
 	private final AtomicLong naturalFireworkCrossbowsEquipped = new AtomicLong();
@@ -211,6 +219,38 @@ public final class PaperMetrics {
 
 	public void skeletonDisengagePathFailed() {
 		this.skeletonDisengagePathFailures.incrementAndGet();
+	}
+
+	public void skeletonProjectileEvasionGoalInstalled() {
+		this.skeletonProjectileEvasionGoalsInstalled.incrementAndGet();
+	}
+
+	public void skeletonProjectileEvasionGoalRemoved() {
+		this.skeletonProjectileEvasionGoalsRemoved.incrementAndGet();
+	}
+
+	public void skeletonProjectileDodgeStarted() {
+		this.skeletonProjectileDodges.incrementAndGet();
+	}
+
+	public void skeletonProjectileDodgePathFailed() {
+		this.skeletonProjectileDodgePathFailures.incrementAndGet();
+	}
+
+	public void projectileThreatQuery() {
+		this.projectileThreatQueries.incrementAndGet();
+	}
+
+	public void projectileThreatCandidatesChecked(final long count) {
+		this.projectileThreatCandidatesChecked.addAndGet(Math.max(0L, count));
+	}
+
+	public void projectileThreatDetected() {
+		this.projectileThreatsDetected.incrementAndGet();
+	}
+
+	public void projectileTrackingCapacityRejected() {
+		this.projectileTrackingCapacityRejects.incrementAndGet();
 	}
 
 	public void naturalSkeletonLoadoutInitialized() {
@@ -438,6 +478,14 @@ public final class PaperMetrics {
 			this.skeletonDisengageGoalsRemoved.get(),
 			this.skeletonDisengageStarts.get(),
 			this.skeletonDisengagePathFailures.get(),
+			this.skeletonProjectileEvasionGoalsInstalled.get(),
+			this.skeletonProjectileEvasionGoalsRemoved.get(),
+			this.skeletonProjectileDodges.get(),
+			this.skeletonProjectileDodgePathFailures.get(),
+			this.projectileThreatQueries.get(),
+			this.projectileThreatCandidatesChecked.get(),
+			this.projectileThreatsDetected.get(),
+			this.projectileTrackingCapacityRejects.get(),
 			this.naturalSkeletonLoadoutInitializations.get(),
 			this.naturalCrossbowsEquipped.get(),
 			this.naturalFireworkCrossbowsEquipped.get(),
@@ -522,6 +570,14 @@ public final class PaperMetrics {
 		long skeletonDisengageGoalsRemoved,
 		long skeletonDisengageStarts,
 		long skeletonDisengagePathFailures,
+		long skeletonProjectileEvasionGoalsInstalled,
+		long skeletonProjectileEvasionGoalsRemoved,
+		long skeletonProjectileDodges,
+		long skeletonProjectileDodgePathFailures,
+		long projectileThreatQueries,
+		long projectileThreatCandidatesChecked,
+		long projectileThreatsDetected,
+		long projectileTrackingCapacityRejects,
 		long naturalSkeletonLoadoutInitializations,
 		long naturalCrossbowsEquipped,
 		long naturalFireworkCrossbowsEquipped,

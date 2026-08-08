@@ -8,6 +8,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
+import com.wjz.mobsthinknow.paper.ai.PaperProjectileThreatBoard;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadMetrics;
@@ -48,6 +49,7 @@ public final class MtnPaperCommand implements TabExecutor {
 	private final PaperDamageMemory damageMemory;
 	private final PaperBlastReservationBoard blastReservations;
 	private final PaperPounceCoordinator pounceCoordinator;
+	private final PaperProjectileThreatBoard projectileThreats;
 	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperMetrics metrics;
@@ -61,6 +63,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		final PaperDamageMemory damageMemory,
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
+		final PaperProjectileThreatBoard projectileThreats,
 		final PaperFireworkBoltService fireworkBolts,
 		final PaperSquadCoordinator squadCoordinator,
 		final PaperRuntimeSelfTest runtimeSelfTest,
@@ -72,6 +75,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		this.damageMemory = damageMemory;
 		this.blastReservations = blastReservations;
 		this.pounceCoordinator = pounceCoordinator;
+		this.projectileThreats = projectileThreats;
 		this.fireworkBolts = fireworkBolts;
 		this.squadCoordinator = squadCoordinator;
 		this.metrics = metrics;
@@ -181,6 +185,15 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", skeletonGoalsRemoved=" + snapshot.skeletonDisengageGoalsRemoved()
 				+ ", skeletonDisengages=" + snapshot.skeletonDisengageStarts()
 				+ ", skeletonPathFailures=" + snapshot.skeletonDisengagePathFailures()
+				+ ", skeletonEvasionGoals=" + snapshot.skeletonProjectileEvasionGoalsInstalled()
+				+ ", skeletonEvasionGoalsRemoved=" + snapshot.skeletonProjectileEvasionGoalsRemoved()
+				+ ", skeletonProjectileDodges=" + snapshot.skeletonProjectileDodges()
+				+ ", skeletonDodgePathFailures=" + snapshot.skeletonProjectileDodgePathFailures()
+				+ ", projectileThreatQueries=" + snapshot.projectileThreatQueries()
+				+ ", projectileCandidates=" + snapshot.projectileThreatCandidatesChecked()
+				+ ", projectileThreats=" + snapshot.projectileThreatsDetected()
+				+ ", projectileCapacityRejects=" + snapshot.projectileTrackingCapacityRejects()
+				+ ", trackedProjectiles=" + this.projectileThreats.trackedCount()
 				+ ", naturalSkeletonLoadouts=" + snapshot.naturalSkeletonLoadoutInitializations()
 				+ ", naturalCrossbows=" + snapshot.naturalCrossbowsEquipped()
 				+ ", naturalFireworkCrossbows=" + snapshot.naturalFireworkCrossbowsEquipped()

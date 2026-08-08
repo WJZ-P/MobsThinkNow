@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.paper.command;
 
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperCreeperFeintMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonLoadoutService;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
@@ -60,6 +61,7 @@ public final class PaperRuntimeSelfTest {
 	private final PaperSquadCoordinator squads;
 	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperSkeletonLoadoutService skeletonLoadouts;
+	private final PaperCreeperFeintMemory creeperFeints;
 	private final PaperMetrics metrics;
 	private final List<Entity> activeEntities = new ArrayList<>();
 	private final List<Chunk> temporarilyForcedChunks = new ArrayList<>();
@@ -67,17 +69,25 @@ public final class PaperRuntimeSelfTest {
 	private BukkitTask shieldProbeAttackTask;
 	private BukkitTask shieldDisableProbeTask;
 	private BukkitTask creeperFeintProbeTask;
+	private BukkitTask projectileEvasionProbeTask;
 	private Zombie shieldProbeGuard;
 	private IronGolem shieldProbeAttacker;
 	private AbstractSkeleton fireworkProbeShooter;
 	private Skeleton naturalLoadoutProbe;
 	private Creeper creeperFeintProbe;
 	private IronGolem creeperFeintTarget;
+	private Skeleton projectileEvasionProbe;
+	private IronGolem projectileEvasionTarget;
+	private Location projectileEvasionStart;
+	private org.bukkit.util.Vector projectileEvasionRight;
+	private boolean projectileEvasionProbeDodged;
+	private long projectileEvasionDodgeBaseline;
+	private long nextProjectileEvasionShotAt;
 	private boolean naturalLoadoutProbeExpected;
 	private long shieldProbeAttackAttempts;
 	private long nextShieldProbeAttackAt;
 	private long shieldDisableProbeAttempts;
-	private long creeperFeintCompletedBaseline;
+	private long creeperFeintProbeStartedAt;
 
 	public PaperRuntimeSelfTest(
 		final Plugin plugin,
@@ -85,6 +95,7 @@ public final class PaperRuntimeSelfTest {
 		final PaperSquadCoordinator squads,
 		final PaperFireworkBoltService fireworkBolts,
 		final PaperSkeletonLoadoutService skeletonLoadouts,
+		final PaperCreeperFeintMemory creeperFeints,
 		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
@@ -92,6 +103,7 @@ public final class PaperRuntimeSelfTest {
 		this.squads = squads;
 		this.fireworkBolts = fireworkBolts;
 		this.skeletonLoadouts = skeletonLoadouts;
+		this.creeperFeints = creeperFeints;
 		this.metrics = metrics;
 	}
 
@@ -154,6 +166,7 @@ public final class PaperRuntimeSelfTest {
 			this.spawnShieldDisableProbe(world, anchor);
 			this.spawnFireworkProbe(world, anchor);
 			this.spawnCreeperFeintProbe(world, anchor);
+			this.spawnProjectileEvasionProbe(world, anchor);
 			this.naturalLoadoutProbeExpected = this.skeletonLoadouts.guaranteesCrossbow(world.getDifficulty());
 			if (this.naturalLoadoutProbeExpected) {
 				this.spawnNaturalLoadoutProbe(world, anchor);
@@ -304,6 +317,7 @@ public final class PaperRuntimeSelfTest {
 			long shieldDisables = current.shieldDisables() - baseline.shieldDisables();
 			long creeperFeints = current.creeperFeints() - baseline.creeperFeints();
 			long creeperFeintsCompleted = current.creeperFeintsCompleted() - baseline.creeperFeintsCompleted();
+			long projectileDodges = current.skeletonProjectileDodges() - baseline.skeletonProjectileDodges();
 			boolean feintProbeCooled = this.creeperFeintProbe != null
 				&& this.creeperFeintProbe.isValid()
 				&& !this.creeperFeintProbe.isIgnited()
@@ -327,7 +341,9 @@ public final class PaperRuntimeSelfTest {
 				|| shieldDisables <= 0L
 				|| creeperFeints <= 0L
 				|| creeperFeintsCompleted <= 0L
-				|| !feintProbeCooled) {
+				|| !feintProbeCooled
+				|| projectileDodges <= 0L
+				|| !this.projectileEvasionProbeDodged) {
 				this.report(
 					sender,
 					false,
@@ -364,6 +380,9 @@ public final class PaperRuntimeSelfTest {
 						+ ", creeperFeintsCompleted=" + creeperFeintsCompleted
 						+ ", feintProbeCooled=" + feintProbeCooled
 						+ ", feintProbe=" + this.creeperFeintProbeSnapshot()
+						+ ", projectileDodges=" + projectileDodges
+						+ ", projectileEvasionProbeDodged=" + this.projectileEvasionProbeDodged
+						+ ", projectileEvasionProbe=" + this.projectileEvasionProbeSnapshot()
 						+ ", shieldDisableAttempts=" + this.shieldDisableProbeAttempts
 						+ ", shieldProbe=" + this.shieldProbeSnapshot()
 						+ ", carrierPathFailures="
@@ -401,6 +420,8 @@ public final class PaperRuntimeSelfTest {
 					+ ", creeperFeints=" + creeperFeints
 					+ ", creeperFeintsCompleted=" + creeperFeintsCompleted
 					+ ", feintProbeCooled=" + feintProbeCooled
+					+ ", projectileDodges=" + projectileDodges
+					+ ", projectileEvasionProbeDodged=" + this.projectileEvasionProbeDodged
 			);
 		} catch (RuntimeException exception) {
 			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -422,17 +443,28 @@ public final class PaperRuntimeSelfTest {
 			this.creeperFeintProbeTask.cancel();
 			this.creeperFeintProbeTask = null;
 		}
+		if (this.projectileEvasionProbeTask != null) {
+			this.projectileEvasionProbeTask.cancel();
+			this.projectileEvasionProbeTask = null;
+		}
 		this.shieldProbeGuard = null;
 		this.shieldProbeAttacker = null;
 		this.fireworkProbeShooter = null;
 		this.naturalLoadoutProbe = null;
 		this.creeperFeintProbe = null;
 		this.creeperFeintTarget = null;
+		this.projectileEvasionProbe = null;
+		this.projectileEvasionTarget = null;
+		this.projectileEvasionStart = null;
+		this.projectileEvasionRight = null;
+		this.projectileEvasionProbeDodged = false;
+		this.projectileEvasionDodgeBaseline = 0L;
+		this.nextProjectileEvasionShotAt = Long.MIN_VALUE;
 		this.naturalLoadoutProbeExpected = false;
 		this.shieldProbeAttackAttempts = 0L;
 		this.nextShieldProbeAttackAt = Long.MIN_VALUE;
 		this.shieldDisableProbeAttempts = 0L;
-		this.creeperFeintCompletedBaseline = 0L;
+		this.creeperFeintProbeStartedAt = 0L;
 		Set<java.util.UUID> cleanupIds = this.activeEntities.stream()
 			.map(Entity::getUniqueId)
 			.collect(Collectors.toUnmodifiableSet());
@@ -692,6 +724,7 @@ public final class PaperRuntimeSelfTest {
 
 		Creeper creeper = (Creeper)world.spawnEntity(placement.zombie(), EntityType.CREEPER);
 		creeper.setExplosionRadius(0);
+		creeper.setMaxFuseTicks(200);
 		creeper.setPersistent(false);
 		creeper.setRemoveWhenFarAway(false);
 		creeper.setInvulnerable(true);
@@ -700,7 +733,7 @@ public final class PaperRuntimeSelfTest {
 		faceEntity(target, creeper);
 		this.creeperFeintProbe = creeper;
 		this.creeperFeintTarget = target;
-		this.creeperFeintCompletedBaseline = this.metrics.snapshot().creeperFeintsCompleted();
+		this.creeperFeintProbeStartedAt = Bukkit.getCurrentTick();
 		this.activeEntities.add(creeper);
 
 		this.creeperFeintProbeTask = Bukkit.getScheduler().runTaskTimer(
@@ -710,7 +743,7 @@ public final class PaperRuntimeSelfTest {
 					return;
 				}
 				faceEntity(target, creeper);
-				if (this.metrics.snapshot().creeperFeintsCompleted() > this.creeperFeintCompletedBaseline) {
+				if (this.creeperFeints.completedSince(creeper, this.creeperFeintProbeStartedAt)) {
 					creeper.setTarget(null);
 					creeper.getPathfinder().stopPathfinding();
 					if (this.creeperFeintProbeTask != null) {
@@ -746,6 +779,105 @@ public final class PaperRuntimeSelfTest {
 	}
 
 	/** 由 Paper 自己发出 NATURAL 出生事件；第二次显式初始化必须被 PDC 标记幂等拒绝。 */
+	/**
+	 * Fires real Paper arrows down a clear ten-block lane at an IQ-10 bow skeleton. The probe records actual lateral
+	 * displacement, so a metric increment without visible movement does not satisfy the end-to-end assertion.
+	 */
+	private void spawnProjectileEvasionProbe(final World world, final Location squadAnchor) {
+		CombatProbePlacement placement = findCombatProbePlacement(
+			world,
+			squadAnchor.getBlockX() + 260,
+			squadAnchor.getBlockZ(),
+			new int[] {10}
+		);
+		if (placement == null) {
+			throw new IllegalStateException("no flat collision-free projectile-evasion probe lane found");
+		}
+		this.forceChunk(placement.zombie());
+		this.forceChunk(placement.target());
+
+		IronGolem target = (IronGolem)world.spawnEntity(placement.target(), EntityType.IRON_GOLEM);
+		target.setAI(false);
+		target.setInvulnerable(true);
+		target.setPlayerCreated(true);
+		target.setPersistent(false);
+		target.setRemoveWhenFarAway(false);
+		this.activeEntities.add(target);
+
+		Skeleton skeleton = (Skeleton)world.spawnEntity(placement.zombie(), EntityType.SKELETON);
+		skeleton.setShouldBurnInDay(false);
+		skeleton.setInvulnerable(true);
+		skeleton.setPersistent(false);
+		skeleton.setRemoveWhenFarAway(false);
+		skeleton.getEquipment().setItemInMainHand(new ItemStack(Material.BOW));
+		this.intelligence.set(skeleton, 10);
+		skeleton.setTarget(target);
+		this.activeEntities.add(skeleton);
+
+		org.bukkit.util.Vector attackAxis = target.getLocation().toVector()
+			.subtract(skeleton.getLocation().toVector())
+			.setY(0.0)
+			.normalize();
+		this.projectileEvasionProbe = skeleton;
+		this.projectileEvasionTarget = target;
+		this.projectileEvasionStart = skeleton.getLocation().clone();
+		this.projectileEvasionRight = new org.bukkit.util.Vector(attackAxis.getZ(), 0.0, -attackAxis.getX());
+		this.projectileEvasionProbeDodged = false;
+		this.projectileEvasionDodgeBaseline = this.metrics.snapshot().skeletonProjectileDodges();
+		this.nextProjectileEvasionShotAt = Bukkit.getCurrentTick() + 2L;
+
+		this.projectileEvasionProbeTask = Bukkit.getScheduler().runTaskTimer(
+			this.plugin,
+			() -> {
+				if (!skeleton.isValid() || !target.isValid()) {
+					return;
+				}
+				long now = Bukkit.getCurrentTick();
+				if (now >= this.nextProjectileEvasionShotAt) {
+					this.nextProjectileEvasionShotAt = now + 18L;
+					org.bukkit.util.Vector direction = skeleton.getBoundingBox().getCenter()
+						.subtract(target.getEyeLocation().toVector())
+						.normalize();
+					Arrow arrow = world.spawnArrow(target.getEyeLocation(), direction, 1.40F, 0.0F);
+					arrow.setShooter(target);
+					arrow.setDamage(0.0);
+					this.activeEntities.add(arrow);
+				}
+				org.bukkit.util.Vector displacement = skeleton.getLocation().toVector()
+					.subtract(this.projectileEvasionStart.toVector())
+					.setY(0.0);
+				double lateral = Math.abs(displacement.dot(this.projectileEvasionRight));
+				if (lateral >= 0.55
+					&& this.metrics.snapshot().skeletonProjectileDodges() > this.projectileEvasionDodgeBaseline) {
+					this.projectileEvasionProbeDodged = true;
+					if (this.projectileEvasionProbeTask != null) {
+						this.projectileEvasionProbeTask.cancel();
+						this.projectileEvasionProbeTask = null;
+					}
+				}
+			},
+			1L,
+			1L
+		);
+	}
+
+	private String projectileEvasionProbeSnapshot() {
+		Skeleton skeleton = this.projectileEvasionProbe;
+		IronGolem target = this.projectileEvasionTarget;
+		if (skeleton == null || target == null || this.projectileEvasionStart == null
+			|| this.projectileEvasionRight == null) {
+			return "missing";
+		}
+		org.bukkit.util.Vector displacement = skeleton.getLocation().toVector()
+			.subtract(this.projectileEvasionStart.toVector())
+			.setY(0.0);
+		return "valid:" + skeleton.isValid()
+			+ ",targetValid:" + target.isValid()
+			+ ",lateral:" + Math.abs(displacement.dot(this.projectileEvasionRight))
+			+ ",distance:" + displacement.length()
+			+ ",nextShotAt:" + this.nextProjectileEvasionShotAt;
+	}
+
 	private void spawnNaturalLoadoutProbe(final World world, final Location squadAnchor) {
 		Location location = safeSurface(
 			world,

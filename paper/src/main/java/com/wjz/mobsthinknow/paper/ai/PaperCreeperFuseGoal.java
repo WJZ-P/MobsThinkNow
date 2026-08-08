@@ -176,6 +176,10 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		this.waitingForReservation = false;
 		if (!this.creeper.isIgnited()) {
 			this.creeper.setIgnited(true);
+			if (!this.creeper.isIgnited()) {
+				return;
+			}
+			this.feintMemory.transferToRealFuse(this.creeper);
 			this.pluginIgnited = true;
 			this.creeper.getWorld().playSound(
 				this.creeper.getLocation(),

@@ -506,6 +506,7 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		Villager target = helper.spawn(EntityType.VILLAGER, 12, 2, 4);
 		skeleton.setNoAi(true);
 		target.setNoAi(true);
+		SkeletonIntelligence.set(skeleton, 10);
 		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
 		skeleton.setTarget(target);
 		setFacingDirectlyAwayFrom(skeleton, target);
@@ -544,6 +545,43 @@ public final class SkeletonRangedTacticsGameTests implements CustomTestMethodInv
 		helper.assertTrue(
 			isHeadAndBodyFacing(skeleton, target),
 			"Arrow dodging did not keep the skeleton's head and body locked on its target."
+		);
+		goal.stop();
+		helper.succeed();
+	}
+
+	@GameTest
+	public void lowIntelligenceIgnoresArrowOutsideItsReactionWindow(final GameTestHelper helper) {
+		Skeleton skeleton = helper.spawn(EntityType.SKELETON, 4, 2, 4);
+		Villager target = helper.spawn(EntityType.VILLAGER, 12, 2, 4);
+		skeleton.setNoAi(true);
+		target.setNoAi(true);
+		SkeletonIntelligence.set(skeleton, 1);
+		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+		skeleton.setTarget(target);
+
+		Vec3 center = skeleton.getBoundingBox().getCenter();
+		Arrow arrow = new Arrow(
+			helper.getLevel(),
+			center.x + 4.0,
+			center.y,
+			center.z + 0.6,
+			new ItemStack(Items.ARROW),
+			new ItemStack(Items.BOW)
+		);
+		arrow.setOwner(target);
+		arrow.setNoGravity(true);
+		arrow.setNoPhysics(true);
+		arrow.setDeltaMovement(-0.75, 0.0, 0.0);
+		helper.assertTrue(helper.getLevel().addFreshEntity(arrow), "The incoming-arrow fixture was not added.");
+
+		SmartSkeletonBowAttackGoal goal = new SmartSkeletonBowAttackGoal(skeleton, 1.0, 40, 15.0F);
+		helper.assertTrue(goal.canUse(), "The low-intelligence bow goal did not start.");
+		goal.start();
+		goal.tick();
+		helper.assertTrue(
+			goal.movementMode() != MovementMode.DODGE,
+			"An intelligence-one skeleton reacted to an arrow outside its shorter prediction horizon."
 		);
 		goal.stop();
 		helper.succeed();

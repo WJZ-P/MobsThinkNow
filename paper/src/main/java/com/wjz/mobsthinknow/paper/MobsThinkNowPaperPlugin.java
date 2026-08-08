@@ -8,6 +8,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonLoadoutService;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
+import com.wjz.mobsthinknow.paper.ai.PaperProjectileThreatBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
 import com.wjz.mobsthinknow.paper.command.MtnPaperCommand;
 import com.wjz.mobsthinknow.paper.command.PaperRuntimeSelfTest;
@@ -24,12 +25,14 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private final PaperShieldMemory shieldMemory = new PaperShieldMemory();
 	private final PaperCreeperFeintMemory creeperFeintMemory = new PaperCreeperFeintMemory();
 	private PaperSettings settings;
+	private PaperProjectileEvasionSettings projectileEvasionSettings;
 	private PaperIntelligenceService intelligence;
 	private PaperSkeletonProfile skeletonProfile;
 	private PaperSkeletonLoadoutService skeletonLoadouts;
 	private PaperFireworkBoltService fireworkBolts;
 	private PaperBlastReservationBoard blastReservations;
 	private PaperPounceCoordinator pounceCoordinator;
+	private PaperProjectileThreatBoard projectileThreats;
 	private PaperSquadSettings squadSettings;
 	private PaperSquadCoordinator squadCoordinator;
 	private PaperRuntimeSelfTest runtimeSelfTest;
@@ -39,6 +42,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	public void onEnable() {
 		this.saveDefaultConfig();
 		this.settings = this.readSettings();
+		this.projectileEvasionSettings = this.readProjectileEvasionSettings();
 		this.squadSettings = this.readSquadSettings();
 		this.intelligence = new PaperIntelligenceService(this, this::settings, this.metrics);
 		this.skeletonProfile = new PaperSkeletonProfile(this);
@@ -51,6 +55,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.fireworkBolts = new PaperFireworkBoltService(this, this::settings, this.metrics);
 		this.blastReservations = new PaperBlastReservationBoard(this::settings, this.metrics);
 		this.pounceCoordinator = new PaperPounceCoordinator(this::settings, this.metrics);
+		this.projectileThreats = new PaperProjectileThreatBoard(this::projectileEvasionSettings, this.metrics);
 		this.squadCoordinator = new PaperSquadCoordinator(
 			this,
 			() -> this.settings.enabled(),
@@ -63,6 +68,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.squadCoordinator,
 			this.fireworkBolts,
 			this.skeletonLoadouts,
+			this.creeperFeintMemory,
 			this.metrics
 		);
 		this.mobLifecycle = new PaperMobLifecycle(
@@ -71,6 +77,8 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.intelligence,
 			this.skeletonProfile,
 			this.skeletonLoadouts,
+			this::projectileEvasionSettings,
+			this.projectileThreats,
 			this.creeperFeintMemory,
 			this.blastReservations,
 			this.pounceCoordinator,
@@ -88,6 +96,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.damageMemory,
 			this.blastReservations,
 			this.pounceCoordinator,
+			this.projectileThreats,
 			this.fireworkBolts,
 			this.squadCoordinator,
 			this.runtimeSelfTest,
@@ -99,6 +108,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		);
 		command.setExecutor(commandHandler);
 		command.setTabCompleter(commandHandler);
+		this.projectileThreats.start(this);
 		this.mobLifecycle.installLoadedEntities();
 		this.creeperFeintMemory.start(this);
 		this.fireworkBolts.start();
@@ -118,6 +128,9 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		}
 		if (this.fireworkBolts != null) {
 			this.fireworkBolts.stop();
+		}
+		if (this.projectileThreats != null) {
+			this.projectileThreats.stop();
 		}
 		if (this.squadCoordinator != null) {
 			this.squadCoordinator.stop();
@@ -141,20 +154,38 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		return this.squadSettings;
 	}
 
+	public PaperProjectileEvasionSettings projectileEvasionSettings() {
+		return this.projectileEvasionSettings;
+	}
+
 	public void reloadPluginSettings() {
 		this.runtimeSelfTest.close();
 		this.reloadConfig();
 		this.settings = this.readSettings();
+		this.projectileEvasionSettings = this.readProjectileEvasionSettings();
 		this.squadSettings = this.readSquadSettings();
 		this.damageMemory.clear();
 		this.shieldMemory.clear();
-		this.creeperFeintMemory.clear();
 		this.blastReservations.clear();
 		this.pounceCoordinator.clear();
+		this.projectileThreats.reconfigure();
 		this.fireworkBolts.stop();
 		this.fireworkBolts.start();
 		this.squadCoordinator.reconfigure();
 		this.mobLifecycle.refreshLoadedEntities();
+	}
+
+	private PaperProjectileEvasionSettings readProjectileEvasionSettings() {
+		return PaperProjectileEvasionSettings.validated(
+			this.getConfig().getBoolean("skeleton.projectile-evasion.enabled", true),
+			this.getConfig().getInt("skeleton.projectile-evasion.minimum-intelligence", 4),
+			this.getConfig().getInt("skeleton.projectile-evasion.maximum-tracked-projectiles", 256),
+			this.getConfig().getInt("skeleton.projectile-evasion.maximum-candidate-checks", 24),
+			this.getConfig().getDouble("skeleton.projectile-evasion.scan-radius", 8.5),
+			this.getConfig().getDouble("skeleton.projectile-evasion.dodge-distance", 3.25),
+			this.getConfig().getDouble("skeleton.projectile-evasion.movement-speed", 1.35),
+			this.getConfig().getInt("skeleton.projectile-evasion.cooldown-ticks", 14)
+		);
 	}
 
 	private PaperSettings readSettings() {

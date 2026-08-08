@@ -21,6 +21,8 @@ import com.wjz.mobsthinknow.paper.ai.PaperSkeletonLoadoutService;
 import com.wjz.mobsthinknow.paper.ai.PaperSquadRangedGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
+import com.wjz.mobsthinknow.paper.ai.PaperProjectileThreatBoard;
+import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProjectileEvasionGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderCombatGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderPounceGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperZombieRetreatGoal;
@@ -70,6 +72,7 @@ public final class PaperMobLifecycle implements Listener {
 	private static final int ZOMBIE_WEAPON_GOAL_PRIORITY = 1;
 	private static final int ZOMBIE_SHIELD_GOAL_PRIORITY = 1;
 	private static final int SKELETON_DISENGAGE_GOAL_PRIORITY = 1;
+	private static final int SKELETON_PROJECTILE_EVASION_GOAL_PRIORITY = 0;
 	private static final int SQUAD_RANGED_GOAL_PRIORITY = 2;
 	private static final int CREEPER_FEINT_GOAL_PRIORITY = 0;
 	private static final int CREEPER_FUSE_GOAL_PRIORITY = 1;
@@ -84,6 +87,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final GoalKey<Zombie> zombieShieldGoalKey;
 	private final NamespacedKey axeCriticalDamageKey;
 	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
+	private final GoalKey<AbstractSkeleton> skeletonProjectileEvasionGoalKey;
 	private final GoalKey<AbstractSkeleton> squadRangedGoalKey;
 	private final GoalKey<Creeper> creeperFeintGoalKey;
 	private final GoalKey<Creeper> creeperFuseGoalKey;
@@ -96,6 +100,8 @@ public final class PaperMobLifecycle implements Listener {
 	private final PaperIntelligenceService intelligence;
 	private final PaperSkeletonProfile skeletonProfile;
 	private final PaperSkeletonLoadoutService skeletonLoadouts;
+	private final Supplier<PaperProjectileEvasionSettings> projectileEvasionSettings;
+	private final PaperProjectileThreatBoard projectileThreats;
 	private final PaperCreeperFeintMemory creeperFeintMemory;
 	private final PaperBlastReservationBoard blastReservations;
 	private final PaperPounceCoordinator pounceCoordinator;
@@ -112,6 +118,8 @@ public final class PaperMobLifecycle implements Listener {
 		final PaperIntelligenceService intelligence,
 		final PaperSkeletonProfile skeletonProfile,
 		final PaperSkeletonLoadoutService skeletonLoadouts,
+		final Supplier<PaperProjectileEvasionSettings> projectileEvasionSettings,
+		final PaperProjectileThreatBoard projectileThreats,
 		final PaperCreeperFeintMemory creeperFeintMemory,
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
@@ -128,6 +136,10 @@ public final class PaperMobLifecycle implements Listener {
 		this.skeletonDisengageGoalKey = GoalKey.of(
 			AbstractSkeleton.class,
 			new NamespacedKey(plugin, "skeleton_emergency_disengage")
+		);
+		this.skeletonProjectileEvasionGoalKey = GoalKey.of(
+			AbstractSkeleton.class,
+			new NamespacedKey(plugin, "skeleton_projectile_evasion")
 		);
 		this.squadRangedGoalKey = GoalKey.of(
 			AbstractSkeleton.class,
@@ -147,6 +159,8 @@ public final class PaperMobLifecycle implements Listener {
 		this.intelligence = intelligence;
 		this.skeletonProfile = skeletonProfile;
 		this.skeletonLoadouts = skeletonLoadouts;
+		this.projectileEvasionSettings = projectileEvasionSettings;
+		this.projectileThreats = projectileThreats;
 		this.creeperFeintMemory = creeperFeintMemory;
 		this.blastReservations = blastReservations;
 		this.pounceCoordinator = pounceCoordinator;
@@ -159,6 +173,7 @@ public final class PaperMobLifecycle implements Listener {
 
 	@EventHandler
 	public void onEntityAdded(final EntityAddToWorldEvent event) {
+		this.projectileThreats.observeAdded(event.getEntity());
 		this.install(event.getEntity());
 	}
 
@@ -171,6 +186,7 @@ public final class PaperMobLifecycle implements Listener {
 
 	@EventHandler
 	public void onEntityRemoved(final EntityRemoveFromWorldEvent event) {
+		this.projectileThreats.observeRemoved(event.getEntity());
 		if (event.getEntity() instanceof Zombie zombie) {
 			this.damageMemory.discard(zombie);
 			this.shieldMemory.discard(zombie);
@@ -392,6 +408,11 @@ public final class PaperMobLifecycle implements Listener {
 					this.metrics.shieldGoalRemoved();
 				}
 				if (entity instanceof AbstractSkeleton skeleton
+					&& Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonProjectileEvasionGoalKey)) {
+					Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonProjectileEvasionGoalKey);
+					this.metrics.skeletonProjectileEvasionGoalRemoved();
+				}
+				if (entity instanceof AbstractSkeleton skeleton
 					&& Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonDisengageGoalKey)) {
 					Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonDisengageGoalKey);
 					this.metrics.skeletonDisengageGoalRemoved();
@@ -565,6 +586,28 @@ public final class PaperMobLifecycle implements Listener {
 
 	private void synchronizeSkeletonGoal(final AbstractSkeleton skeleton) {
 		PaperSettings config = this.settings.get();
+		PaperProjectileEvasionSettings evasion = this.projectileEvasionSettings.get();
+		boolean shouldHaveEvasionGoal = config.enabled() && evasion.enabled();
+		boolean hasEvasionGoal = Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonProjectileEvasionGoalKey);
+		if (shouldHaveEvasionGoal && !hasEvasionGoal) {
+			Bukkit.getMobGoals().addGoal(
+				skeleton,
+				SKELETON_PROJECTILE_EVASION_GOAL_PRIORITY,
+				new PaperSkeletonProjectileEvasionGoal(
+					skeleton,
+					this.skeletonProjectileEvasionGoalKey,
+					this.projectileEvasionSettings,
+					this.intelligence,
+					this.projectileThreats,
+					this.metrics
+				)
+			);
+			this.metrics.skeletonProjectileEvasionGoalInstalled();
+		} else if (!shouldHaveEvasionGoal && hasEvasionGoal) {
+			Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonProjectileEvasionGoalKey);
+			this.metrics.skeletonProjectileEvasionGoalRemoved();
+		}
+
 		boolean shouldHaveGoal = config.enabled() && config.skeletonSpacingEnabled();
 		boolean hasGoal = Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonDisengageGoalKey);
 		if (shouldHaveGoal && !hasGoal) {

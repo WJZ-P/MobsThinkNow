@@ -2,7 +2,6 @@ package com.wjz.mobsthinknow.paper.ai;
 
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +24,7 @@ public final class PaperCreeperFeintMemory {
 	private final Set<UUID> ownedIgnition = new HashSet<>();
 	private final Set<UUID> externallyIgnited = new HashSet<>();
 	private final Map<UUID, Long> nextAllowedAt = new HashMap<>();
+	private final Map<UUID, Long> completedAt = new HashMap<>();
 	private final Map<UUID, CoolingEntry> cooling = new LinkedHashMap<>();
 	private BukkitTask coolingTask;
 
@@ -32,7 +32,7 @@ public final class PaperCreeperFeintMemory {
 		if (this.coolingTask == null) {
 			this.coolingTask = Bukkit.getScheduler().runTaskTimer(
 				plugin,
-				() -> this.tickCooling(Bukkit.getCurrentTick()),
+				this::tickCooling,
 				1L,
 				1L
 			);
@@ -49,7 +49,10 @@ public final class PaperCreeperFeintMemory {
 
 	public boolean canStart(final Creeper creeper, final long now) {
 		UUID id = creeper.getUniqueId();
-		return !this.active.contains(id) && now >= this.nextAllowedAt.getOrDefault(id, Long.MIN_VALUE);
+		return !this.active.contains(id)
+			&& !this.cooling.containsKey(id)
+			&& this.active.size() + this.cooling.size() < MAXIMUM_COOLING_ENTRIES
+			&& now >= this.nextAllowedAt.getOrDefault(id, Long.MIN_VALUE);
 	}
 
 	public boolean begin(final Creeper creeper, final long now) {
@@ -68,7 +71,9 @@ public final class PaperCreeperFeintMemory {
 
 	public boolean blocksCombatGoals(final Creeper creeper) {
 		UUID id = creeper.getUniqueId();
-		return this.active.contains(id) || this.cooling.containsKey(id);
+		CoolingEntry entry = this.cooling.get(id);
+		return this.active.contains(id)
+			|| entry != null && Bukkit.getCurrentTick() < entry.combatUnlockAt();
 	}
 
 	public void beginOwnedIgnition(final Creeper creeper) {
@@ -102,17 +107,15 @@ public final class PaperCreeperFeintMemory {
 
 	public void beginPostFeintCooling(final Creeper creeper, final long now, final int durationTicks) {
 		UUID id = creeper.getUniqueId();
-		if (this.cooling.size() >= MAXIMUM_COOLING_ENTRIES && !this.cooling.containsKey(id)) {
-			Iterator<Map.Entry<UUID, CoolingEntry>> iterator = this.cooling.entrySet().iterator();
-			if (iterator.hasNext()) {
-				Map.Entry<UUID, CoolingEntry> oldest = iterator.next();
-				coolDown(oldest.getValue().creeper());
-				this.ownedIgnition.remove(oldest.getKey());
-				iterator.remove();
-			}
-		}
 		this.ownedIgnition.add(id);
 		this.cooling.put(id, new CoolingEntry(creeper, saturatingAdd(now, Math.max(1, durationTicks))));
+	}
+
+	/** Stops synthetic fuse suppression exactly when the real tactical fuse has acquired a valid attack. */
+	public void transferToRealFuse(final Creeper creeper) {
+		UUID id = creeper.getUniqueId();
+		this.cooling.remove(id);
+		this.ownedIgnition.remove(id);
 	}
 
 	public void finish(final Creeper creeper, final long now, final int cooldownTicks) {
@@ -125,6 +128,14 @@ public final class PaperCreeperFeintMemory {
 		this.nextAllowedAt.put(id, saturatingAdd(now, Math.max(1, cooldownTicks)));
 	}
 
+	public void markCompleted(final Creeper creeper, final long now) {
+		this.completedAt.put(creeper.getUniqueId(), now);
+	}
+
+	public boolean completedSince(final Creeper creeper, final long tick) {
+		return this.completedAt.getOrDefault(creeper.getUniqueId(), Long.MIN_VALUE) >= tick;
+	}
+
 	public void discard(final Creeper creeper) {
 		UUID id = creeper.getUniqueId();
 		this.active.remove(id);
@@ -132,6 +143,7 @@ public final class PaperCreeperFeintMemory {
 		this.externallyIgnited.remove(id);
 		this.cooling.remove(id);
 		this.nextAllowedAt.remove(id);
+		this.completedAt.remove(id);
 	}
 
 	public int activeCount() {
@@ -147,19 +159,20 @@ public final class PaperCreeperFeintMemory {
 		this.ownedIgnition.clear();
 		this.externallyIgnited.clear();
 		this.nextAllowedAt.clear();
+		this.completedAt.clear();
 		for (CoolingEntry entry : this.cooling.values()) {
 			coolDown(entry.creeper());
 		}
 		this.cooling.clear();
 	}
 
-	private void tickCooling(final long now) {
-		Iterator<Map.Entry<UUID, CoolingEntry>> iterator = this.cooling.entrySet().iterator();
+	private void tickCooling() {
+		var iterator = this.cooling.entrySet().iterator();
 		while (iterator.hasNext()) {
 			Map.Entry<UUID, CoolingEntry> mapped = iterator.next();
 			CoolingEntry entry = mapped.getValue();
 			Creeper creeper = entry.creeper();
-			if (!creeper.isValid() || creeper.isDead() || now >= entry.expiresAt()) {
+			if (!creeper.isValid() || creeper.isDead()) {
 				this.ownedIgnition.remove(mapped.getKey());
 				iterator.remove();
 				continue;
@@ -170,8 +183,12 @@ public final class PaperCreeperFeintMemory {
 
 	private static void coolDown(final Creeper creeper) {
 		if (creeper.isValid() && !creeper.isDead()) {
-			creeper.setIgnited(false);
-			creeper.setFuseTicks(0);
+			if (creeper.isIgnited()) {
+				creeper.setIgnited(false);
+			}
+			if (creeper.getFuseTicks() != 0) {
+				creeper.setFuseTicks(0);
+			}
 		}
 	}
 
@@ -179,6 +196,6 @@ public final class PaperCreeperFeintMemory {
 		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
-	private record CoolingEntry(Creeper creeper, long expiresAt) {
+	private record CoolingEntry(Creeper creeper, long combatUnlockAt) {
 	}
 }

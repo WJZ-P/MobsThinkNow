@@ -114,6 +114,17 @@ skeleton:
     # Emergency disengage is distinct from bow-ready kiting: the skeleton lowers its weapon and runs forward.
     maximum-disengage-ticks: 80
     timeout-cooldown-ticks: 20
+  projectile-evasion:
+    enabled: true
+    minimum-intelligence: 4
+    # One global main-thread index tracks arrows once; no skeleton scans the world's full entity list.
+    maximum-tracked-projectiles: 256
+    # Each activation query stops after this many raw candidates, even in an arrow storm.
+    maximum-candidate-checks: 24
+    scan-radius: 8.5
+    dodge-distance: 3.25
+    movement-speed: 1.35
+    cooldown-ticks: 14
   coordinated-fire:
     enabled: true
     minimum-intelligence: 4

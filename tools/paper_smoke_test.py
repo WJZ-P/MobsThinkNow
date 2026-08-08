@@ -271,6 +271,13 @@ def run_server(
                 continue
             transcript.append(line)
             print(line, flush=True)
+            if any(marker in line for marker in (
+                "Cannot load configuration from stream",
+                "InvalidConfigurationException",
+                "Error occurred while enabling MobsThinkNowPaper",
+            )):
+                failed_detail = f"fatal plugin configuration/startup log: {line}"
+                break
             if "[MobsThinkNowPaper] Enabling MobsThinkNowPaper" in line:
                 enabled = True
             if not started and "Done (" in line:

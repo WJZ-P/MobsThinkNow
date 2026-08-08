@@ -86,6 +86,20 @@ MobsThinkNow/
   约束的小幅水平速度，不传送、不穿墙；
 - 启动阈值与安全阈值具有迟滞区，80 tick 超时后才短暂冷却，避免 Goal 在临界距离逐 tick 抖动。
 
+### 骷髅来箭闪避
+
+- `ProjectileEvasionPlanner` 是 Fabric/Paper 共用的纯 Java 轨迹内核：用相对位置与速度求有限时间窗内的
+  三维最近交会点，排除静止、远离、超时和安全半径外的投射物，再按预测水平落点选择相反侧；
+- Paper 不让每只骷髅调用全世界实体扫描。`PaperProjectileThreatBoard` 通过实体装载/移除事件登记箭，全服
+  唯一主线程任务每 tick 更新最多 `maximum-tracked-projectiles`（默认 256）枚箭的 12 格三维桶。每次感知
+  只访问中心及相邻 26 桶，并在 `maximum-candidate-checks`（默认 24）个原始候选后硬停止；
+- IQ 至少 4 的持弓/弩骷髅才激活优先级 0 闪避 Goal。IQ 1～10 的共享反应曲线把扫描间隔从 6 tick 缩至
+  2 tick、预测窗口从 4.5 tick 拉到 8 tick，同时增加安全余量与动作时长；命中判定后先取消蓄力，再沿
+  远离预测落点的可达侧横移，首选侧无路时尝试另一侧，两侧均失败才施加小幅有界横向速度；
+- `/mtnpaper status` 暴露 Goal 安装/移除、真实闪避、路径失败、感知查询、候选检查、威胁命中、容量拒绝
+  和当前跟踪箭数。`/mtnpaper selftest` 会从十格外发射真实 Paper 箭，除计数增长外还要求探针骷髅实际
+  横移至少 0.55 格。
+
 ### 骷髅交叉火力与友军射界
 
 - `CROSSFIRE`/`COMBINED_ARMS` 进入交战后，左右射手用共享 `SquadVolleyPlanner` 取得相差半个周期的
@@ -120,8 +134,9 @@ MobsThinkNow/
   冷却默认 240 tick 并带 `80%～120%` 的确定性个体抖动；原侧路线失败只尝试一次镜像侧，工作量有硬界；
 - Paper 适配器用持续引信所有权过滤重复 `CreeperIgniteEvent`，并在未被取消的玩家实体交互中识别打火石/
   火焰弹接管；假动作随即结束但不清零真实引信。原版 `swellDir` 不会随公开退火 API 立刻归零，
-  因此插件用一个全服集中任务维护最多 64 个、每个 10 tick 的退火条目；期间接敌/真引信 Goal 让位，退出线
-  令原版 SwellGoal 自行切回负方向。插件重载、实体卸载和关闭都会清理短期所有权与集中队列；
+  因此插件用一个全服集中任务维护最多 64 个所有权条目：前 10 tick 让接敌/真引信 Goal 让位，之后允许
+  正常接敌，但仍持续把伪引信压回零，直到 `PaperCreeperFuseGoal` 已取得合法目标和爆点预约并显式接管。
+  失去目标的苦力怕不会在“未点燃”外观下偷偷涨引信；实体卸载、玩家真实点燃和插件关闭均精确清理条目；
 - 玩家真正跑出提交距离时，插件点燃的苦力怕会退火并释放预约。由玩家打火石等外部来源强制点燃的
   苦力怕只登记强制预约，绝不被插件取消；
 - 冲突个体不会在首爆中心干等，而是去目标后侧的稳定候场点；首爆预约释放或过期后才重新竞争；
@@ -347,6 +362,15 @@ skeleton:
     preferred-range: 10.0
     maximum-disengage-ticks: 80
     timeout-cooldown-ticks: 20
+  projectile-evasion:
+    enabled: true
+    minimum-intelligence: 4
+    maximum-tracked-projectiles: 256
+    maximum-candidate-checks: 24
+    scan-radius: 8.5
+    dodge-distance: 3.25
+    movement-speed: 1.35
+    cooldown-ticks: 14
   coordinated-fire:
     enabled: true
     minimum-intelligence: 4
@@ -417,11 +441,13 @@ spider:
 4. 执行 `/mtnpaper selftest`，确认先输出结构通过，再得到
    `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots`、
    `crossbowPoseTicks`、`fireworkLaunches`、`fireworkDetonations`、`creepersMounted`、`shieldBlocks`、
-   `creeperFeints`、`creeperFeintsCompleted` 与 `feintProbeCooled` 均满足真实行为断言；
+   `creeperFeints`、`creeperFeintsCompleted` 与 `feintProbeCooled` 均满足真实行为断言，并要求
+   `projectileDodges > 0`、独立十格来箭探针产生至少 0.55 格真实横移；
    `shieldCounterattacks` 与 `shieldDisables` 均大于零；
 5. 隔离运行器额外把世界设为困难、自然弩手基础概率设为 100%，通过真实 `NATURAL` 出生事件断言
    `naturalLoadoutInitializations=1` 与 `naturalCrossbows=1`；自测主动再初始化一次，计数仍为 1，证明 PDC 幂等；
-6. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
+6. 任意 `Cannot load configuration from stream`、`InvalidConfigurationException` 或插件启用异常都会立即判失败；
+7. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
 可复现隔离服务端位于 Gradle 已忽略的 `build/paper-smoke/`，Paper 本体、世界和日志不会进入发布 JAR
 或 Git。

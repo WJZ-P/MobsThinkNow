@@ -199,6 +199,7 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 			this.completed ? cooldown : Math.max(40, cooldown / 2)
 		);
 		if (this.completed) {
+			this.memory.markCompleted(this.creeper, now);
 			this.metrics.creeperFeintCompleted();
 		}
 		this.target = null;
