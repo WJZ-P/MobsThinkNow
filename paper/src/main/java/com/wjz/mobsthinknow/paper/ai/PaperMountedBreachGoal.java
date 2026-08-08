@@ -8,6 +8,7 @@ import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
+import com.wjz.mobsthinknow.shared.ai.CreeperTacticalPlanner;
 import com.wjz.mobsthinknow.shared.ai.RetreatPlanner;
 import com.wjz.mobsthinknow.shared.ai.SpiderTacticalPlanner;
 import com.wjz.mobsthinknow.shared.math.Vec3d;
@@ -43,6 +44,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSquadCoordinator squads;
+	private final PaperBlastReservationBoard blastReservations;
 	private final PaperMetrics metrics;
 	private final int stableSide;
 	private final double speedSample;
@@ -58,6 +60,9 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 	private boolean boarding;
 	private boolean payloadReleased;
 	private boolean abortRequested;
+	private boolean waitingForBlastWindow;
+	private boolean reservationHeld;
+	private boolean pluginIgnited;
 
 	public PaperMountedBreachGoal(
 		final Spider spider,
@@ -65,6 +70,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
 		final PaperSquadCoordinator squads,
+		final PaperBlastReservationBoard blastReservations,
 		final PaperMetrics metrics
 	) {
 		this.spider = spider;
@@ -72,6 +78,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 		this.settings = settings;
 		this.intelligence = intelligence;
 		this.squads = squads;
+		this.blastReservations = blastReservations;
 		this.metrics = metrics;
 		int hash = spider.getUniqueId().hashCode();
 		this.stableSide = (hash & 1) == 0 ? -1 : 1;
@@ -139,6 +146,9 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 		this.boarding = false;
 		this.payloadReleased = false;
 		this.abortRequested = false;
+		this.waitingForBlastWindow = false;
+		this.reservationHeld = false;
+		this.pluginIgnited = false;
 		this.spider.setAggressive(true);
 		this.metrics.mountedBreachAssemblyStarted();
 	}
@@ -171,6 +181,14 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 		if (!this.payloadReleased && current != null && current.getVehicle() == this.spider) {
 			current.leaveVehicle();
 		}
+		if (this.pluginIgnited && !this.payloadReleased && current != null && current.isValid()) {
+			current.setIgnited(false);
+			current.setFuseTicks(0);
+			this.metrics.creeperFuseAborted();
+		}
+		if (this.reservationHeld && current != null && !current.isIgnited()) {
+			this.blastReservations.release(current);
+		}
 		this.spider.getPathfinder().stopPathfinding();
 		this.spider.setAggressive(false);
 		if (this.abortRequested) {
@@ -189,6 +207,9 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 		this.boarding = false;
 		this.payloadReleased = false;
 		this.abortRequested = false;
+		this.waitingForBlastWindow = false;
+		this.reservationHeld = false;
+		this.pluginIgnited = false;
 	}
 
 	@Override
@@ -302,6 +323,9 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 	private void tickDelivery(final Creeper current, final LivingEntity currentTarget) {
 		this.spider.lookAt(currentTarget, 55.0F, 45.0F);
 		current.lookAt(currentTarget, 70.0F, 60.0F);
+		if (this.prepareFuse(current, currentTarget)) {
+			return;
+		}
 		double fuseProgress = current.getFuseTicks() / (double)Math.max(1, current.getMaxFuseTicks());
 		if (current.isIgnited() && fuseProgress >= this.settings.get().spiderPayloadReleaseProgress()) {
 			this.releasePayload(current, currentTarget);
@@ -332,6 +356,79 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 			this.metrics.mountedBreachPathFailed();
 		}
 		this.nextRepathAt = now + SpiderTacticalPlanner.repathTicks(combinedIntelligence);
+	}
+
+	/** 返回 true 表示爆点被占用，本 tick 已改走候场点。 */
+	private boolean prepareFuse(final Creeper current, final LivingEntity currentTarget) {
+		PaperSettings config = this.settings.get();
+		int iq = this.intelligence.get(current);
+		double progress = current.getFuseTicks() / (double)Math.max(1, current.getMaxFuseTicks());
+		Vec3d predicted = CreeperTacticalPlanner.fuseDestination(
+			toVector(currentTarget.getLocation()),
+			toVector(currentTarget.getVelocity()),
+			progress,
+			iq
+		);
+		Location predictedCenter = toLocation(predicted);
+		long now = Bukkit.getCurrentTick();
+		long detonationTick = now + Math.max(1, current.getMaxFuseTicks() - current.getFuseTicks());
+		if (current.isIgnited()) {
+			this.reservationHeld = this.blastReservations.tryReserve(
+				current,
+				currentTarget,
+				predictedCenter,
+				detonationTick,
+				true
+			);
+			this.waitingForBlastWindow = false;
+			return false;
+		}
+
+		double startDistance = CreeperTacticalPlanner.fuseStartDistance(
+			config.creeperMaximumFuseStartDistance(),
+			iq,
+			current.isPowered(),
+			PaperDifficultyAdapter.fromBukkit(current.getWorld().getDifficulty())
+		);
+		if (!this.spider.hasLineOfSight(currentTarget)
+			|| this.spider.getLocation().distanceSquared(currentTarget.getLocation()) > startDistance * startDistance) {
+			return false;
+		}
+		if (!this.blastReservations.tryReserve(
+			current,
+			currentTarget,
+			predictedCenter,
+			detonationTick,
+			false
+		)) {
+			if (!this.waitingForBlastWindow) {
+				this.waitingForBlastWindow = true;
+				this.metrics.creeperQueueWait();
+			}
+			if (now >= this.nextRepathAt || !this.spider.getPathfinder().hasPath()) {
+				moveTo(
+					this.spider.getPathfinder(),
+					this.blastReservations.stagingPoint(current, currentTarget, this.stableSide),
+					1.10
+				);
+				this.nextRepathAt = now + ASSEMBLY_REPATH_TICKS;
+			}
+			return true;
+		}
+
+		this.waitingForBlastWindow = false;
+		this.reservationHeld = true;
+		this.pluginIgnited = true;
+		current.setIgnited(true);
+		current.getWorld().playSound(
+			current.getLocation(),
+			Sound.ENTITY_CREEPER_PRIMED,
+			SoundCategory.HOSTILE,
+			1.0F,
+			1.0F
+		);
+		this.metrics.creeperFuseStarted();
+		return false;
 	}
 
 	private void releasePayload(final Creeper current, final LivingEntity currentTarget) {

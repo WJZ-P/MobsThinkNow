@@ -42,7 +42,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this::squadSettings,
 			this.intelligence
 		);
-		this.runtimeSelfTest = new PaperRuntimeSelfTest(this, this.intelligence, this.squadCoordinator);
+		this.runtimeSelfTest = new PaperRuntimeSelfTest(this, this.intelligence, this.squadCoordinator, this.metrics);
 		this.mobLifecycle = new PaperMobLifecycle(
 			this,
 			this::settings,
@@ -136,6 +136,14 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getDouble("skeleton.spacing.preferred-range", 10.0),
 			this.getConfig().getInt("skeleton.spacing.maximum-disengage-ticks", 80),
 			this.getConfig().getInt("skeleton.spacing.timeout-cooldown-ticks", 20),
+			this.getConfig().getBoolean("skeleton.coordinated-fire.enabled", true),
+			this.getConfig().getInt("skeleton.coordinated-fire.minimum-intelligence", 4),
+			this.getConfig().getDouble("skeleton.coordinated-fire.maximum-range", 24.0),
+			this.getConfig().getInt("skeleton.coordinated-fire.charge-ticks", 16),
+			this.getConfig().getInt("skeleton.coordinated-fire.minimum-shot-interval-ticks", 28),
+			this.getConfig().getDouble("skeleton.coordinated-fire.friendly-lane-radius", 0.75),
+			this.getConfig().getInt("skeleton.coordinated-fire.maximum-lane-checks", 20),
+			this.getConfig().getDouble("skeleton.coordinated-fire.reposition-distance", 3.0),
 			this.getConfig().getBoolean("creeper.tactics.enabled", true),
 			this.getConfig().getInt("creeper.tactics.minimum-intelligence", 1),
 			this.getConfig().getBoolean("creeper.tactics.flanking", true),

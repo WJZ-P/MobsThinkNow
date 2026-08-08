@@ -1,0 +1,312 @@
+package com.wjz.mobsthinknow.paper.ai;
+
+import com.destroystokyo.paper.entity.Pathfinder;
+import com.destroystokyo.paper.entity.ai.Goal;
+import com.destroystokyo.paper.entity.ai.GoalKey;
+import com.destroystokyo.paper.entity.ai.GoalType;
+import com.wjz.mobsthinknow.paper.PaperMetrics;
+import com.wjz.mobsthinknow.paper.PaperSettings;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
+import com.wjz.mobsthinknow.shared.ai.FiringLanePlanner;
+import com.wjz.mobsthinknow.shared.ai.SquadVolleyPlanner;
+import com.wjz.mobsthinknow.shared.math.Vec3d;
+import com.wjz.mobsthinknow.shared.squad.MixedSquadRole;
+import com.wjz.mobsthinknow.shared.squad.MixedSquadState;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Supplier;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.entity.AbstractSkeleton;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
+import org.bukkit.inventory.EquipmentSlot;
+
+/**
+ * 交叉火力阶段的 Paper 射手 Goal：到达左右射位、检查队友胶囊、错峰蓄力并通过公开 rangedAttack 开火。
+ */
+public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
+	private static final double POSITION_REACHED_DISTANCE_SQUARED = 2.0 * 2.0;
+	private static final int REPATH_TICKS = 5;
+	private static final int LANE_CACHE_TICKS = 2;
+	private static final int POSITION_FALLBACK_TICKS = 24;
+
+	private final AbstractSkeleton skeleton;
+	private final GoalKey<AbstractSkeleton> key;
+	private final Supplier<PaperSettings> settings;
+	private final PaperIntelligenceService intelligence;
+	private final PaperSquadCoordinator squads;
+	private final PaperMetrics metrics;
+	private final int stableOrder;
+
+	private long nextReleaseAt;
+	private long nextRepathAt;
+	private long nextLaneCheckAt;
+	private long positionFallbackAt;
+	private boolean charging;
+	private FiringLanePlanner.Result<UUID> cachedLane = new FiringLanePlanner.Result<>(true, null, 0);
+	private UUID lastBlocker;
+
+	public PaperSquadRangedGoal(
+		final AbstractSkeleton skeleton,
+		final GoalKey<AbstractSkeleton> key,
+		final Supplier<PaperSettings> settings,
+		final PaperIntelligenceService intelligence,
+		final PaperSquadCoordinator squads,
+		final PaperMetrics metrics
+	) {
+		this.skeleton = skeleton;
+		this.key = key;
+		this.settings = settings;
+		this.intelligence = intelligence;
+		this.squads = squads;
+		this.metrics = metrics;
+		this.stableOrder = skeleton.getUniqueId().hashCode() & Integer.MAX_VALUE;
+	}
+
+	@Override
+	public boolean shouldActivate() {
+		return this.isEligible();
+	}
+
+	@Override
+	public boolean shouldStayActive() {
+		return this.isEligible();
+	}
+
+	@Override
+	public void start() {
+		long now = Bukkit.getCurrentTick();
+		PaperSquadDirective directive = this.squads.directiveFor(this.skeleton);
+		int interval = SquadVolleyPlanner.shotIntervalTicks(
+			this.settings.get().skeletonCoordinatedFireMinimumShotIntervalTicks(),
+			this.intelligence.get(this.skeleton)
+		);
+		this.nextReleaseAt = SquadVolleyPlanner.nextReleaseTick(
+			now,
+			directive == null ? MixedSquadRole.RANGED_LEFT : directive.role(),
+			this.stableOrder,
+			interval
+		);
+		this.nextRepathAt = now;
+		this.nextLaneCheckAt = now;
+		this.positionFallbackAt = now + POSITION_FALLBACK_TICKS;
+		this.cachedLane = new FiringLanePlanner.Result<>(true, null, 0);
+		this.lastBlocker = null;
+		this.charging = false;
+		this.skeleton.setAggressive(true);
+	}
+
+	@Override
+	public void tick() {
+		PaperSquadDirective directive = this.squads.directiveFor(this.skeleton);
+		LivingEntity target = this.currentTarget();
+		if (directive == null || !PaperThreats.isLiveFor(this.skeleton, target)) {
+			return;
+		}
+		this.skeleton.lookAt(target, 50.0F, 45.0F);
+		PaperSettings config = this.settings.get();
+		double distanceSquared = this.skeleton.getLocation().distanceSquared(target.getLocation());
+		boolean visible = this.skeleton.hasLineOfSight(target);
+		if (!visible || distanceSquared > config.skeletonCoordinatedFireMaximumRange()
+			* config.skeletonCoordinatedFireMaximumRange()) {
+			this.cancelCharge();
+			this.moveToDirective(directive);
+			return;
+		}
+
+		long now = Bukkit.getCurrentTick();
+		FiringLanePlanner.Result<UUID> lane = this.laneTo(target, now, false);
+		if (!lane.clear()) {
+			this.handleBlockedLane(directive, target, lane, now);
+			return;
+		}
+		this.lastBlocker = null;
+		Location assigned = toLocation(this.skeleton, directive.destination());
+		if (this.skeleton.getLocation().distanceSquared(assigned) > POSITION_REACHED_DISTANCE_SQUARED
+			&& now < this.positionFallbackAt) {
+			this.cancelCharge();
+			this.moveTo(assigned, 1.08, now);
+			return;
+		}
+		this.skeleton.getPathfinder().stopPathfinding();
+
+		int iq = this.intelligence.get(this.skeleton);
+		int chargeTicks = SquadVolleyPlanner.chargeTicks(config.skeletonCoordinatedFireChargeTicks(), iq);
+		if (now >= this.nextReleaseAt - chargeTicks && !this.charging) {
+			this.skeleton.startUsingItem(EquipmentSlot.HAND);
+			this.charging = true;
+		}
+		if (now < this.nextReleaseAt) {
+			return;
+		}
+
+		FiringLanePlanner.Result<UUID> releaseLane = this.laneTo(target, now, true);
+		if (!releaseLane.clear() || !this.skeleton.hasLineOfSight(target)) {
+			this.handleBlockedLane(directive, target, releaseLane, now);
+			return;
+		}
+		this.cancelCharge();
+		this.skeleton.rangedAttack(target, 1.0F);
+		this.metrics.coordinatedShot();
+		int interval = SquadVolleyPlanner.shotIntervalTicks(
+			config.skeletonCoordinatedFireMinimumShotIntervalTicks(),
+			iq
+		);
+		this.nextReleaseAt = SquadVolleyPlanner.nextReleaseTick(
+			now + 1L,
+			directive.role(),
+			this.stableOrder,
+			interval
+		);
+	}
+
+	@Override
+	public void stop() {
+		this.cancelCharge();
+		this.skeleton.getPathfinder().stopPathfinding();
+		this.skeleton.setAggressive(this.skeleton.getTarget() != null);
+		this.nextReleaseAt = 0L;
+		this.nextRepathAt = 0L;
+		this.nextLaneCheckAt = 0L;
+		this.positionFallbackAt = 0L;
+		this.lastBlocker = null;
+	}
+
+	@Override
+	public GoalKey<AbstractSkeleton> getKey() {
+		return this.key;
+	}
+
+	@Override
+	public EnumSet<GoalType> getTypes() {
+		return EnumSet.of(GoalType.MOVE, GoalType.LOOK);
+	}
+
+	private boolean isEligible() {
+		PaperSettings config = this.settings.get();
+		PaperSquadDirective directive = this.squads.directiveFor(this.skeleton);
+		return config.enabled()
+			&& config.skeletonCoordinatedFireEnabled()
+			&& this.skeleton.isValid()
+			&& !this.skeleton.isDead()
+			&& this.intelligence.get(this.skeleton) >= config.skeletonCoordinatedFireMinimumIntelligence()
+			&& this.holdsRangedWeapon()
+			&& directive != null
+			&& directive.state() == MixedSquadState.ENGAGING
+			&& directive.plan().usesCrossfire()
+			&& directive.role().isRanged()
+			&& PaperThreats.isLiveFor(this.skeleton, this.currentTarget());
+	}
+
+	private LivingEntity currentTarget() {
+		LivingEntity shared = this.squads.sharedTargetFor(this.skeleton);
+		return PaperThreats.isLiveFor(this.skeleton, shared) ? shared : this.skeleton.getTarget();
+	}
+
+	private FiringLanePlanner.Result<UUID> laneTo(
+		final LivingEntity target,
+		final long now,
+		final boolean forceRefresh
+	) {
+		if (!forceRefresh && now < this.nextLaneCheckAt) {
+			return this.cachedLane;
+		}
+		PaperSettings config = this.settings.get();
+		List<FiringLanePlanner.Ally<UUID>> allies = new ArrayList<>();
+		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
+			Location location = ally.getLocation().add(0.0, ally.getHeight() * 0.55, 0.0);
+			double radius = Math.max(config.skeletonFriendlyLaneRadius(), ally.getWidth() * 0.65);
+			allies.add(new FiringLanePlanner.Ally<>(ally.getUniqueId(), toVector(location), radius));
+		}
+		this.cachedLane = FiringLanePlanner.check(
+			toVector(this.skeleton.getEyeLocation()),
+			toVector(target.getEyeLocation()),
+			allies,
+			config.skeletonFriendlyLaneMaximumChecks()
+		);
+		this.nextLaneCheckAt = now + LANE_CACHE_TICKS;
+		return this.cachedLane;
+	}
+
+	private void handleBlockedLane(
+		final PaperSquadDirective directive,
+		final LivingEntity target,
+		final FiringLanePlanner.Result<UUID> lane,
+		final long now
+	) {
+		this.cancelCharge();
+		if (lane.blocker() != null && !lane.blocker().equals(this.lastBlocker)) {
+			this.metrics.friendlyLaneBlocked();
+			this.lastBlocker = lane.blocker();
+		}
+		if (now < this.nextRepathAt && this.skeleton.getPathfinder().hasPath()) {
+			return;
+		}
+		int side = directive.role() == MixedSquadRole.RANGED_LEFT ? -1 : 1;
+		Vec3d reposition = FiringLanePlanner.lateralReposition(
+			toVector(this.skeleton.getLocation()),
+			toVector(target.getLocation()),
+			side,
+			this.settings.get().skeletonLaneRepositionDistance()
+		);
+		if (this.moveTo(toLocation(this.skeleton, reposition), 1.12, now)) {
+			this.metrics.firingLaneReposition();
+		} else {
+			this.nextRepathAt = now;
+			this.moveTo(toLocation(this.skeleton, directive.destination()), 1.08, now);
+		}
+		int interval = SquadVolleyPlanner.shotIntervalTicks(
+			this.settings.get().skeletonCoordinatedFireMinimumShotIntervalTicks(),
+			this.intelligence.get(this.skeleton)
+		);
+		this.nextReleaseAt = SquadVolleyPlanner.nextReleaseTick(
+			now + 4L,
+			directive.role(),
+			this.stableOrder,
+			interval
+		);
+	}
+
+	private void moveToDirective(final PaperSquadDirective directive) {
+		this.moveTo(toLocation(this.skeleton, directive.destination()), 1.10, Bukkit.getCurrentTick());
+	}
+
+	private boolean moveTo(final Location destination, final double speed, final long now) {
+		if (now < this.nextRepathAt) {
+			return this.skeleton.getPathfinder().hasPath();
+		}
+		Pathfinder pathfinder = this.skeleton.getPathfinder();
+		Pathfinder.PathResult path = pathfinder.findPath(destination);
+		boolean moving = path != null && pathfinder.moveTo(path, speed);
+		this.nextRepathAt = now + REPATH_TICKS;
+		if (!moving) {
+			this.metrics.firingLanePathFailed();
+		}
+		return moving;
+	}
+
+	private void cancelCharge() {
+		if (this.skeleton.hasActiveItem()) {
+			this.skeleton.clearActiveItem();
+		}
+		this.charging = false;
+	}
+
+	private boolean holdsRangedWeapon() {
+		Material material = this.skeleton.getEquipment().getItemInMainHand().getType();
+		return material == Material.BOW || material == Material.CROSSBOW;
+	}
+
+	private static Location toLocation(final Mob mob, final Vec3d vector) {
+		return new Location(mob.getWorld(), vector.x(), vector.y(), vector.z());
+	}
+
+	private static Vec3d toVector(final Location location) {
+		return new Vec3d(location.getX(), location.getY(), location.getZ());
+	}
+}

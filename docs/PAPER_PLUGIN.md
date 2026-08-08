@@ -53,6 +53,18 @@ MobsThinkNow/
   约束的小幅水平速度，不传送、不穿墙；
 - 启动阈值与安全阈值具有迟滞区，80 tick 超时后才短暂冷却，避免 Goal 在临界距离逐 tick 抖动。
 
+### 骷髅交叉火力与友军射界
+
+- `CROSSFIRE`/`COMBINED_ARMS` 进入交战后，左右射手用共享 `SquadVolleyPlanner` 取得相差半个周期的
+  确定性释放时隙；同翼个体再按稳定序号加入小抖动，避免所有箭在同一 tick 生成；
+- 每次蓄力前和真正放箭前，`FiringLanePlanner` 都把射手眼睛到目标眼睛视为线段，并只检查当前小队至多
+  20 个友军胶囊。命中胶囊时取消蓄力，沿职责对应一侧横移并略微后撤；计算量受
+  `maximum-lane-checks` 硬限制，不查询全世界实体；
+- 自定义 Goal 只在交叉火力方案、交战阶段和左右射手职责同时成立时，以优先级 2 暂时接管 `MOVE/LOOK`。
+  骷髅被贴身时优先级 1 的紧急脱离仍先执行；离队、换方案或关闭配置后原版弓/弩 Goal 自动恢复；
+- 最终射击调用 Paper 公开 `RangedEntity#rangedAttack`，没有 NMS 反射。普通事件级友伤拦截继续作为移动
+  中队友突然切入弹道时的第二层保护。
+
 ### 苦力怕战术引信与爆点预约
 
 - 接敌 Goal 根据 IQ 在直追、速度拦截和稳定左右侧翼之间切换；目标正看向苦力怕或举盾时，高 IQ 个体
@@ -145,17 +157,20 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 | `/mtnpaper spawn <type> [1-100]` | `mobsthinknow.admin` | 在玩家前方事务式批量生成指定 Paper 智能怪物 |
 | `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种 |
 | `/mtnpaper assault [1-8]` | `mobsthinknow.admin` | 每组生成 IQ 10 僵尸、骷髅、苦力怕、蜘蛛以测试联合兵种 |
-| `/mtnpaper selftest` | `mobsthinknow.admin` | 控制台可用；真实 tick 验证四兵种同队、目标记忆和联合兵种后自动清理 |
+| `/mtnpaper selftest` | `mobsthinknow.admin` | 控制台可用；真实 tick 验证联合编队、错峰射击和蜘蛛载客后自动清理 |
 
 `spawn` 类型为：`zombie`、`husk`、`drowned`、`zombie_villager`、`skeleton`、`stray`、`bogged`、
 `wither_skeleton`、`creeper`、`spider`，另可用 `spawn assault [组数]`。生成器先为整批实体规划有承重、
 两格净空、无液体/火焰/仙人掌等危险的互不重叠落点；任意实体生成失败会移除本批已经生成的实体，
 不会留下半套测试阵容。
 
-`selftest` 不要求在线玩家：它会临时保活测试区块，生成四种 IQ 10 核心兵种与一个关闭 AI、无敌的
-铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后要求四者取得同一个小队 ID、
-全部拿到指令且方案为 `COMBINED_ARMS`。无论成功、失败、重载还是插件关闭，测试实体和临时区块票都会
-清理。日志以 `[MTN SELFTEST PASS]` 或 `[MTN SELFTEST FAIL]` 输出机器可识别结果。
+`selftest` 不要求在线玩家：它会临时保活测试区块，生成一只僵尸、两只骷髅、一只苦力怕、一只蜘蛛
+和一个关闭 AI、无敌的铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后先要求
+五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后再运行 120 tick，要求
+两名射手至少实际释放一发协调箭，并要求苦力怕真实跳上蜘蛛。测试苦力怕的爆炸半径临时设为 0、引信
+延长到 200 tick，因此可以观察载客行为而不破坏测试世界。无论成功、失败、重载还是插件关闭，测试实体
+和临时区块票都会清理。中间结构检查输出 `[MTN SELFTEST STRUCTURE PASS]`，最终日志只以
+`[MTN SELFTEST PASS]` 或 `[MTN SELFTEST FAIL]` 表示机器可识别结论。
 
 ## 配置
 
@@ -198,6 +213,15 @@ skeleton:
     preferred-range: 10.0
     maximum-disengage-ticks: 80
     timeout-cooldown-ticks: 20
+  coordinated-fire:
+    enabled: true
+    minimum-intelligence: 4
+    maximum-range: 24.0
+    charge-ticks: 16
+    minimum-shot-interval-ticks: 28
+    friendly-lane-radius: 0.75
+    maximum-lane-checks: 20
+    reposition-distance: 3.0
 creeper:
   tactics:
     enabled: true
@@ -252,7 +276,8 @@ spider:
 1. 校验下载 JAR 的 SHA-256；
 2. 等待服务端输出 `Done (...)` 后才发送控制台命令，避免启动前空世界命令源；
 3. 确认插件列表和 `/mtnpaper status`；
-4. 执行 `/mtnpaper selftest`，确认真实结果为 `state=BRIEFING, plan=COMBINED_ARMS`；
+4. 执行 `/mtnpaper selftest`，确认先输出结构通过，再得到
+   `state=ENGAGING, plan=COMBINED_ARMS`，且 `coordinatedShots` 与 `creepersMounted` 均大于零；
 5. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
 隔离服务端位于 Gradle 已忽略的 `build/paper-runtime/`，Paper 本体、世界和日志不会进入发布 JAR 或 Git。

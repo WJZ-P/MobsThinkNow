@@ -13,6 +13,12 @@ public final class PaperMetrics {
 	private final AtomicLong skeletonDisengageGoalsRemoved = new AtomicLong();
 	private final AtomicLong skeletonDisengageStarts = new AtomicLong();
 	private final AtomicLong skeletonDisengagePathFailures = new AtomicLong();
+	private final AtomicLong squadRangedGoalsInstalled = new AtomicLong();
+	private final AtomicLong squadRangedGoalsRemoved = new AtomicLong();
+	private final AtomicLong coordinatedShots = new AtomicLong();
+	private final AtomicLong friendlyLaneBlocks = new AtomicLong();
+	private final AtomicLong firingLaneRepositions = new AtomicLong();
+	private final AtomicLong firingLanePathFailures = new AtomicLong();
 	private final AtomicLong creeperGoalsInstalled = new AtomicLong();
 	private final AtomicLong creeperGoalsRemoved = new AtomicLong();
 	private final AtomicLong creeperFlanks = new AtomicLong();
@@ -76,6 +82,30 @@ public final class PaperMetrics {
 
 	public void skeletonDisengagePathFailed() {
 		this.skeletonDisengagePathFailures.incrementAndGet();
+	}
+
+	public void squadRangedGoalInstalled() {
+		this.squadRangedGoalsInstalled.incrementAndGet();
+	}
+
+	public void squadRangedGoalRemoved() {
+		this.squadRangedGoalsRemoved.incrementAndGet();
+	}
+
+	public void coordinatedShot() {
+		this.coordinatedShots.incrementAndGet();
+	}
+
+	public void friendlyLaneBlocked() {
+		this.friendlyLaneBlocks.incrementAndGet();
+	}
+
+	public void firingLaneReposition() {
+		this.firingLaneRepositions.incrementAndGet();
+	}
+
+	public void firingLanePathFailed() {
+		this.firingLanePathFailures.incrementAndGet();
 	}
 
 	public void creeperGoalInstalled() {
@@ -201,6 +231,12 @@ public final class PaperMetrics {
 			this.skeletonDisengageGoalsRemoved.get(),
 			this.skeletonDisengageStarts.get(),
 			this.skeletonDisengagePathFailures.get(),
+			this.squadRangedGoalsInstalled.get(),
+			this.squadRangedGoalsRemoved.get(),
+			this.coordinatedShots.get(),
+			this.friendlyLaneBlocks.get(),
+			this.firingLaneRepositions.get(),
+			this.firingLanePathFailures.get(),
 			this.creeperGoalsInstalled.get(),
 			this.creeperGoalsRemoved.get(),
 			this.creeperFlanks.get(),
@@ -242,6 +278,12 @@ public final class PaperMetrics {
 		long skeletonDisengageGoalsRemoved,
 		long skeletonDisengageStarts,
 		long skeletonDisengagePathFailures,
+		long squadRangedGoalsInstalled,
+		long squadRangedGoalsRemoved,
+		long coordinatedShots,
+		long friendlyLaneBlocks,
+		long firingLaneRepositions,
+		long firingLanePathFailures,
 		long creeperGoalsInstalled,
 		long creeperGoalsRemoved,
 		long creeperFlanks,

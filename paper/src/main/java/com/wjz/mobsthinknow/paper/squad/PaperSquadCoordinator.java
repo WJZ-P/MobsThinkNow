@@ -189,6 +189,23 @@ public final class PaperSquadCoordinator {
 		return leader == null ? null : leader.mob;
 	}
 
+	/** 返回至多 maximum-members 个当前同队成员的只读副本，供有界射界等平台适配器使用。 */
+	public List<Mob> squadmatesFor(final Mob mob) {
+		Long squadId = this.squadByMember.get(mob.getUniqueId());
+		Squad squad = squadId == null ? null : this.squads.get(squadId);
+		if (squad == null) {
+			return List.of();
+		}
+		List<Mob> result = new ArrayList<>(squad.memberIds.size());
+		for (UUID memberId : squad.memberIds) {
+			MemberRecord member = this.members.get(memberId);
+			if (member != null && member.mob != mob && member.mob.isValid() && !member.mob.isDead()) {
+				result.add(member.mob);
+			}
+		}
+		return List.copyOf(result);
+	}
+
 	/** 返回共享配对器给这只蜘蛛分配的苦力怕；查询只访问当前小队快照，不扫描世界实体。 */
 	public Creeper assignedTransportPartnerFor(final Spider spider) {
 		Long squadId = this.squadByMember.get(spider.getUniqueId());

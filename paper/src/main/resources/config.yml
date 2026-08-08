@@ -47,6 +47,16 @@ skeleton:
     # Emergency disengage is distinct from bow-ready kiting: the skeleton lowers its weapon and runs forward.
     maximum-disengage-ticks: 80
     timeout-cooldown-ticks: 20
+  coordinated-fire:
+    enabled: true
+    minimum-intelligence: 4
+    maximum-range: 24.0
+    charge-ticks: 16
+    minimum-shot-interval-ticks: 28
+    # Ally centers are tested against this capsule radius before every release.
+    friendly-lane-radius: 0.75
+    maximum-lane-checks: 20
+    reposition-distance: 3.0
 
 creeper:
   tactics:

@@ -1,9 +1,11 @@
 package com.wjz.mobsthinknow.paper.command;
 
+import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadPlan;
+import com.wjz.mobsthinknow.shared.squad.MixedSquadState;
 import java.util.ArrayList;
 import java.util.List;
 import org.bukkit.Bukkit;
@@ -28,14 +30,17 @@ public final class PaperRuntimeSelfTest {
 	private static final List<EntityType> CORE_TYPES = List.of(
 		EntityType.ZOMBIE,
 		EntityType.SKELETON,
+		EntityType.SKELETON,
 		EntityType.CREEPER,
 		EntityType.SPIDER
 	);
-	private static final int VALIDATION_DELAY_TICKS = 25;
+	private static final int STRUCTURE_VALIDATION_DELAY_TICKS = 25;
+	private static final int COMBAT_VALIDATION_DELAY_TICKS = 120;
 
 	private final Plugin plugin;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSquadCoordinator squads;
+	private final PaperMetrics metrics;
 	private final List<Entity> activeEntities = new ArrayList<>();
 	private final List<Chunk> temporarilyForcedChunks = new ArrayList<>();
 	private BukkitTask validationTask;
@@ -43,11 +48,13 @@ public final class PaperRuntimeSelfTest {
 	public PaperRuntimeSelfTest(
 		final Plugin plugin,
 		final PaperIntelligenceService intelligence,
-		final PaperSquadCoordinator squads
+		final PaperSquadCoordinator squads,
+		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
 		this.intelligence = intelligence;
 		this.squads = squads;
+		this.metrics = metrics;
 	}
 
 	public boolean start(final CommandSender sender) {
@@ -63,8 +70,9 @@ public final class PaperRuntimeSelfTest {
 		World world = Bukkit.getWorlds().getFirst();
 		Location anchor = safeSurface(world, world.getSpawnLocation().getBlockX() + 24,
 			world.getSpawnLocation().getBlockZ() + 24);
+		PaperMetrics.Snapshot baseline = this.metrics.snapshot();
 		try {
-			Location targetLocation = safeSurface(world, anchor.getBlockX(), anchor.getBlockZ() + 14);
+			Location targetLocation = safeSurface(world, anchor.getBlockX(), anchor.getBlockZ() + 6);
 			this.forceChunk(anchor);
 			this.forceChunk(targetLocation);
 			IronGolem target = (IronGolem)world.spawnEntity(targetLocation, EntityType.IRON_GOLEM);
@@ -76,14 +84,20 @@ public final class PaperRuntimeSelfTest {
 
 			List<Mob> mobs = new ArrayList<>(CORE_TYPES.size());
 			for (int index = 0; index < CORE_TYPES.size(); index++) {
-				double x = (index - 1.5) * 1.8;
-				Entity entity = world.spawnEntity(anchor.clone().add(x, 0.0, 0.0), CORE_TYPES.get(index));
+				int xOffset = (int)Math.round((index - (CORE_TYPES.size() - 1) * 0.5) * 1.8);
+				Location mobLocation = safeSurface(world, anchor.getBlockX() + xOffset, anchor.getBlockZ());
+				this.forceChunk(mobLocation);
+				Entity entity = world.spawnEntity(mobLocation, CORE_TYPES.get(index));
 				if (!(entity instanceof Mob mob)) {
 					throw new IllegalStateException("self-test entity is not a Mob: " + entity.getType());
 				}
 				mob.setInvulnerable(true);
 				mob.setPersistent(false);
 				mob.setRemoveWhenFarAway(false);
+				if (mob instanceof Creeper creeper) {
+					creeper.setExplosionRadius(0);
+					creeper.setMaxFuseTicks(200);
+				}
 				this.intelligence.set(mob, 10);
 				this.squads.observeTarget(mob, target);
 				mob.setTarget(target);
@@ -92,11 +106,12 @@ public final class PaperRuntimeSelfTest {
 			}
 			this.validationTask = Bukkit.getScheduler().runTaskLater(
 				this.plugin,
-				() -> this.validate(sender, target, mobs),
-				VALIDATION_DELAY_TICKS
+				() -> this.validateStructure(sender, target, mobs, baseline),
+				STRUCTURE_VALIDATION_DELAY_TICKS
 			);
 			sender.sendMessage(Component.text(
-				"MTN Paper self-test scheduled for " + VALIDATION_DELAY_TICKS + " ticks.",
+				"MTN Paper self-test scheduled: structure=" + STRUCTURE_VALIDATION_DELAY_TICKS
+					+ " ticks, combat=+" + COMBAT_VALIDATION_DELAY_TICKS + " ticks.",
 				NamedTextColor.AQUA
 			));
 			return true;
@@ -115,7 +130,12 @@ public final class PaperRuntimeSelfTest {
 		this.cleanup();
 	}
 
-	private void validate(final CommandSender sender, final LivingEntity target, final List<Mob> mobs) {
+	private void validateStructure(
+		final CommandSender sender,
+		final LivingEntity target,
+		final List<Mob> mobs,
+		final PaperMetrics.Snapshot baseline
+	) {
 		this.validationTask = null;
 		try {
 			List<PaperSquadDirective> directives = mobs.stream()
@@ -130,6 +150,7 @@ public final class PaperRuntimeSelfTest {
 						+ ", activeSquads=" + this.squads.activeSquadCount()
 						+ ", targets=" + targetSnapshot(mobs)
 				);
+				this.cleanup();
 				return;
 			}
 			long squadId = directives.getFirst().squadId();
@@ -159,15 +180,66 @@ public final class PaperRuntimeSelfTest {
 						+ ", allTracked=" + allTracked
 						+ ", mountedPair=" + mountedPair
 				);
+				this.cleanup();
+				return;
+			}
+			sender.sendMessage(Component.text(
+				"[MTN SELFTEST STRUCTURE PASS] squad=" + squadId
+					+ ", state=" + directives.getFirst().state()
+					+ ", plan=" + directives.getFirst().plan()
+					+ ", mountedPair=true",
+				NamedTextColor.AQUA
+			));
+			this.validationTask = Bukkit.getScheduler().runTaskLater(
+				this.plugin,
+				() -> this.validateCombat(sender, mobs, baseline),
+				COMBAT_VALIDATION_DELAY_TICKS
+			);
+		} catch (RuntimeException exception) {
+			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());
+			this.cleanup();
+		}
+	}
+
+	private void validateCombat(
+		final CommandSender sender,
+		final List<Mob> mobs,
+		final PaperMetrics.Snapshot baseline
+	) {
+		this.validationTask = null;
+		try {
+			List<PaperSquadDirective> directives = mobs.stream()
+				.filter(Entity::isValid)
+				.map(this.squads::directiveFor)
+				.toList();
+			boolean engaging = !directives.isEmpty()
+				&& directives.stream().allMatch(directive -> directive != null
+					&& directive.state() == MixedSquadState.ENGAGING);
+			PaperMetrics.Snapshot current = this.metrics.snapshot();
+			long coordinatedShots = current.coordinatedShots() - baseline.coordinatedShots();
+			long mounted = current.mountedBreachMounts() - baseline.mountedBreachMounts();
+			long released = current.mountedBreachPayloadReleases() - baseline.mountedBreachPayloadReleases();
+			if (!engaging || coordinatedShots <= 0L || mounted <= 0L) {
+				this.report(
+					sender,
+					false,
+					"engaging=" + engaging
+						+ ", coordinatedShots=" + coordinatedShots
+						+ ", creepersMounted=" + mounted
+						+ ", payloadReleases=" + released
+						+ ", carrierPathFailures="
+						+ (current.mountedBreachPathFailures() - baseline.mountedBreachPathFailures())
+						+ ", firingLanePathFailures="
+						+ (current.firingLanePathFailures() - baseline.firingLanePathFailures())
+				);
 				return;
 			}
 			this.report(
 				sender,
 				true,
-				"squad=" + squadId
-					+ ", leader=" + directives.getFirst().leaderId()
-					+ ", state=" + directives.getFirst().state()
-					+ ", plan=" + directives.getFirst().plan()
+				"state=ENGAGING, plan=COMBINED_ARMS, coordinatedShots=" + coordinatedShots
+					+ ", creepersMounted=" + mounted
+					+ ", payloadReleases=" + released
 			);
 		} catch (RuntimeException exception) {
 			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());

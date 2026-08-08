@@ -26,6 +26,14 @@ class PaperSettingsTest {
 			-10,
 			true,
 			99,
+			99.0,
+			999,
+			0,
+			99.0,
+			999,
+			99.0,
+			true,
+			99,
 			true,
 			99.0,
 			true,
@@ -60,6 +68,13 @@ class PaperSettingsTest {
 		assertEquals(24.0, settings.skeletonPreferredRange());
 		assertEquals(200, settings.skeletonDisengageMaximumTicks());
 		assertEquals(0, settings.skeletonDisengageCooldownTicks());
+		assertEquals(10, settings.skeletonCoordinatedFireMinimumIntelligence());
+		assertEquals(40.0, settings.skeletonCoordinatedFireMaximumRange());
+		assertEquals(30, settings.skeletonCoordinatedFireChargeTicks());
+		assertEquals(20, settings.skeletonCoordinatedFireMinimumShotIntervalTicks());
+		assertEquals(2.0, settings.skeletonFriendlyLaneRadius());
+		assertEquals(100, settings.skeletonFriendlyLaneMaximumChecks());
+		assertEquals(6.0, settings.skeletonLaneRepositionDistance());
 		assertEquals(10, settings.creeperMinimumIntelligence());
 		assertEquals(5.0, settings.creeperMaximumFuseStartDistance());
 		assertEquals(1.5, settings.creeperMaximumFuseMovementSpeed());
@@ -82,6 +97,7 @@ class PaperSettingsTest {
 		PaperSettings settings = PaperSettings.validated(
 			true, true, true, 1, 0.20, 0.30, 100, 5.0, 1.50, 20,
 			true, 1, 10.0, 80, 20,
+			true, 4, 24.0, 16, 28, 0.75, 20, 3.0,
 			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32,
 			true, 1, true, true, 10, 20, 40,
 			true, 1.35, 0.35, 100, 100
@@ -95,6 +111,9 @@ class PaperSettingsTest {
 		assertEquals(10.0, settings.skeletonPreferredRange());
 		assertEquals(80, settings.skeletonDisengageMaximumTicks());
 		assertEquals(20, settings.skeletonDisengageCooldownTicks());
+		assertTrue(settings.skeletonCoordinatedFireEnabled());
+		assertEquals(4, settings.skeletonCoordinatedFireMinimumIntelligence());
+		assertEquals(24.0, settings.skeletonCoordinatedFireMaximumRange());
 		assertEquals(4.0, settings.creeperMaximumFuseStartDistance());
 		assertEquals(1.25, settings.creeperMaximumFuseMovementSpeed());
 		assertEquals(6.0, settings.creeperBlastConflictRadius());

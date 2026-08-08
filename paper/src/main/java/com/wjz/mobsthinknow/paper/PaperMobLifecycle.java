@@ -13,6 +13,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperMountedBreachGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonDisengageGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
+import com.wjz.mobsthinknow.paper.ai.PaperSquadRangedGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderCombatGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderPounceGoal;
@@ -50,6 +51,7 @@ import org.bukkit.plugin.Plugin;
 /** 实体装载、伤害事件与 Paper MobGoals 注册的唯一边界。 */
 public final class PaperMobLifecycle implements Listener {
 	private static final int RETREAT_GOAL_PRIORITY = 1;
+	private static final int SQUAD_RANGED_GOAL_PRIORITY = 2;
 	private static final int CREEPER_FUSE_GOAL_PRIORITY = 1;
 	private static final int CREEPER_APPROACH_GOAL_PRIORITY = 3;
 	private static final int SPIDER_MOUNTED_BREACH_GOAL_PRIORITY = 1;
@@ -59,6 +61,7 @@ public final class PaperMobLifecycle implements Listener {
 
 	private final GoalKey<Zombie> retreatGoalKey;
 	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
+	private final GoalKey<AbstractSkeleton> squadRangedGoalKey;
 	private final GoalKey<Creeper> creeperFuseGoalKey;
 	private final GoalKey<Creeper> creeperApproachGoalKey;
 	private final GoalKey<Spider> spiderMountedBreachGoalKey;
@@ -90,6 +93,10 @@ public final class PaperMobLifecycle implements Listener {
 		this.skeletonDisengageGoalKey = GoalKey.of(
 			AbstractSkeleton.class,
 			new NamespacedKey(plugin, "skeleton_emergency_disengage")
+		);
+		this.squadRangedGoalKey = GoalKey.of(
+			AbstractSkeleton.class,
+			new NamespacedKey(plugin, "skeleton_coordinated_fire")
 		);
 		this.creeperFuseGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_fuse"));
 		this.creeperApproachGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_approach"));
@@ -200,6 +207,11 @@ public final class PaperMobLifecycle implements Listener {
 					&& Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonDisengageGoalKey)) {
 					Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonDisengageGoalKey);
 					this.metrics.skeletonDisengageGoalRemoved();
+				}
+				if (entity instanceof AbstractSkeleton skeleton
+					&& Bukkit.getMobGoals().hasGoal(skeleton, this.squadRangedGoalKey)) {
+					Bukkit.getMobGoals().removeGoal(skeleton, this.squadRangedGoalKey);
+					this.metrics.squadRangedGoalRemoved();
 				}
 				if (entity instanceof Creeper creeper) {
 					if (Bukkit.getMobGoals().hasGoal(creeper, this.creeperFuseGoalKey)) {
@@ -318,6 +330,27 @@ public final class PaperMobLifecycle implements Listener {
 			Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonDisengageGoalKey);
 			this.metrics.skeletonDisengageGoalRemoved();
 		}
+
+		boolean shouldHaveSquadRangedGoal = config.enabled() && config.skeletonCoordinatedFireEnabled();
+		boolean hasSquadRangedGoal = Bukkit.getMobGoals().hasGoal(skeleton, this.squadRangedGoalKey);
+		if (shouldHaveSquadRangedGoal && !hasSquadRangedGoal) {
+			Bukkit.getMobGoals().addGoal(
+				skeleton,
+				SQUAD_RANGED_GOAL_PRIORITY,
+				new PaperSquadRangedGoal(
+					skeleton,
+					this.squadRangedGoalKey,
+					this.settings,
+					this.intelligence,
+					this.squadCoordinator,
+					this.metrics
+				)
+			);
+			this.metrics.squadRangedGoalInstalled();
+		} else if (!shouldHaveSquadRangedGoal && hasSquadRangedGoal) {
+			Bukkit.getMobGoals().removeGoal(skeleton, this.squadRangedGoalKey);
+			this.metrics.squadRangedGoalRemoved();
+		}
 	}
 
 	private void synchronizeCreeperGoals(final Creeper creeper) {
@@ -381,6 +414,7 @@ public final class PaperMobLifecycle implements Listener {
 						this.settings,
 						this.intelligence,
 						this.squadCoordinator,
+						this.blastReservations,
 						this.metrics
 					)
 				);
