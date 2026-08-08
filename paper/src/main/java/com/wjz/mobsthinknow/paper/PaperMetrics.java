@@ -42,6 +42,10 @@ public final class PaperMetrics {
 	private final AtomicLong crossbowCharges = new AtomicLong();
 	private final AtomicLong crossbowChargePoseTicks = new AtomicLong();
 	private final AtomicLong crossbowShots = new AtomicLong();
+	private final AtomicLong fireworkLaunches = new AtomicLong();
+	private final AtomicLong fireworkDetonations = new AtomicLong();
+	private final AtomicLong fireworkTimeouts = new AtomicLong();
+	private final AtomicLong fireworkCapacityRejects = new AtomicLong();
 	private final AtomicLong friendlyLaneBlocks = new AtomicLong();
 	private final AtomicLong firingLaneRepositions = new AtomicLong();
 	private final AtomicLong firingLanePathFailures = new AtomicLong();
@@ -226,6 +230,22 @@ public final class PaperMetrics {
 		this.crossbowShots.incrementAndGet();
 	}
 
+	public void fireworkLaunched() {
+		this.fireworkLaunches.incrementAndGet();
+	}
+
+	public void fireworkDetonated() {
+		this.fireworkDetonations.incrementAndGet();
+	}
+
+	public void fireworkTimedOut() {
+		this.fireworkTimeouts.incrementAndGet();
+	}
+
+	public void fireworkCapacityRejected() {
+		this.fireworkCapacityRejects.incrementAndGet();
+	}
+
 	public void friendlyLaneBlocked() {
 		this.friendlyLaneBlocks.incrementAndGet();
 	}
@@ -390,6 +410,10 @@ public final class PaperMetrics {
 			this.crossbowCharges.get(),
 			this.crossbowChargePoseTicks.get(),
 			this.crossbowShots.get(),
+			this.fireworkLaunches.get(),
+			this.fireworkDetonations.get(),
+			this.fireworkTimeouts.get(),
+			this.fireworkCapacityRejects.get(),
 			this.friendlyLaneBlocks.get(),
 			this.firingLaneRepositions.get(),
 			this.firingLanePathFailures.get(),
@@ -463,6 +487,10 @@ public final class PaperMetrics {
 		long crossbowCharges,
 		long crossbowChargePoseTicks,
 		long crossbowShots,
+		long fireworkLaunches,
+		long fireworkDetonations,
+		long fireworkTimeouts,
+		long fireworkCapacityRejects,
 		long friendlyLaneBlocks,
 		long firingLaneRepositions,
 		long firingLanePathFailures,

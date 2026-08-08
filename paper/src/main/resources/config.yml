@@ -89,6 +89,18 @@ skeleton:
     projectile-spread: 2.0
     maximum-lead-ticks: 20.0
     gravity-per-tick-squared: 0.05
+    firework:
+      enabled: true
+      minimum-intelligence: 7
+      minimum-range: 6.0
+      maximum-range: 30.0
+      ally-danger-radius: 3.5
+      maximum-ally-checks: 20
+      projectile-speed: 1.6
+      projectile-lifetime-ticks: 40
+      # A single main-thread task updates at most this many managed bolts; excess shots fall back to arrows.
+      maximum-active-projectiles: 48
+      consume-ammunition: true
   spacing:
     enabled: true
     minimum-intelligence: 1

@@ -2,12 +2,15 @@ package com.wjz.mobsthinknow.paper.command;
 
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadPlan;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadState;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -46,11 +49,13 @@ public final class PaperRuntimeSelfTest {
 	private static final int COMBAT_VALIDATION_DELAY_TICKS = 120;
 	private static final int COMBAT_PROBE_SEARCH_RADIUS = 32;
 	private static final int[] COMBAT_PROBE_TARGET_OFFSETS = {2, 3};
+	private static final int[] FIREWORK_PROBE_TARGET_OFFSETS = {12, 10, 8};
 	private static final int[][] CARDINAL_DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
 	private final Plugin plugin;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSquadCoordinator squads;
+	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperMetrics metrics;
 	private final List<Entity> activeEntities = new ArrayList<>();
 	private final List<Chunk> temporarilyForcedChunks = new ArrayList<>();
@@ -59,6 +64,7 @@ public final class PaperRuntimeSelfTest {
 	private BukkitTask shieldDisableProbeTask;
 	private Zombie shieldProbeGuard;
 	private IronGolem shieldProbeAttacker;
+	private AbstractSkeleton fireworkProbeShooter;
 	private long shieldProbeAttackAttempts;
 	private long nextShieldProbeAttackAt;
 	private long shieldDisableProbeAttempts;
@@ -67,11 +73,13 @@ public final class PaperRuntimeSelfTest {
 		final Plugin plugin,
 		final PaperIntelligenceService intelligence,
 		final PaperSquadCoordinator squads,
+		final PaperFireworkBoltService fireworkBolts,
 		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
 		this.intelligence = intelligence;
 		this.squads = squads;
+		this.fireworkBolts = fireworkBolts;
 		this.metrics = metrics;
 	}
 
@@ -132,6 +140,7 @@ public final class PaperRuntimeSelfTest {
 			this.spawnAxeProbe(world, anchor);
 			this.spawnShieldProbe(world, anchor);
 			this.spawnShieldDisableProbe(world, anchor);
+			this.spawnFireworkProbe(world, anchor);
 			this.validationTask = Bukkit.getScheduler().runTaskLater(
 				this.plugin,
 				() -> this.validateStructure(sender, target, mobs, baseline),
@@ -248,6 +257,12 @@ public final class PaperRuntimeSelfTest {
 			long crossbowCharges = current.crossbowCharges() - baseline.crossbowCharges();
 			long crossbowPoseTicks = current.crossbowChargePoseTicks() - baseline.crossbowChargePoseTicks();
 			long crossbowShots = current.crossbowShots() - baseline.crossbowShots();
+			long fireworkLaunches = current.fireworkLaunches() - baseline.fireworkLaunches();
+			long fireworkDetonations = current.fireworkDetonations() - baseline.fireworkDetonations();
+			boolean fireworkAmmoConsumed = this.fireworkProbeShooter != null
+				&& this.fireworkProbeShooter.isValid()
+				&& this.fireworkProbeShooter.getEquipment().getItemInOffHand().getAmount() < 4;
+			int activeFireworkBolts = this.fireworkBolts.activeCount();
 			long weaponAttacks = current.weaponAttacks() - baseline.weaponAttacks();
 			long axeLeaps = current.axeLeaps() - baseline.axeLeaps();
 			long axeCriticals = current.axeCriticalAttacks() - baseline.axeCriticalAttacks();
@@ -269,6 +284,10 @@ public final class PaperRuntimeSelfTest {
 				|| crossbowCharges <= 0L
 				|| crossbowPoseTicks <= 0L
 				|| crossbowShots <= 0L
+				|| fireworkLaunches <= 0L
+				|| fireworkDetonations <= 0L
+				|| !fireworkAmmoConsumed
+				|| activeFireworkBolts != 0
 				|| weaponAttacks <= 0L
 				|| axeLeaps <= 0L
 				|| mounted <= 0L
@@ -283,6 +302,10 @@ public final class PaperRuntimeSelfTest {
 						+ ", crossbowCharges=" + crossbowCharges
 						+ ", crossbowPoseTicks=" + crossbowPoseTicks
 						+ ", crossbowShots=" + crossbowShots
+						+ ", fireworkLaunches=" + fireworkLaunches
+						+ ", fireworkDetonations=" + fireworkDetonations
+						+ ", fireworkAmmoConsumed=" + fireworkAmmoConsumed
+						+ ", activeFireworkBolts=" + activeFireworkBolts
 						+ ", weaponAttacks=" + weaponAttacks
 						+ ", axeLeaps=" + axeLeaps
 						+ ", axeCriticals=" + axeCriticals
@@ -315,6 +338,10 @@ public final class PaperRuntimeSelfTest {
 					+ ", crossbowCharges=" + crossbowCharges
 					+ ", crossbowPoseTicks=" + crossbowPoseTicks
 					+ ", crossbowShots=" + crossbowShots
+					+ ", fireworkLaunches=" + fireworkLaunches
+					+ ", fireworkDetonations=" + fireworkDetonations
+					+ ", fireworkAmmoConsumed=" + fireworkAmmoConsumed
+					+ ", activeFireworkBolts=" + activeFireworkBolts
 					+ ", weaponAttacks=" + weaponAttacks
 					+ ", axeLeaps=" + axeLeaps
 					+ ", axeCriticals=" + axeCriticals
@@ -345,9 +372,14 @@ public final class PaperRuntimeSelfTest {
 		}
 		this.shieldProbeGuard = null;
 		this.shieldProbeAttacker = null;
+		this.fireworkProbeShooter = null;
 		this.shieldProbeAttackAttempts = 0L;
 		this.nextShieldProbeAttackAt = Long.MIN_VALUE;
 		this.shieldDisableProbeAttempts = 0L;
+		Set<java.util.UUID> cleanupIds = this.activeEntities.stream()
+			.map(Entity::getUniqueId)
+			.collect(Collectors.toUnmodifiableSet());
+		this.fireworkBolts.discardRelatedTo(cleanupIds);
 		for (Entity entity : this.activeEntities) {
 			if (entity.isValid()) {
 				entity.remove();
@@ -542,7 +574,50 @@ public final class PaperRuntimeSelfTest {
 		);
 	}
 
+	/** 独立远距样本验证无小队弩手、真实副手弹药、受限烟花弹体和碰撞引爆完整链路。 */
+	private void spawnFireworkProbe(final World world, final Location squadAnchor) {
+		CombatProbePlacement placement = findCombatProbePlacement(
+			world,
+			squadAnchor.getBlockX() + 160,
+			squadAnchor.getBlockZ(),
+			FIREWORK_PROBE_TARGET_OFFSETS
+		);
+		if (placement == null) {
+			throw new IllegalStateException("no flat collision-free firework probe lane found");
+		}
+		this.forceChunk(placement.zombie());
+		this.forceChunk(placement.target());
+
+		IronGolem target = (IronGolem)world.spawnEntity(placement.target(), EntityType.IRON_GOLEM);
+		target.setAI(false);
+		target.setPlayerCreated(true);
+		target.setPersistent(false);
+		setMaximumHealth(target, 500.0);
+		this.activeEntities.add(target);
+
+		AbstractSkeleton skeleton = (AbstractSkeleton)world.spawnEntity(placement.zombie(), EntityType.SKELETON);
+		skeleton.setShouldBurnInDay(false);
+		skeleton.setInvulnerable(true);
+		skeleton.setPersistent(false);
+		skeleton.setRemoveWhenFarAway(false);
+		skeleton.getEquipment().setItemInMainHand(new ItemStack(Material.CROSSBOW));
+		skeleton.getEquipment().setItemInOffHand(new ItemStack(Material.FIREWORK_ROCKET, 4));
+		this.intelligence.set(skeleton, 10);
+		skeleton.setTarget(target);
+		this.fireworkProbeShooter = skeleton;
+		this.activeEntities.add(skeleton);
+	}
+
 	private static CombatProbePlacement findCombatProbePlacement(final World world, final int originX, final int originZ) {
+		return findCombatProbePlacement(world, originX, originZ, COMBAT_PROBE_TARGET_OFFSETS);
+	}
+
+	private static CombatProbePlacement findCombatProbePlacement(
+		final World world,
+		final int originX,
+		final int originZ,
+		final int[] targetOffsets
+	) {
 		for (int radius = 0; radius <= COMBAT_PROBE_SEARCH_RADIUS; radius++) {
 			for (int dx = -radius; dx <= radius; dx++) {
 				for (int dz = -radius; dz <= radius; dz++) {
@@ -553,7 +628,7 @@ public final class PaperRuntimeSelfTest {
 					int zombieZ = originZ + dz;
 					int feetY = world.getHighestBlockYAt(zombieX, zombieZ) + 1;
 					for (int[] direction : CARDINAL_DIRECTIONS) {
-						for (int targetOffset : COMBAT_PROBE_TARGET_OFFSETS) {
+					for (int targetOffset : targetOffsets) {
 							int targetX = zombieX + direction[0] * targetOffset;
 							int targetZ = zombieZ + direction[1] * targetOffset;
 							if (world.getHighestBlockYAt(targetX, targetZ) + 1 != feetY

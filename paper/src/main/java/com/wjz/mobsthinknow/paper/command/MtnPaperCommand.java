@@ -6,6 +6,7 @@ import com.wjz.mobsthinknow.paper.PaperMobLifecycle;
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
@@ -47,6 +48,7 @@ public final class MtnPaperCommand implements TabExecutor {
 	private final PaperDamageMemory damageMemory;
 	private final PaperBlastReservationBoard blastReservations;
 	private final PaperPounceCoordinator pounceCoordinator;
+	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperMetrics metrics;
 	private final PaperTestSpawner testSpawner;
@@ -59,6 +61,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		final PaperDamageMemory damageMemory,
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
+		final PaperFireworkBoltService fireworkBolts,
 		final PaperSquadCoordinator squadCoordinator,
 		final PaperRuntimeSelfTest runtimeSelfTest,
 		final PaperMetrics metrics
@@ -69,6 +72,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		this.damageMemory = damageMemory;
 		this.blastReservations = blastReservations;
 		this.pounceCoordinator = pounceCoordinator;
+		this.fireworkBolts = fireworkBolts;
 		this.squadCoordinator = squadCoordinator;
 		this.metrics = metrics;
 		this.testSpawner = new PaperTestSpawner(intelligence);
@@ -183,6 +187,11 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", crossbowCharges=" + snapshot.crossbowCharges()
 				+ ", crossbowPoseTicks=" + snapshot.crossbowChargePoseTicks()
 				+ ", crossbowShots=" + snapshot.crossbowShots()
+				+ ", fireworkLaunches=" + snapshot.fireworkLaunches()
+				+ ", fireworkDetonations=" + snapshot.fireworkDetonations()
+				+ ", fireworkTimeouts=" + snapshot.fireworkTimeouts()
+				+ ", fireworkCapacityRejects=" + snapshot.fireworkCapacityRejects()
+				+ ", activeFireworkBolts=" + this.fireworkBolts.activeCount()
 				+ ", friendlyLaneBlocks=" + snapshot.friendlyLaneBlocks()
 				+ ", firingLaneRepositions=" + snapshot.firingLaneRepositions()
 				+ ", firingLanePathFailures=" + snapshot.firingLanePathFailures()

@@ -55,10 +55,17 @@ public final class PaperTestSpawner {
 		EntityType.SPIDER
 	);
 	private static final Map<String, Preset> PRESETS = Map.of(
-		"zombie_swordsman", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, null, 7),
-		"zombie_axeman", new Preset(EntityType.ZOMBIE, Material.IRON_AXE, null, 10),
-		"zombie_shieldguard", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, Material.SHIELD, 10),
-		"skeleton_crossbow", new Preset(EntityType.SKELETON, Material.CROSSBOW, null, 10)
+		"zombie_swordsman", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, null, 0, 7),
+		"zombie_axeman", new Preset(EntityType.ZOMBIE, Material.IRON_AXE, null, 0, 10),
+		"zombie_shieldguard", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, Material.SHIELD, 1, 10),
+		"skeleton_crossbow", new Preset(EntityType.SKELETON, Material.CROSSBOW, null, 0, 10),
+		"skeleton_firework_crossbow", new Preset(
+			EntityType.SKELETON,
+			Material.CROSSBOW,
+			Material.FIREWORK_ROCKET,
+			8,
+			10
+		)
 	);
 
 	private final PaperIntelligenceService intelligence;
@@ -158,7 +165,7 @@ public final class PaperTestSpawner {
 		mob.getEquipment().setItemInMainHand(new ItemStack(preset.weapon()));
 		mob.getEquipment().setItemInMainHandDropChance(0.085F);
 		if (preset.offhand() != null) {
-			mob.getEquipment().setItemInOffHand(new ItemStack(preset.offhand()));
+			mob.getEquipment().setItemInOffHand(new ItemStack(preset.offhand(), preset.offhandCount()));
 			mob.getEquipment().setItemInOffHandDropChance(0.085F);
 		}
 		this.intelligence.set(mob, preset.intelligence());
@@ -248,7 +255,7 @@ public final class PaperTestSpawner {
 	private record SpawnSpec(EntityType type, Preset preset) {
 	}
 
-	private record Preset(EntityType type, Material weapon, Material offhand, int intelligence) {
+	private record Preset(EntityType type, Material weapon, Material offhand, int offhandCount, int intelligence) {
 	}
 
 	public record Result(int spawned, int requested, boolean rolledBack, String detail) {

@@ -10,6 +10,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperCreeperApproachGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperCreeperFuseGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperMountedBreachGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonDisengageGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
@@ -90,6 +91,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperDamageMemory damageMemory;
 	private final PaperShieldMemory shieldMemory;
+	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperMetrics metrics;
 	private final Map<UUID, OriginalSpiderGoals> originalSpiderGoals = new HashMap<>();
 
@@ -103,6 +105,7 @@ public final class PaperMobLifecycle implements Listener {
 		final PaperSquadCoordinator squadCoordinator,
 		final PaperDamageMemory damageMemory,
 		final PaperShieldMemory shieldMemory,
+		final PaperFireworkBoltService fireworkBolts,
 		final PaperMetrics metrics
 	) {
 		this.retreatGoalKey = GoalKey.of(Zombie.class, new NamespacedKey(plugin, "zombie_reactive_retreat"));
@@ -134,6 +137,7 @@ public final class PaperMobLifecycle implements Listener {
 		this.squadCoordinator = squadCoordinator;
 		this.damageMemory = damageMemory;
 		this.shieldMemory = shieldMemory;
+		this.fireworkBolts = fireworkBolts;
 		this.metrics = metrics;
 	}
 
@@ -542,6 +546,7 @@ public final class PaperMobLifecycle implements Listener {
 					this.settings,
 					this.intelligence,
 					this.squadCoordinator,
+					this.fireworkBolts,
 					this.metrics
 				)
 			);

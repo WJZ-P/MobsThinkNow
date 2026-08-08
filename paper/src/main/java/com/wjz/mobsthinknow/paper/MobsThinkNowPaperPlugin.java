@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.paper;
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
@@ -22,6 +23,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private PaperSettings settings;
 	private PaperIntelligenceService intelligence;
 	private PaperSkeletonProfile skeletonProfile;
+	private PaperFireworkBoltService fireworkBolts;
 	private PaperBlastReservationBoard blastReservations;
 	private PaperPounceCoordinator pounceCoordinator;
 	private PaperSquadSettings squadSettings;
@@ -36,6 +38,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.squadSettings = this.readSquadSettings();
 		this.intelligence = new PaperIntelligenceService(this, this::settings, this.metrics);
 		this.skeletonProfile = new PaperSkeletonProfile(this);
+		this.fireworkBolts = new PaperFireworkBoltService(this, this::settings, this.metrics);
 		this.blastReservations = new PaperBlastReservationBoard(this::settings, this.metrics);
 		this.pounceCoordinator = new PaperPounceCoordinator(this::settings, this.metrics);
 		this.squadCoordinator = new PaperSquadCoordinator(
@@ -44,7 +47,13 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this::squadSettings,
 			this.intelligence
 		);
-		this.runtimeSelfTest = new PaperRuntimeSelfTest(this, this.intelligence, this.squadCoordinator, this.metrics);
+		this.runtimeSelfTest = new PaperRuntimeSelfTest(
+			this,
+			this.intelligence,
+			this.squadCoordinator,
+			this.fireworkBolts,
+			this.metrics
+		);
 		this.mobLifecycle = new PaperMobLifecycle(
 			this,
 			this::settings,
@@ -55,6 +64,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.squadCoordinator,
 			this.damageMemory,
 			this.shieldMemory,
+			this.fireworkBolts,
 			this.metrics
 		);
 		this.getServer().getPluginManager().registerEvents(this.mobLifecycle, this);
@@ -65,6 +75,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.damageMemory,
 			this.blastReservations,
 			this.pounceCoordinator,
+			this.fireworkBolts,
 			this.squadCoordinator,
 			this.runtimeSelfTest,
 			this.metrics
@@ -76,6 +87,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		command.setExecutor(commandHandler);
 		command.setTabCompleter(commandHandler);
 		this.mobLifecycle.installLoadedEntities();
+		this.fireworkBolts.start();
 		this.squadCoordinator.start();
 		this.getLogger().info(
 			"Mobs Think Now Paper enabled: loadedSupportedMobs=" + this.mobLifecycle.loadedSupportedMobCount()
@@ -89,6 +101,9 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		}
 		if (this.mobLifecycle != null) {
 			this.mobLifecycle.removeGoalsFromLoadedEntities();
+		}
+		if (this.fireworkBolts != null) {
+			this.fireworkBolts.stop();
 		}
 		if (this.squadCoordinator != null) {
 			this.squadCoordinator.stop();
@@ -120,6 +135,8 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.shieldMemory.clear();
 		this.blastReservations.clear();
 		this.pounceCoordinator.clear();
+		this.fireworkBolts.stop();
+		this.fireworkBolts.start();
 		this.squadCoordinator.reconfigure();
 		this.mobLifecycle.refreshLoadedEntities();
 	}
@@ -174,7 +191,19 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 				this.getConfig().getDouble("skeleton.crossbow.projectile-speed", 3.15),
 				this.getConfig().getDouble("skeleton.crossbow.projectile-spread", 2.0),
 				this.getConfig().getDouble("skeleton.crossbow.maximum-lead-ticks", 20.0),
-				this.getConfig().getDouble("skeleton.crossbow.gravity-per-tick-squared", 0.05)
+				this.getConfig().getDouble("skeleton.crossbow.gravity-per-tick-squared", 0.05),
+				PaperFireworkSettings.validated(
+					this.getConfig().getBoolean("skeleton.crossbow.firework.enabled", true),
+					this.getConfig().getInt("skeleton.crossbow.firework.minimum-intelligence", 7),
+					this.getConfig().getDouble("skeleton.crossbow.firework.minimum-range", 6.0),
+					this.getConfig().getDouble("skeleton.crossbow.firework.maximum-range", 30.0),
+					this.getConfig().getDouble("skeleton.crossbow.firework.ally-danger-radius", 3.5),
+					this.getConfig().getInt("skeleton.crossbow.firework.maximum-ally-checks", 20),
+					this.getConfig().getDouble("skeleton.crossbow.firework.projectile-speed", 1.6),
+					this.getConfig().getInt("skeleton.crossbow.firework.projectile-lifetime-ticks", 40),
+					this.getConfig().getInt("skeleton.crossbow.firework.maximum-active-projectiles", 48),
+					this.getConfig().getBoolean("skeleton.crossbow.firework.consume-ammunition", true)
+				)
 			),
 			this.getConfig().getBoolean("skeleton.spacing.enabled", true),
 			this.getConfig().getInt("skeleton.spacing.minimum-intelligence", 1),

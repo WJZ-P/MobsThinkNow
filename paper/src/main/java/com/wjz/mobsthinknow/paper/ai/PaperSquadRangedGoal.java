@@ -7,6 +7,7 @@ import com.destroystokyo.paper.entity.ai.GoalType;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
 import com.wjz.mobsthinknow.paper.PaperCrossbowSettings;
+import com.wjz.mobsthinknow.paper.PaperFireworkSettings;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
 import com.wjz.mobsthinknow.shared.ai.CrossbowCombatPlanner;
@@ -48,6 +49,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSquadCoordinator squads;
+	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperMetrics metrics;
 	private final int stableOrder;
 
@@ -60,6 +62,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 	private long crossbowPhaseStartedAt;
 	private int crossbowAimDelay;
 	private long shotSequence;
+	private CrossbowPayload crossbowPayload = CrossbowPayload.ARROW;
 	private FiringLanePlanner.Result<UUID> cachedLane = new FiringLanePlanner.Result<>(true, null, 0);
 	private UUID lastBlocker;
 
@@ -69,6 +72,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
 		final PaperSquadCoordinator squads,
+		final PaperFireworkBoltService fireworkBolts,
 		final PaperMetrics metrics
 	) {
 		this.skeleton = skeleton;
@@ -76,6 +80,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		this.settings = settings;
 		this.intelligence = intelligence;
 		this.squads = squads;
+		this.fireworkBolts = fireworkBolts;
 		this.metrics = metrics;
 		this.stableOrder = skeleton.getUniqueId().hashCode() & Integer.MAX_VALUE;
 	}
@@ -112,6 +117,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		this.charging = false;
 		this.crossbowPhase = CrossbowPhase.IDLE;
 		this.crossbowPhaseStartedAt = 0L;
+		this.crossbowPayload = CrossbowPayload.ARROW;
 		this.prepareNextCrossbowCycle(now, directive);
 		this.skeleton.setAggressive(true);
 	}
@@ -200,6 +206,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		this.positionFallbackAt = 0L;
 		this.crossbowPhase = CrossbowPhase.IDLE;
 		this.crossbowPhaseStartedAt = 0L;
+		this.crossbowPayload = CrossbowPayload.ARROW;
 		this.lastBlocker = null;
 	}
 
@@ -333,9 +340,10 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		}
 		this.charging = false;
 		if (this.crossbowPhase != CrossbowPhase.IDLE) {
-			this.setCrossbowLoaded(false);
+			this.setCrossbowLoaded(false, CrossbowPayload.ARROW);
 			this.crossbowPhase = CrossbowPhase.IDLE;
 			this.crossbowPhaseStartedAt = 0L;
+			this.crossbowPayload = CrossbowPayload.ARROW;
 		}
 	}
 
@@ -361,7 +369,8 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 				if (now < this.nextReleaseAt - chargeTicks - this.crossbowAimDelay) {
 					return;
 				}
-				this.setCrossbowLoaded(false);
+				this.crossbowPayload = this.chooseCrossbowPayload(target, config.firework());
+				this.setCrossbowLoaded(false, this.crossbowPayload);
 				this.skeleton.startUsingItem(EquipmentSlot.HAND);
 				this.skeleton.getWorld().playSound(
 					this.skeleton.getLocation(),
@@ -383,7 +392,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 				if (this.skeleton.hasActiveItem()) {
 					this.skeleton.clearActiveItem();
 				}
-				this.setCrossbowLoaded(true);
+				this.setCrossbowLoaded(true, this.crossbowPayload);
 				this.skeleton.getWorld().playSound(
 					this.skeleton.getLocation(),
 					Sound.ITEM_CROSSBOW_LOADING_END,
@@ -397,8 +406,13 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 				if (now < this.nextReleaseAt || now - this.crossbowPhaseStartedAt < this.crossbowAimDelay) {
 					return;
 				}
-				this.launchCrossbowArrow(target, config);
-				this.setCrossbowLoaded(false);
+				if (this.crossbowPayload == CrossbowPayload.FIREWORK
+					&& !this.fireworkSafe(target, config.firework())) {
+					this.crossbowPayload = CrossbowPayload.ARROW;
+					this.setCrossbowLoaded(true, this.crossbowPayload);
+				}
+				this.launchCrossbowPayload(target, config);
+				this.setCrossbowLoaded(false, CrossbowPayload.ARROW);
 				this.crossbowPhase = CrossbowPhase.IDLE;
 				this.crossbowPhaseStartedAt = 0L;
 				this.metrics.crossbowShot();
@@ -438,16 +452,34 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		);
 	}
 
-	private void launchCrossbowArrow(final LivingEntity target, final PaperCrossbowSettings config) {
+	private void launchCrossbowPayload(final LivingEntity target, final PaperCrossbowSettings config) {
+		PaperFireworkSettings firework = config.firework();
+		double speed = this.crossbowPayload == CrossbowPayload.FIREWORK
+			? firework.projectileSpeed()
+			: config.projectileSpeed();
+		double gravity = this.crossbowPayload == CrossbowPayload.FIREWORK
+			? 0.0
+			: config.gravityPerTickSquared();
 		CrossbowCombatPlanner.AimSolution aim = CrossbowCombatPlanner.intercept(
 			toVector(this.skeleton.getEyeLocation()),
 			toVector(target.getEyeLocation()),
 			new Vec3d(target.getVelocity().getX(), target.getVelocity().getY(), target.getVelocity().getZ()),
-			config.projectileSpeed(),
-			config.gravityPerTickSquared(),
+			speed,
+			gravity,
 			config.maximumLeadTicks()
 		);
 		Vector direction = new Vector(aim.direction().x(), aim.direction().y(), aim.direction().z());
+		if (this.crossbowPayload == CrossbowPayload.FIREWORK
+			&& this.fireworkBolts.launch(this.skeleton, target, direction)) {
+			this.consumeFirework(firework);
+			this.playCrossbowShotSound();
+			return;
+		}
+		this.launchArrow(direction, config);
+		this.playCrossbowShotSound();
+	}
+
+	private void launchArrow(final Vector direction, final PaperCrossbowSettings config) {
 		Arrow arrow = this.skeleton.getWorld().spawnArrow(
 			this.skeleton.getEyeLocation(),
 			direction,
@@ -457,6 +489,9 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		arrow.setShooter(this.skeleton);
 		arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
 		arrow.setWeapon(this.skeleton.getEquipment().getItemInMainHand().clone());
+	}
+
+	private void playCrossbowShotSound() {
 		this.skeleton.getWorld().playSound(
 			this.skeleton.getLocation(),
 			Sound.ITEM_CROSSBOW_SHOOT,
@@ -465,12 +500,59 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		);
 	}
 
-	private void setCrossbowLoaded(final boolean loaded) {
+	private CrossbowPayload chooseCrossbowPayload(
+		final LivingEntity target,
+		final PaperFireworkSettings config
+	) {
+		ItemStack ammunition = this.skeleton.getEquipment().getItemInOffHand();
+		return config.enabled()
+			&& this.intelligence.get(this.skeleton) >= config.minimumIntelligence()
+			&& ammunition.getType() == Material.FIREWORK_ROCKET
+			&& ammunition.getAmount() > 0
+			&& this.fireworkSafe(target, config)
+			? CrossbowPayload.FIREWORK
+			: CrossbowPayload.ARROW;
+	}
+
+	private boolean fireworkSafe(final LivingEntity target, final PaperFireworkSettings config) {
+		List<CrossbowCombatPlanner.BlastAlly<UUID>> allies = new ArrayList<>();
+		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
+			Location center = ally.getLocation().add(0.0, ally.getHeight() * 0.5, 0.0);
+			allies.add(new CrossbowCombatPlanner.BlastAlly<>(
+				ally.getUniqueId(),
+				toVector(center),
+				ally.getWidth() * 0.65
+			));
+		}
+		return CrossbowCombatPlanner.assessBlast(
+			toVector(this.skeleton.getEyeLocation()),
+			toVector(target.getLocation().add(0.0, target.getHeight() * 0.5, 0.0)),
+			allies,
+			config.minimumRange(),
+			config.maximumRange(),
+			config.allyDangerRadius(),
+			config.maximumAllyChecks()
+		).clear();
+	}
+
+	private void consumeFirework(final PaperFireworkSettings config) {
+		if (!config.consumeAmmunition()) {
+			return;
+		}
+		ItemStack ammunition = this.skeleton.getEquipment().getItemInOffHand();
+		if (ammunition.getType() != Material.FIREWORK_ROCKET || ammunition.getAmount() <= 0) {
+			return;
+		}
+		ammunition.setAmount(ammunition.getAmount() - 1);
+		this.skeleton.getEquipment().setItemInOffHand(ammunition);
+	}
+
+	private void setCrossbowLoaded(final boolean loaded, final CrossbowPayload payload) {
 		ItemStack weapon = this.skeleton.getEquipment().getItemInMainHand();
 		if (!(weapon.getItemMeta() instanceof CrossbowMeta meta)) {
 			return;
 		}
-		meta.setChargedProjectiles(loaded ? List.of(new ItemStack(Material.ARROW)) : List.of());
+		meta.setChargedProjectiles(loaded ? List.of(new ItemStack(payload.material())) : List.of());
 		weapon.setItemMeta(meta);
 		this.skeleton.getEquipment().setItemInMainHand(weapon);
 	}
@@ -487,5 +569,20 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		IDLE,
 		CHARGING,
 		AIMING
+	}
+
+	private enum CrossbowPayload {
+		ARROW(Material.ARROW),
+		FIREWORK(Material.FIREWORK_ROCKET);
+
+		private final Material material;
+
+		CrossbowPayload(final Material material) {
+			this.material = material;
+		}
+
+		public Material material() {
+			return this.material;
+		}
 	}
 }

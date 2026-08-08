@@ -101,6 +101,10 @@ MobsThinkNow/
 - 弩手即使暂时没有小队也能独立使用该状态机；加入小队后仍服从会议/交战阶段、错峰时隙和有界友军
   射界。所有实现只依赖 Paper API，没有 NMS 反射；普通事件级友伤拦截继续作为队友突然切入弹道时的
   第二层保护。
+- IQ 至少 7 且副手有真实烟花火箭时，弩手会在 6～30 格射程与爆心友军检查均通过后装入烟花；释放后
+  由全服唯一 `PaperFireworkBoltService` 管理。服务每 tick 对每枚弹体只做一次前向射线、总数默认硬限
+  48，命中实体/方块后触发原版烟花爆炸（不破坏地形），40 tick 未命中也会空爆并回收；超容量、队友
+  靠近或弹药耗尽都即时降级为普通箭，不会卡住射击状态机。配置重载、测试清理和插件关闭会移除残留弹体。
 
 ### 苦力怕战术引信与爆点预约
 
@@ -207,13 +211,13 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 | `/mtnpaper reload` | `mobsthinknow.admin` | 重载、校验配置并刷新已加载实体 |
 | `/mtnpaper setiq <1-10>` | `mobsthinknow.admin` | 修改附近受支持怪物的持久 IQ |
 | `/mtnpaper spawn <type> [1-100]` | `mobsthinknow.admin` | 在玩家前方事务式批量生成指定 Paper 智能怪物 |
-| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种，并追加剑手、斧手、盾卫与弩手测试预设 |
+| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种，并追加剑手、斧手、盾卫、弩手与烟花弩手预设 |
 | `/mtnpaper assault [1-8]` | `mobsthinknow.admin` | 每组生成 IQ 10 僵尸、骷髅、苦力怕、蜘蛛以测试联合兵种 |
 | `/mtnpaper selftest` | `mobsthinknow.admin` | 控制台可用；真实 tick 验证联合编队、错峰射击和蜘蛛载客后自动清理 |
 
 `spawn` 类型为：`zombie`、`husk`、`drowned`、`zombie_villager`、`skeleton`、`stray`、`bogged`、
 `wither_skeleton`、`creeper`、`spider`，以及 `zombie_swordsman`、`zombie_axeman`、
-`zombie_shieldguard`、`skeleton_crossbow` 四个装备/IQ 预设；
+`zombie_shieldguard`、`skeleton_crossbow`、`skeleton_firework_crossbow` 五个装备/IQ 预设；
 另可用 `spawn assault [组数]`。生成器先为整批实体规划有承重、
 两格净空、无液体/火焰/仙人掌等危险的互不重叠落点；任意实体生成失败会移除本批已经生成的实体，
 不会留下半套测试阵容。
@@ -226,7 +230,8 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 隔离通道生成 IQ 10 剑盾卫与铁傀儡，待盾牌连续举起至少 10 tick 后发射真实箭矢，强制验证正面格挡、
 一次性事件信号和 2～4 tick 延迟反击均至少发生一次；第三条通道由持铁斧的卫道士正面攻击成熟举盾者，
 要求伤害不被格挡且 `shieldDisables` 至少增加一次。探针不放置或修改方块，也不会因混编阵位碰撞
-产生假阴性。
+产生假阴性。第四条相隔 160 格的远距通道生成独行烟花弩手和 500 点生命铁傀儡，
+要求副手火箭真实消耗、集中弹体服务至少发射并碰撞引爆一次，清理后活跃弹体数回到零。
 测试苦力怕的爆炸半径临时设为 0、引信
 延长到 200 tick，因此可以观察载客行为而不破坏测试世界。无论成功、失败、重载还是插件关闭，测试实体
 和临时区块票都会清理。中间结构检查输出 `[MTN SELFTEST STRUCTURE PASS]`，最终日志只以
@@ -309,6 +314,17 @@ skeleton:
     projectile-spread: 2.0
     maximum-lead-ticks: 20.0
     gravity-per-tick-squared: 0.05
+    firework:
+      enabled: true
+      minimum-intelligence: 7
+      minimum-range: 6.0
+      maximum-range: 30.0
+      ally-danger-radius: 3.5
+      maximum-ally-checks: 20
+      projectile-speed: 1.6
+      projectile-lifetime-ticks: 40
+      maximum-active-projectiles: 48
+      consume-ammunition: true
   spacing:
     enabled: true
     minimum-intelligence: 1
@@ -379,8 +395,9 @@ spider:
 2. 等待服务端输出 `Done (...)` 后才发送控制台命令，避免启动前空世界命令源；
 3. 确认插件列表和 `/mtnpaper status`；
 4. 执行 `/mtnpaper selftest`，确认先输出结构通过，再得到
-   `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots` 与
-   `creepersMounted`、`shieldBlocks`、`shieldCounterattacks` 与 `shieldDisables` 均大于零；
+   `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots`、
+   `crossbowPoseTicks`、`fireworkLaunches`、`fireworkDetonations`、`creepersMounted`、`shieldBlocks`、
+   `shieldCounterattacks` 与 `shieldDisables` 均大于零；
 5. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
 可复现隔离服务端位于 Gradle 已忽略的 `build/paper-smoke/`，Paper 本体、世界和日志不会进入发布 JAR
