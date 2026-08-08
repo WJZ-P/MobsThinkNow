@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.paper.squad;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperThreats;
 import com.wjz.mobsthinknow.shared.math.Vec3d;
+import com.wjz.mobsthinknow.shared.spatial.BoundedSpatialIndex;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadGeometry;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadPhasePlanner;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadPlan;
@@ -18,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -51,9 +51,9 @@ public final class PaperSquadCoordinator {
 	private final PaperIntelligenceService intelligence;
 	private final PaperSquadMetrics metrics = new PaperSquadMetrics();
 	private final Map<UUID, MemberRecord> members = new LinkedHashMap<>();
-	private final Map<CellKey, LinkedHashSet<UUID>> cells = new HashMap<>();
 	private final Map<Long, Squad> squads = new LinkedHashMap<>();
 	private final Map<UUID, Long> squadByMember = new HashMap<>();
+	private BoundedSpatialIndex<UUID, MemberRecord> spatialIndex;
 	private long nextSquadId = 1L;
 	private BukkitTask task;
 
@@ -67,6 +67,7 @@ public final class PaperSquadCoordinator {
 		this.globallyEnabled = globallyEnabled;
 		this.settings = settings;
 		this.intelligence = intelligence;
+		this.spatialIndex = this.newSpatialIndex(settings.get().formationRadius());
 	}
 
 	public void start() {
@@ -80,7 +81,7 @@ public final class PaperSquadCoordinator {
 
 	public void reconfigure() {
 		this.resetSquads();
-		this.rebuildCells();
+		this.rebuildSpatialIndex();
 		this.start();
 	}
 
@@ -88,7 +89,7 @@ public final class PaperSquadCoordinator {
 		this.stopTask();
 		this.resetSquads();
 		this.members.clear();
-		this.cells.clear();
+		this.spatialIndex.clear();
 	}
 
 	public void track(final Mob mob) {
@@ -100,7 +101,7 @@ public final class PaperSquadCoordinator {
 			ignored -> new MemberRecord(mob, stableOrder(mob.getUniqueId()))
 		);
 		record.mob = mob;
-		this.moveCell(record, this.cellFor(mob.getLocation()));
+		this.spatialIndex.upsert(record);
 	}
 
 	public void untrack(final Mob mob) {
@@ -108,7 +109,7 @@ public final class PaperSquadCoordinator {
 		if (removed == null) {
 			return;
 		}
-		this.removeFromCell(removed);
+		this.spatialIndex.remove(removed);
 		this.detachMember(mob.getUniqueId());
 	}
 
@@ -250,12 +251,12 @@ public final class PaperSquadCoordinator {
 			Map.Entry<UUID, MemberRecord> entry = iterator.next();
 			MemberRecord member = entry.getValue();
 			if (!member.mob.isValid() || member.mob.isDead() || !this.intelligence.supports(member.mob)) {
-				this.removeFromCell(member);
+				this.spatialIndex.remove(member);
 				detached.add(entry.getKey());
 				iterator.remove();
 				continue;
 			}
-			this.moveCell(member, this.cellFor(member.mob.getLocation()));
+			this.spatialIndex.upsert(member);
 		}
 		for (UUID memberId : detached) {
 			this.detachMember(memberId);
@@ -361,50 +362,26 @@ public final class PaperSquadCoordinator {
 		final PaperSquadSettings config,
 		final boolean includeSeed
 	) {
-		List<MemberRecord> accepted = new ArrayList<>();
-		if (includeSeed) {
-			accepted.add(seed);
-		}
-		CellKey center = seed.cell;
-		if (center == null) {
-			return new ScanResult(accepted, 0);
-		}
 		double radiusSquared = config.formationRadius() * config.formationRadius();
 		long now = Bukkit.getCurrentTick();
-		int checks = 0;
-		outer:
-		for (int dz = -1; dz <= 1; dz++) {
-			for (int dx = -1; dx <= 1; dx++) {
-				Set<UUID> bucket = this.cells.get(new CellKey(center.worldId(), center.x() + dx, center.z() + dz));
-				if (bucket == null) {
-					continue;
+		BoundedSpatialIndex.ScanResult<MemberRecord> result = this.spatialIndex.collectNearby(
+			seed,
+			candidate -> {
+				UUID candidateId = candidate.mob.getUniqueId();
+				if (candidate.mob == sharedTarget || this.squadByMember.containsKey(candidateId)) {
+					return false;
 				}
-				for (UUID candidateId : bucket) {
-					if (checks >= config.rawScanLimit()) {
-						break outer;
-					}
-					checks++;
-					MemberRecord candidate = this.members.get(candidateId);
-					if (candidate == null
-						|| candidate == seed
-						|| candidate.mob == sharedTarget
-						|| this.squadByMember.containsKey(candidateId)
-						|| candidate.mob.getLocation().distanceSquared(seed.mob.getLocation()) > radiusSquared) {
-						continue;
-					}
-					LivingEntity ownTarget = this.targetFor(candidate, now);
-					if (ownTarget != null && ownTarget != sharedTarget) {
-						continue;
-					}
-					accepted.add(candidate);
-					if (accepted.size() >= config.maximumMembers()) {
-						break outer;
-					}
-				}
-			}
-		}
-		this.metrics.candidateChecks(checks);
-		return new ScanResult(accepted, checks);
+				LivingEntity ownTarget = this.targetFor(candidate, now);
+				return ownTarget == null || ownTarget == sharedTarget;
+			},
+			(first, second) -> first.mob.getLocation().distanceSquared(second.mob.getLocation()),
+			radiusSquared,
+			config.maximumMembers(),
+			config.rawScanLimit(),
+			includeSeed
+		);
+		this.metrics.candidateChecks(result.rawChecks());
+		return new ScanResult(result.candidates(), result.rawChecks());
 	}
 
 	private boolean pruneSquadMembers(final Squad squad, final PaperSquadSettings config) {
@@ -710,43 +687,19 @@ public final class PaperSquadCoordinator {
 		this.squadByMember.clear();
 	}
 
-	private void rebuildCells() {
-		this.cells.clear();
+	private void rebuildSpatialIndex() {
+		this.spatialIndex = this.newSpatialIndex(this.settings.get().formationRadius());
 		for (MemberRecord member : this.members.values()) {
-			member.cell = null;
-			this.moveCell(member, this.cellFor(member.mob.getLocation()));
+			this.spatialIndex.add(member);
 		}
 	}
 
-	private void moveCell(final MemberRecord member, final CellKey next) {
-		if (next.equals(member.cell)) {
-			return;
-		}
-		this.removeFromCell(member);
-		member.cell = next;
-		this.cells.computeIfAbsent(next, ignored -> new LinkedHashSet<>()).add(member.mob.getUniqueId());
-	}
-
-	private void removeFromCell(final MemberRecord member) {
-		if (member.cell == null) {
-			return;
-		}
-		Set<UUID> bucket = this.cells.get(member.cell);
-		if (bucket != null) {
-			bucket.remove(member.mob.getUniqueId());
-			if (bucket.isEmpty()) {
-				this.cells.remove(member.cell);
-			}
-		}
-		member.cell = null;
-	}
-
-	private CellKey cellFor(final Location location) {
-		double size = this.settings.get().formationRadius();
-		return new CellKey(
-			location.getWorld().getUID(),
-			(int)Math.floor(location.getX() / size),
-			(int)Math.floor(location.getZ() / size)
+	private BoundedSpatialIndex<UUID, MemberRecord> newSpatialIndex(final double cellSize) {
+		return new BoundedSpatialIndex<>(
+			cellSize,
+			member -> member.mob.getWorld().getUID(),
+			member -> member.mob.getLocation().getX(),
+			member -> member.mob.getLocation().getZ()
 		);
 	}
 
@@ -819,7 +772,6 @@ public final class PaperSquadCoordinator {
 	private static final class MemberRecord {
 		private Mob mob;
 		private final int stableOrder;
-		private CellKey cell;
 		private LivingEntity rememberedTarget;
 		private long rememberedTargetUntil;
 		private long nextTargetPropagationAt;
@@ -853,9 +805,6 @@ public final class PaperSquadCoordinator {
 			this.lastTargetSeenAt = now;
 			this.stateEnteredAt = now;
 		}
-	}
-
-	private record CellKey(UUID worldId, int x, int z) {
 	}
 
 	private record ScanResult(List<MemberRecord> members, int rawChecks) {

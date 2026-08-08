@@ -26,6 +26,7 @@ import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.ZombieSpecialEquipment;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.shared.spatial.BoundedSpatialIndex;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -1477,7 +1478,7 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private void formNewSquads(final MobsThinkNowConfig config, final long now) {
-		BoundedSpatialIndex<MemberRecord> spatialIndex = new BoundedSpatialIndex<>(
+		BoundedSpatialIndex<Integer, MemberRecord> spatialIndex = new BoundedSpatialIndex<>(
 			config.coordinationRadius,
 			member -> member.target == null ? Integer.MIN_VALUE : member.target.getId(),
 			member -> member.mob.getX(),
@@ -1500,7 +1501,8 @@ public final class ZombieSquadCoordinator {
 				continue;
 			}
 
-			List<MemberRecord> nearby = this.collectBoundedNearby(seed, spatialIndex, config);
+			// shared 返回只读快照；排序属于 Fabric 适配层的局部需求，先复制以免改写共享查询结果。
+			List<MemberRecord> nearby = new ArrayList<>(this.collectBoundedNearby(seed, spatialIndex, config));
 			if (nearby.size() < config.minimumSquadSize) {
 				continue;
 			}
@@ -1518,7 +1520,7 @@ public final class ZombieSquadCoordinator {
 
 	private List<MemberRecord> collectBoundedNearby(
 		final MemberRecord seed,
-		final BoundedSpatialIndex<MemberRecord> spatialIndex,
+		final BoundedSpatialIndex<Integer, MemberRecord> spatialIndex,
 		final MobsThinkNowConfig config
 	) {
 		double radiusSquared = config.coordinationRadius * config.coordinationRadius;
