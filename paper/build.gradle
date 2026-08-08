@@ -1,0 +1,59 @@
+plugins {
+	id "java"
+}
+
+group = rootProject.group
+version = rootProject.version
+
+repositories {
+	mavenCentral()
+	maven {
+		name = "PaperMC"
+		url = "https://repo.papermc.io/repository/maven-public/"
+	}
+}
+
+dependencies {
+	compileOnly "io.papermc.paper:paper-api:${rootProject.paper_api_version}"
+	implementation project(":shared")
+
+	testImplementation "org.junit.jupiter:junit-jupiter:5.12.2"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.12.2"
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 25
+	options.encoding = "UTF-8"
+	options.compilerArgs.add("-Xlint:deprecation")
+}
+
+tasks.withType(Test).configureEach {
+	useJUnitPlatform()
+}
+
+processResources {
+	inputs.property "version", project.version
+	filesMatching("plugin.yml") {
+		expand "version": project.version
+	}
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+	withSourcesJar()
+}
+
+base {
+	archivesName = "mobsthinknow-paper"
+}
+
+jar {
+	// Paper 不会自动加载普通依赖 JAR；把无第三方依赖的共享内核直接合入插件产物。
+	from(project(":shared").sourceSets.main.output)
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	from(rootProject.file("LICENSE")) {
+		rename { "${it}_${rootProject.name}-Paper" }
+	}
+}

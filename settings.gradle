@@ -10,3 +10,6 @@ pluginManagement {
 }
 
 rootProject.name = "MobsThinkNow"
+
+include("shared")
+include("paper")

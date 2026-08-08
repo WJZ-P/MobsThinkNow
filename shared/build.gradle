@@ -1,0 +1,35 @@
+plugins {
+	id "java-library"
+}
+
+group = rootProject.group
+version = rootProject.version
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	testImplementation "org.junit.jupiter:junit-jupiter:5.12.2"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.12.2"
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 25
+	options.encoding = "UTF-8"
+}
+
+tasks.withType(Test).configureEach {
+	useJUnitPlatform()
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+	withSourcesJar()
+}
+
+base {
+	archivesName = "mobsthinknow-shared"
+}

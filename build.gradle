@@ -48,6 +48,8 @@ fabricApi {
 }
 
 dependencies {
+	implementation project(":shared")
+
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
@@ -105,9 +107,16 @@ java {
 }
 
 jar {
+	// 共享模块只包含平台无关的纯 Java 决策类，直接合入 Fabric 成品，避免玩家安装第二个前置。
+	from(project(":shared").sourceSets.main.output)
 	from("LICENSE") {
 		rename { "${it}_${project.name}" }
 	}
+}
+
+tasks.named("build") {
+	// 根项目的 build 同时验证共享内核和 Paper 插件，避免只构建 Fabric 后误以为双端均可发布。
+	dependsOn(":shared:build", ":paper:build")
 }
 
 publishing {

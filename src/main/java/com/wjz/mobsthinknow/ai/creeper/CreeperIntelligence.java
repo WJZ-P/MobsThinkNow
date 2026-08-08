@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.creeper;
 
+import com.wjz.mobsthinknow.ai.utility.SharedDifficultyAdapter;
+import com.wjz.mobsthinknow.shared.ai.IntelligenceDistribution;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.monster.Creeper;
@@ -24,20 +26,21 @@ public final class CreeperIntelligence {
 
 	/** 难度只整体抬高出生区间，不在战斗途中重新洗点。 */
 	public static int roll(final Difficulty difficulty, final RandomSource random) {
-		IntRange range = rangeForDifficulty(difficulty);
-		return range.minimum() + random.nextInt(range.maximum() - range.minimum() + 1);
+		return IntelligenceDistribution.roll(
+			SharedDifficultyAdapter.fromMinecraft(difficulty),
+			random.nextDouble()
+		);
 	}
 
 	static IntRange rangeForDifficulty(final Difficulty difficulty) {
-		return switch (difficulty) {
-			case PEACEFUL, EASY -> new IntRange(1, 7);
-			case NORMAL -> new IntRange(2, 9);
-			case HARD -> new IntRange(4, 10);
-		};
+		IntelligenceDistribution.IntRange shared = IntelligenceDistribution.rangeFor(
+			SharedDifficultyAdapter.fromMinecraft(difficulty)
+		);
+		return new IntRange(shared.minimum(), shared.maximum());
 	}
 
 	public static int clamp(final int intelligence) {
-		return Math.max(MINIMUM, Math.min(MAXIMUM, intelligence));
+		return IntelligenceDistribution.clamp(intelligence);
 	}
 
 	record IntRange(int minimum, int maximum) {

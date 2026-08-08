@@ -1,0 +1,19 @@
+enabled: true
+
+identity:
+  # Only unnamed mobs, or names previously owned by this plugin, are updated.
+  show-intelligence-names: true
+
+zombie:
+  retreat:
+    enabled: true
+    minimum-intelligence: 1
+    # Retreat after reaching this remaining-health fraction.
+    health-threshold: 0.20
+    # Also retreat after one hit removes this fraction of maximum health.
+    heavy-hit-threshold: 0.30
+    maximum-ticks: 100
+    safe-distance: 5.0
+    speed: 1.50
+    # Damage observations are consumed once and never survive a config reload.
+    damage-memory-ticks: 20

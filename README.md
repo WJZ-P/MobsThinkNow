@@ -1,7 +1,7 @@
 # 怪物不再愚蠢 / Mobs Think Now
 
-让原版怪物观察、判断和协作，而不是单纯加血、加伤害。当前版本是面向
-Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
+让原版怪物观察、判断和协作，而不是单纯加血、加伤害。仓库现在同时构建
+Minecraft Java 26.1.2 的 Fabric Mod 与无需客户端安装的 Paper 服务端插件，并由纯 Java 共享内核保持核心判定一致。
 
 ## 当前版本
 
@@ -9,10 +9,24 @@ Minecraft Java 26.1.2 + Fabric 的首个可玩原型。
 - Minecraft：`26.1.2`
 - Fabric Loader：`0.19.3` 或更高的兼容版本
 - Fabric API：`0.155.2+26.1.2`
+- Paper API：`26.1.2.build.74-stable`（独立插件产物）
 - 可选客户端配置界面：Mod Menu `18.0.0` + Cloth Config `26.1.154`
 - 开发客户端光影环境：Iris `1.11.2` + Sodium `0.9.1`（仅 `localRuntime`）
 - 构建所需 Java：`25`
 - 当前支持的怪物：僵尸家族（僵尸、尸壳、溺尸、僵尸村民）、骷髅家族（骷髅、流浪者、沼骸、干尸）、普通苦力怕、普通蜘蛛、普通末影人、重新启用完整 AI 的原版巨人，以及猪灵、猪灵蛮兵、疣猪兽、僵尸疣猪兽、烈焰人、恶魂、岩浆怪、僵尸猪灵与凋灵骷髅九种下界战斗单位
+
+## Paper 服务端插件
+
+`paper/` 是可独立安装的服务端版本，首批已经使用 Paper 公开的 `MobGoals` 与 `Pathfinder` API 实现真实
+GoalSelector 行为，而不是每 tick 强制传送实体：
+
+- 僵尸、骷髅、苦力怕和蜘蛛获得通过 PDC 跨重启保存的难度加权 IQ `1～10`；
+- 不覆盖命名牌或其他插件拥有的名字，只维护本插件自己创建的 IQ 名称；
+- 僵尸生命不高于 `20%` 或单次受到最大生命 `30%` 的真实伤害时，暂停原版追击并执行最多五条候选的
+  有界撤退寻路；距离攻击者达到 5 格或 100 tick 后恢复原战斗 Goal；
+- `/mtnpaper status|inspect|reload|setiq` 提供运行诊断和测试入口；
+- 客户端无需 Fabric、资源前置或协议 Mod。完整安装、能力差异和配置见
+  [`docs/PAPER_PLUGIN.md`](docs/PAPER_PLUGIN.md)。
 
 ## 僵尸已经会做什么
 

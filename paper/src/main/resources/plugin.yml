@@ -1,0 +1,16 @@
+name: MobsThinkNowPaper
+version: '${version}'
+main: com.wjz.mobsthinknow.paper.MobsThinkNowPaperPlugin
+description: Server-side intelligent hostile mob tactics for Paper 26.1.2.
+author: WJZ
+api-version: '26.1'
+load: POSTWORLD
+commands:
+  mtnpaper:
+    description: Inspect and administer Mobs Think Now Paper.
+    usage: /mtnpaper <status|inspect|reload|setiq 1-10>
+    aliases: [mtnp]
+permissions:
+  mobsthinknow.admin:
+    description: Allows reloading settings and changing mob intelligence.
+    default: op
