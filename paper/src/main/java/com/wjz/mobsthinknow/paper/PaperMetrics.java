@@ -36,6 +36,9 @@ public final class PaperMetrics {
 	private final AtomicLong skeletonDisengageGoalsRemoved = new AtomicLong();
 	private final AtomicLong skeletonDisengageStarts = new AtomicLong();
 	private final AtomicLong skeletonDisengagePathFailures = new AtomicLong();
+	private final AtomicLong naturalSkeletonLoadoutInitializations = new AtomicLong();
+	private final AtomicLong naturalCrossbowsEquipped = new AtomicLong();
+	private final AtomicLong naturalFireworkCrossbowsEquipped = new AtomicLong();
 	private final AtomicLong squadRangedGoalsInstalled = new AtomicLong();
 	private final AtomicLong squadRangedGoalsRemoved = new AtomicLong();
 	private final AtomicLong coordinatedShots = new AtomicLong();
@@ -204,6 +207,18 @@ public final class PaperMetrics {
 
 	public void skeletonDisengagePathFailed() {
 		this.skeletonDisengagePathFailures.incrementAndGet();
+	}
+
+	public void naturalSkeletonLoadoutInitialized() {
+		this.naturalSkeletonLoadoutInitializations.incrementAndGet();
+	}
+
+	public void naturalCrossbowEquipped() {
+		this.naturalCrossbowsEquipped.incrementAndGet();
+	}
+
+	public void naturalFireworkCrossbowEquipped() {
+		this.naturalFireworkCrossbowsEquipped.incrementAndGet();
 	}
 
 	public void squadRangedGoalInstalled() {
@@ -404,6 +419,9 @@ public final class PaperMetrics {
 			this.skeletonDisengageGoalsRemoved.get(),
 			this.skeletonDisengageStarts.get(),
 			this.skeletonDisengagePathFailures.get(),
+			this.naturalSkeletonLoadoutInitializations.get(),
+			this.naturalCrossbowsEquipped.get(),
+			this.naturalFireworkCrossbowsEquipped.get(),
 			this.squadRangedGoalsInstalled.get(),
 			this.squadRangedGoalsRemoved.get(),
 			this.coordinatedShots.get(),
@@ -481,6 +499,9 @@ public final class PaperMetrics {
 		long skeletonDisengageGoalsRemoved,
 		long skeletonDisengageStarts,
 		long skeletonDisengagePathFailures,
+		long naturalSkeletonLoadoutInitializations,
+		long naturalCrossbowsEquipped,
+		long naturalFireworkCrossbowsEquipped,
 		long squadRangedGoalsInstalled,
 		long squadRangedGoalsRemoved,
 		long coordinatedShots,

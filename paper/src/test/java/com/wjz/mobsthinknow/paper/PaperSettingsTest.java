@@ -23,7 +23,8 @@ class PaperSettingsTest {
 			PaperShieldSettings.validated(true, 99, 99.0, 0.0, 99.0, 0, 0, 999, 0, 999, 0, 999, 999, Double.NaN, 99.0),
 			PaperCrossbowSettings.validated(
 				true, 99, 0, 0, 999, 99.0, 99.0, 99.0, Double.NaN,
-				PaperFireworkSettings.validated(true, 99, 0.0, 99.0, 99.0, 999, 99.0, 999, 999, true)
+				PaperFireworkSettings.validated(true, 99, 0.0, 99.0, 99.0, 999, 99.0, 999, 999, true),
+				PaperSkeletonLoadoutSettings.validated(true, 99.0, Double.NaN)
 			),
 			true,
 			99,
@@ -109,6 +110,8 @@ class PaperSettingsTest {
 		assertEquals(3.0, settings.skeletonCrossbowTactics().firework().projectileSpeed());
 		assertEquals(100, settings.skeletonCrossbowTactics().firework().projectileLifetimeTicks());
 		assertEquals(128, settings.skeletonCrossbowTactics().firework().maximumActiveProjectiles());
+		assertEquals(1.0, settings.skeletonCrossbowTactics().naturalLoadout().crossbowChance());
+		assertEquals(0.0, settings.skeletonCrossbowTactics().naturalLoadout().fireworkCrossbowChance());
 		assertEquals(10, settings.skeletonSpacingMinimumIntelligence());
 		assertEquals(24.0, settings.skeletonPreferredRange());
 		assertEquals(200, settings.skeletonDisengageMaximumTicks());
@@ -145,7 +148,8 @@ class PaperSettingsTest {
 			PaperShieldSettings.validated(true, 4, 6.0, 7.5, 1.10, 6, 12, 28, 2, 4, 10, 20, 5, 0.0, 3.0),
 			PaperCrossbowSettings.validated(
 				true, 3, 25, 4, 10, 3.15, 2.0, 20.0, 0.05,
-				PaperFireworkSettings.validated(true, 7, 6.0, 30.0, 3.5, 20, 1.6, 40, 48, true)
+				PaperFireworkSettings.validated(true, 7, 6.0, 30.0, 3.5, 20, 1.6, 40, 48, true),
+				PaperSkeletonLoadoutSettings.validated(true, 0.18, 0.25)
 			),
 			true, 1, 10.0, 80, 20,
 			true, 4, 24.0, 16, 28, 0.75, 20, 3.0,
@@ -173,6 +177,7 @@ class PaperSettingsTest {
 		assertEquals(3.15, settings.skeletonCrossbowTactics().projectileSpeed());
 		assertTrue(settings.skeletonCrossbowTactics().firework().enabled());
 		assertEquals(1.6, settings.skeletonCrossbowTactics().firework().projectileSpeed());
+		assertEquals(0.18, settings.skeletonCrossbowTactics().naturalLoadout().crossbowChance());
 		assertEquals(10.0, settings.skeletonPreferredRange());
 		assertEquals(80, settings.skeletonDisengageMaximumTicks());
 		assertEquals(20, settings.skeletonDisengageCooldownTicks());

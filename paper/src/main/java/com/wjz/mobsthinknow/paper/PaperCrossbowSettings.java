@@ -11,7 +11,8 @@ public record PaperCrossbowSettings(
 	double projectileSpread,
 	double maximumLeadTicks,
 	double gravityPerTickSquared,
-	PaperFireworkSettings firework
+	PaperFireworkSettings firework,
+	PaperSkeletonLoadoutSettings naturalLoadout
 ) {
 	public static PaperCrossbowSettings validated(
 		final boolean enabled,
@@ -23,7 +24,8 @@ public record PaperCrossbowSettings(
 		final double projectileSpread,
 		final double maximumLeadTicks,
 		final double gravityPerTickSquared,
-		final PaperFireworkSettings firework
+		final PaperFireworkSettings firework,
+		final PaperSkeletonLoadoutSettings naturalLoadout
 	) {
 		int minimumAim = Math.clamp(minimumAimTicks, 1, 20);
 		return new PaperCrossbowSettings(
@@ -36,7 +38,8 @@ public record PaperCrossbowSettings(
 			finiteClamp(projectileSpread, 0.0, 14.0),
 			finiteClamp(maximumLeadTicks, 0.0, 40.0),
 			finiteClamp(gravityPerTickSquared, 0.0, 0.20),
-			java.util.Objects.requireNonNull(firework, "firework")
+			java.util.Objects.requireNonNull(firework, "firework"),
+			java.util.Objects.requireNonNull(naturalLoadout, "naturalLoadout")
 		);
 	}
 

@@ -105,6 +105,10 @@ MobsThinkNow/
   由全服唯一 `PaperFireworkBoltService` 管理。服务每 tick 对每枚弹体只做一次前向射线、总数默认硬限
   48，命中实体/方块后触发原版烟花爆炸（不破坏地形），40 tick 未命中也会空爆并回收；超容量、队友
   靠近或弹药耗尽都即时降级为普通箭，不会卡住射击状态机。配置重载、测试清理和插件关闭会移除残留弹体。
+- 普通骷髅通过 `NATURAL/JOCKEY/TRAP` 出生时，还会与 Fabric 共用 `CrossbowLoadoutPlanner`：默认 18%
+  弩手基础概率、25% 烟花弩基础概率再乘世界难度与持久 IQ；只改装原本持弓的普通骷髅，流浪者、沼骸、
+  干尸、刷怪笼、命令和其他插件 `CUSTOM` 出生均不随机改装。无论本次是否命中概率，PDC 都写入一次性
+  初始化标记，区块重载、插件重载和重复事件不会重新洗职业或重复给弹药；装备掉落率保持原版 `8.5%`。
 
 ### 苦力怕战术引信与爆点预约
 
@@ -325,6 +329,10 @@ skeleton:
       projectile-lifetime-ticks: 40
       maximum-active-projectiles: 48
       consume-ammunition: true
+    natural-loadout:
+      enabled: true
+      crossbow-chance: 0.18
+      firework-crossbow-chance: 0.25
   spacing:
     enabled: true
     minimum-intelligence: 1
@@ -398,7 +406,9 @@ spider:
    `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots`、
    `crossbowPoseTicks`、`fireworkLaunches`、`fireworkDetonations`、`creepersMounted`、`shieldBlocks`、
    `shieldCounterattacks` 与 `shieldDisables` 均大于零；
-5. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
+5. 隔离运行器额外把世界设为困难、自然弩手基础概率设为 100%，通过真实 `NATURAL` 出生事件断言
+   `naturalLoadoutInitializations=1` 与 `naturalCrossbows=1`；自测主动再初始化一次，计数仍为 1，证明 PDC 幂等；
+6. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
 可复现隔离服务端位于 Gradle 已忽略的 `build/paper-smoke/`，Paper 本体、世界和日志不会进入发布 JAR
 或 Git。

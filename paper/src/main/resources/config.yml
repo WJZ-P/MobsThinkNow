@@ -101,6 +101,11 @@ skeleton:
       # A single main-thread task updates at most this many managed bolts; excess shots fall back to arrows.
       maximum-active-projectiles: 48
       consume-ammunition: true
+    natural-loadout:
+      enabled: true
+      # Same base chances as Fabric; world difficulty and persistent IQ adjust the effective roll.
+      crossbow-chance: 0.18
+      firework-crossbow-chance: 0.25
   spacing:
     enabled: true
     minimum-intelligence: 1

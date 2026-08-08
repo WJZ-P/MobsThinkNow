@@ -5,6 +5,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
+import com.wjz.mobsthinknow.paper.ai.PaperSkeletonLoadoutService;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
 import com.wjz.mobsthinknow.paper.command.MtnPaperCommand;
@@ -23,6 +24,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private PaperSettings settings;
 	private PaperIntelligenceService intelligence;
 	private PaperSkeletonProfile skeletonProfile;
+	private PaperSkeletonLoadoutService skeletonLoadouts;
 	private PaperFireworkBoltService fireworkBolts;
 	private PaperBlastReservationBoard blastReservations;
 	private PaperPounceCoordinator pounceCoordinator;
@@ -38,6 +40,12 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.squadSettings = this.readSquadSettings();
 		this.intelligence = new PaperIntelligenceService(this, this::settings, this.metrics);
 		this.skeletonProfile = new PaperSkeletonProfile(this);
+		this.skeletonLoadouts = new PaperSkeletonLoadoutService(
+			this,
+			this::settings,
+			this.intelligence,
+			this.metrics
+		);
 		this.fireworkBolts = new PaperFireworkBoltService(this, this::settings, this.metrics);
 		this.blastReservations = new PaperBlastReservationBoard(this::settings, this.metrics);
 		this.pounceCoordinator = new PaperPounceCoordinator(this::settings, this.metrics);
@@ -52,6 +60,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.intelligence,
 			this.squadCoordinator,
 			this.fireworkBolts,
+			this.skeletonLoadouts,
 			this.metrics
 		);
 		this.mobLifecycle = new PaperMobLifecycle(
@@ -59,6 +68,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this::settings,
 			this.intelligence,
 			this.skeletonProfile,
+			this.skeletonLoadouts,
 			this.blastReservations,
 			this.pounceCoordinator,
 			this.squadCoordinator,
@@ -203,6 +213,11 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 					this.getConfig().getInt("skeleton.crossbow.firework.projectile-lifetime-ticks", 40),
 					this.getConfig().getInt("skeleton.crossbow.firework.maximum-active-projectiles", 48),
 					this.getConfig().getBoolean("skeleton.crossbow.firework.consume-ammunition", true)
+				),
+				PaperSkeletonLoadoutSettings.validated(
+					this.getConfig().getBoolean("skeleton.crossbow.natural-loadout.enabled", true),
+					this.getConfig().getDouble("skeleton.crossbow.natural-loadout.crossbow-chance", 0.18),
+					this.getConfig().getDouble("skeleton.crossbow.natural-loadout.firework-crossbow-chance", 0.25)
 				)
 			),
 			this.getConfig().getBoolean("skeleton.spacing.enabled", true),

@@ -157,7 +157,23 @@ def prepare_runtime(args: argparse.Namespace, runtime: Path, paper: Path) -> Pat
     (runtime / "tmp").mkdir(exist_ok=True)
     if not args.keep_world:
         remove_previous_world(runtime)
-    shutil.rmtree(runtime / "plugins" / "MobsThinkNowPaper", ignore_errors=True)
+    plugin_data = runtime / "plugins" / "MobsThinkNowPaper"
+    shutil.rmtree(plugin_data, ignore_errors=True)
+    plugin_data.mkdir(parents=True, exist_ok=True)
+    # Hard difficulty plus a 100% base crossbow chance makes every possible hard-mode IQ a
+    # deterministic success. The runtime self-test can therefore prove that a real NATURAL
+    # CreatureSpawnEvent is processed once, while normal installations retain the 18% default.
+    (plugin_data / "config.yml").write_text(
+        """enabled: true
+skeleton:
+  crossbow:
+    natural-loadout:
+      enabled: true
+      crossbow-chance: 1.0
+      firework-crossbow-chance: 1.0
+""",
+        encoding="utf-8",
+    )
     shutil.copy2(plugin, runtime / "plugins" / PLUGIN_FILE_NAME)
     shutil.copy2(paper, runtime / "paper.jar")
     (runtime / "eula.txt").write_text("eula=true\n", encoding="utf-8")
@@ -172,6 +188,7 @@ def prepare_runtime(args: argparse.Namespace, runtime: Path, paper: Path) -> Pat
             "level-type=minecraft:flat",
             f"generator-settings={FLAT_GENERATOR_SETTINGS}",
             "generate-structures=false",
+            "difficulty=hard",
             "spawn-protection=0",
             "view-distance=3",
             "simulation-distance=3",

@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.paper.command;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
+import com.wjz.mobsthinknow.paper.ai.PaperSkeletonLoadoutService;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadPlan;
@@ -28,10 +29,12 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.entity.IronGolem;
 import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Spider;
+import org.bukkit.entity.Skeleton;
 import org.bukkit.entity.Arrow;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.scheduler.BukkitTask;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -56,6 +59,7 @@ public final class PaperRuntimeSelfTest {
 	private final PaperIntelligenceService intelligence;
 	private final PaperSquadCoordinator squads;
 	private final PaperFireworkBoltService fireworkBolts;
+	private final PaperSkeletonLoadoutService skeletonLoadouts;
 	private final PaperMetrics metrics;
 	private final List<Entity> activeEntities = new ArrayList<>();
 	private final List<Chunk> temporarilyForcedChunks = new ArrayList<>();
@@ -65,6 +69,8 @@ public final class PaperRuntimeSelfTest {
 	private Zombie shieldProbeGuard;
 	private IronGolem shieldProbeAttacker;
 	private AbstractSkeleton fireworkProbeShooter;
+	private Skeleton naturalLoadoutProbe;
+	private boolean naturalLoadoutProbeExpected;
 	private long shieldProbeAttackAttempts;
 	private long nextShieldProbeAttackAt;
 	private long shieldDisableProbeAttempts;
@@ -74,12 +80,14 @@ public final class PaperRuntimeSelfTest {
 		final PaperIntelligenceService intelligence,
 		final PaperSquadCoordinator squads,
 		final PaperFireworkBoltService fireworkBolts,
+		final PaperSkeletonLoadoutService skeletonLoadouts,
 		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
 		this.intelligence = intelligence;
 		this.squads = squads;
 		this.fireworkBolts = fireworkBolts;
+		this.skeletonLoadouts = skeletonLoadouts;
 		this.metrics = metrics;
 	}
 
@@ -141,6 +149,10 @@ public final class PaperRuntimeSelfTest {
 			this.spawnShieldProbe(world, anchor);
 			this.spawnShieldDisableProbe(world, anchor);
 			this.spawnFireworkProbe(world, anchor);
+			this.naturalLoadoutProbeExpected = this.skeletonLoadouts.guaranteesCrossbow(world.getDifficulty());
+			if (this.naturalLoadoutProbeExpected) {
+				this.spawnNaturalLoadoutProbe(world, anchor);
+			}
 			this.validationTask = Bukkit.getScheduler().runTaskLater(
 				this.plugin,
 				() -> this.validateStructure(sender, target, mobs, baseline),
@@ -263,6 +275,12 @@ public final class PaperRuntimeSelfTest {
 				&& this.fireworkProbeShooter.isValid()
 				&& this.fireworkProbeShooter.getEquipment().getItemInOffHand().getAmount() < 4;
 			int activeFireworkBolts = this.fireworkBolts.activeCount();
+			long naturalLoadoutInitializations = current.naturalSkeletonLoadoutInitializations()
+				- baseline.naturalSkeletonLoadoutInitializations();
+			long naturalCrossbows = current.naturalCrossbowsEquipped() - baseline.naturalCrossbowsEquipped();
+			boolean naturalProbeEquipped = this.naturalLoadoutProbe != null
+				&& this.naturalLoadoutProbe.isValid()
+				&& this.naturalLoadoutProbe.getEquipment().getItemInMainHand().getType() == Material.CROSSBOW;
 			long weaponAttacks = current.weaponAttacks() - baseline.weaponAttacks();
 			long axeLeaps = current.axeLeaps() - baseline.axeLeaps();
 			long axeCriticals = current.axeCriticalAttacks() - baseline.axeCriticalAttacks();
@@ -288,6 +306,8 @@ public final class PaperRuntimeSelfTest {
 				|| fireworkDetonations <= 0L
 				|| !fireworkAmmoConsumed
 				|| activeFireworkBolts != 0
+				|| this.naturalLoadoutProbeExpected
+					&& (naturalLoadoutInitializations != 1L || naturalCrossbows != 1L || !naturalProbeEquipped)
 				|| weaponAttacks <= 0L
 				|| axeLeaps <= 0L
 				|| mounted <= 0L
@@ -306,6 +326,10 @@ public final class PaperRuntimeSelfTest {
 						+ ", fireworkDetonations=" + fireworkDetonations
 						+ ", fireworkAmmoConsumed=" + fireworkAmmoConsumed
 						+ ", activeFireworkBolts=" + activeFireworkBolts
+						+ ", naturalProbeExpected=" + this.naturalLoadoutProbeExpected
+						+ ", naturalLoadoutInitializations=" + naturalLoadoutInitializations
+						+ ", naturalCrossbows=" + naturalCrossbows
+						+ ", naturalProbeEquipped=" + naturalProbeEquipped
 						+ ", weaponAttacks=" + weaponAttacks
 						+ ", axeLeaps=" + axeLeaps
 						+ ", axeCriticals=" + axeCriticals
@@ -342,6 +366,9 @@ public final class PaperRuntimeSelfTest {
 					+ ", fireworkDetonations=" + fireworkDetonations
 					+ ", fireworkAmmoConsumed=" + fireworkAmmoConsumed
 					+ ", activeFireworkBolts=" + activeFireworkBolts
+					+ ", naturalProbeExpected=" + this.naturalLoadoutProbeExpected
+					+ ", naturalLoadoutInitializations=" + naturalLoadoutInitializations
+					+ ", naturalCrossbows=" + naturalCrossbows
 					+ ", weaponAttacks=" + weaponAttacks
 					+ ", axeLeaps=" + axeLeaps
 					+ ", axeCriticals=" + axeCriticals
@@ -373,6 +400,8 @@ public final class PaperRuntimeSelfTest {
 		this.shieldProbeGuard = null;
 		this.shieldProbeAttacker = null;
 		this.fireworkProbeShooter = null;
+		this.naturalLoadoutProbe = null;
+		this.naturalLoadoutProbeExpected = false;
 		this.shieldProbeAttackAttempts = 0L;
 		this.nextShieldProbeAttackAt = Long.MIN_VALUE;
 		this.shieldDisableProbeAttempts = 0L;
@@ -605,6 +634,30 @@ public final class PaperRuntimeSelfTest {
 		this.intelligence.set(skeleton, 10);
 		skeleton.setTarget(target);
 		this.fireworkProbeShooter = skeleton;
+		this.activeEntities.add(skeleton);
+	}
+
+	/** 由 Paper 自己发出 NATURAL 出生事件；第二次显式初始化必须被 PDC 标记幂等拒绝。 */
+	private void spawnNaturalLoadoutProbe(final World world, final Location squadAnchor) {
+		Location location = safeSurface(
+			world,
+			squadAnchor.getBlockX() + 200,
+			squadAnchor.getBlockZ()
+		);
+		this.forceChunk(location);
+		Skeleton skeleton = world.spawn(
+			location,
+			Skeleton.class,
+			CreatureSpawnEvent.SpawnReason.NATURAL,
+			true,
+			spawned -> {
+				spawned.setShouldBurnInDay(false);
+				spawned.setPersistent(false);
+				spawned.setRemoveWhenFarAway(false);
+			}
+		);
+		this.skeletonLoadouts.initialize(skeleton, CreatureSpawnEvent.SpawnReason.NATURAL);
+		this.naturalLoadoutProbe = skeleton;
 		this.activeEntities.add(skeleton);
 	}
 

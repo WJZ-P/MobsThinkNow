@@ -14,6 +14,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperMountedBreachGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonDisengageGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
+import com.wjz.mobsthinknow.paper.ai.PaperSkeletonLoadoutService;
 import com.wjz.mobsthinknow.paper.ai.PaperSquadRangedGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
@@ -54,6 +55,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.projectiles.ProjectileSource;
 import org.bukkit.plugin.Plugin;
 
@@ -86,6 +88,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSkeletonProfile skeletonProfile;
+	private final PaperSkeletonLoadoutService skeletonLoadouts;
 	private final PaperBlastReservationBoard blastReservations;
 	private final PaperPounceCoordinator pounceCoordinator;
 	private final PaperSquadCoordinator squadCoordinator;
@@ -100,6 +103,7 @@ public final class PaperMobLifecycle implements Listener {
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
 		final PaperSkeletonProfile skeletonProfile,
+		final PaperSkeletonLoadoutService skeletonLoadouts,
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
 		final PaperSquadCoordinator squadCoordinator,
@@ -132,6 +136,7 @@ public final class PaperMobLifecycle implements Listener {
 		this.settings = settings;
 		this.intelligence = intelligence;
 		this.skeletonProfile = skeletonProfile;
+		this.skeletonLoadouts = skeletonLoadouts;
 		this.blastReservations = blastReservations;
 		this.pounceCoordinator = pounceCoordinator;
 		this.squadCoordinator = squadCoordinator;
@@ -144,6 +149,13 @@ public final class PaperMobLifecycle implements Listener {
 	@EventHandler
 	public void onEntityAdded(final EntityAddToWorldEvent event) {
 		this.install(event.getEntity());
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onCreatureSpawn(final CreatureSpawnEvent event) {
+		if (event.getEntity() instanceof AbstractSkeleton skeleton) {
+			this.skeletonLoadouts.initialize(skeleton, event.getSpawnReason());
+		}
 	}
 
 	@EventHandler
