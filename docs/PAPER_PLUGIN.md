@@ -55,6 +55,22 @@ MobsThinkNow/
 - 30 tick 内没有适合的跳劈窗口、路径失败、落水或飞行超时都会取消空中序列并降级为普通地面攻击；
   `status` 分别记录安装、周旋、寻路失败、前摇、起跳、实际攻击和暴击命中次数。
 
+### 僵尸盾卫攻防博弈
+
+- IQ 至少 4 且副手真实持盾的僵尸进入默认 6 格接敌带后，使用 Paper `startUsingItem(OFF_HAND)` 同步
+  原版胸前举盾姿态；盾卫 Goal 与持械 Goal 互斥，撤退 Goal 仍以更高优先级抢占；
+- 共享 `ShieldCombatPlanner` 同时服务 Fabric 与 Paper，统一随机守候/反击延迟、信号寿命和水平正面夹角。
+  Paper 公共 API 可以驱动非玩家实体使用物品，但不会替其套用玩家盾牌的伤害消解，因此插件在
+  `EntityDamageByEntityEvent` 中只补齐成熟举盾、正面近战/扫击/投射物的结算；背刺和其他伤害照常命中；
+- 成功格挡会取消受伤事件，所以没有僵尸受击音效或红闪；同时真实损耗副手盾牌耐久、播放
+  `ITEM_SHIELD_BLOCK`，并把攻击者 UUID 与 tick 写入一次性邮箱；
+- 格挡后继续举盾随机等待 2～4 tick，再明确放盾并打开最多 10 tick 的攻击窗口。挥击与防御不会同时
+  发生；未受攻击时则守候 12～28 tick 后主动试探一次，收招后重新举盾；
+- `block.minimum-use-ticks` 默认 5，避免盾牌刚抬起便瞬间生效；`block.minimum-facing-dot` 默认 0.0，
+  表示只覆盖水平正面半球。主体 yaw 与 LookControl 同步平滑转向，防止只转头却拿盾背对伤害源；
+- `/mtnpaper status` 分别输出 Goal 安装/移除、守候、格挡、反击排程、攻击窗口、实际攻击、反击命中、
+  寻路失败与待消费盾牌信号数；配置重载、区块卸载和插件关闭都会清空邮箱。
+
 ### 骷髅紧急脱离
 
 - 受支持的整个 `AbstractSkeleton` 家族共用同一 Goal，敌人可以是玩家、铁傀儡或其他当前仇恨目标；
@@ -184,12 +200,13 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 | `/mtnpaper reload` | `mobsthinknow.admin` | 重载、校验配置并刷新已加载实体 |
 | `/mtnpaper setiq <1-10>` | `mobsthinknow.admin` | 修改附近受支持怪物的持久 IQ |
 | `/mtnpaper spawn <type> [1-100]` | `mobsthinknow.admin` | 在玩家前方事务式批量生成指定 Paper 智能怪物 |
-| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种，并追加剑手与斧手测试预设 |
+| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种，并追加剑手、斧手与盾卫测试预设 |
 | `/mtnpaper assault [1-8]` | `mobsthinknow.admin` | 每组生成 IQ 10 僵尸、骷髅、苦力怕、蜘蛛以测试联合兵种 |
 | `/mtnpaper selftest` | `mobsthinknow.admin` | 控制台可用；真实 tick 验证联合编队、错峰射击和蜘蛛载客后自动清理 |
 
 `spawn` 类型为：`zombie`、`husk`、`drowned`、`zombie_villager`、`skeleton`、`stray`、`bogged`、
-`wither_skeleton`、`creeper`、`spider`，以及 `zombie_swordsman`、`zombie_axeman` 两个装备/IQ 预设；
+`wither_skeleton`、`creeper`、`spider`，以及 `zombie_swordsman`、`zombie_axeman`、
+`zombie_shieldguard` 三个装备/IQ 预设；
 另可用 `spawn assault [组数]`。生成器先为整批实体规划有承重、
 两格净空、无液体/火焰/仙人掌等危险的互不重叠落点；任意实体生成失败会移除本批已经生成的实体，
 不会留下半套测试阵容。
@@ -198,8 +215,10 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 和一个关闭 AI、无敌的铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后先要求
 五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后再运行 120 tick，要求
 两名射手至少实际释放一发协调箭，并要求苦力怕真实跳上蜘蛛。另有一只 IQ 10 斧手与关闭 AI 但仍可
-攻击的铁傀儡，在有界搜索所得的同高、2～3 格间距、四格净空自然通道中独立验证真实攻击和跳劈；该探针
-不放置或修改方块，也不会因混编阵位碰撞产生假阴性。
+攻击的铁傀儡，在有界搜索所得的同高、2～3 格间距、四格净空自然通道中独立验证真实攻击和跳劈；另一个
+隔离通道生成 IQ 10 剑盾卫与铁傀儡，待盾牌连续举起至少 10 tick 后发射真实箭矢，强制验证正面格挡、
+一次性事件信号和 2～4 tick 延迟反击均至少发生一次。探针不放置或修改方块，也不会因混编阵位碰撞
+产生假阴性。
 测试苦力怕的爆炸半径临时设为 0、引信
 延长到 200 tick，因此可以观察载客行为而不破坏测试世界。无论成功、失败、重载还是插件关闭，测试实体
 和临时区块票都会清理。中间结构检查输出 `[MTN SELFTEST STRUCTURE PASS]`，最终日志只以
@@ -251,6 +270,24 @@ zombie:
       preparation-timeout-ticks: 30
       horizontal-speed: 0.34
       critical-damage-multiplier: 1.50
+  shield-tactics:
+    enabled: true
+    minimum-intelligence: 4
+    raise-distance: 6.0
+    lower-distance: 7.5
+    movement-speed: 1.10
+    repath-ticks: 6
+    guard:
+      minimum-ticks: 12
+      maximum-ticks: 28
+    counter:
+      minimum-delay-ticks: 2
+      maximum-delay-ticks: 4
+    strike-window-ticks: 10
+    block-signal-memory-ticks: 20
+    block:
+      minimum-use-ticks: 5
+      minimum-facing-dot: 0.0
 skeleton:
   spacing:
     enabled: true
@@ -304,7 +341,7 @@ spider:
 
 | 功能类型 | Fabric | Paper |
 |---|---|---|
-| 纯数学决策、智力分布、队形/武器节奏/冷却 | 共享内核 | 共享内核 |
+| 纯数学决策、智力分布、队形/武器/盾牌节奏与方向 | 共享内核 | 共享内核 |
 | 导航与自定义 Goal | Mojang/Fabric 实体 API | Paper `MobGoals`/`Pathfinder` |
 | 持久状态 | 实体存档字段/数据附件 | PDC |
 | 服务端声音、粒子、装备、骑乘 | 完整 | 公共 API 能力内实现 |
@@ -323,7 +360,7 @@ spider:
 3. 确认插件列表和 `/mtnpaper status`；
 4. 执行 `/mtnpaper selftest`，确认先输出结构通过，再得到
    `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots` 与
-   `creepersMounted` 均大于零；
+   `creepersMounted`、`shieldBlocks` 与 `shieldCounterattacks` 均大于零；
 5. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
 可复现隔离服务端位于 Gradle 已忽略的 `build/paper-smoke/`，Paper 本体、世界和日志不会进入发布 JAR

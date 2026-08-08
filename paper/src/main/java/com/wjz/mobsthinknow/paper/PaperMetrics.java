@@ -22,6 +22,15 @@ public final class PaperMetrics {
 	private final AtomicLong axeLaunchSightRejects = new AtomicLong();
 	private final AtomicLong axeLaunchBandRejects = new AtomicLong();
 	private final AtomicLong axeLaunchCollisionRejects = new AtomicLong();
+	private final AtomicLong shieldGoalsInstalled = new AtomicLong();
+	private final AtomicLong shieldGoalsRemoved = new AtomicLong();
+	private final AtomicLong shieldGuards = new AtomicLong();
+	private final AtomicLong shieldBlocks = new AtomicLong();
+	private final AtomicLong shieldCountersScheduled = new AtomicLong();
+	private final AtomicLong shieldStrikeWindows = new AtomicLong();
+	private final AtomicLong shieldAttacks = new AtomicLong();
+	private final AtomicLong shieldCounterattacks = new AtomicLong();
+	private final AtomicLong shieldPathFailures = new AtomicLong();
 	private final AtomicLong skeletonDisengageGoalsInstalled = new AtomicLong();
 	private final AtomicLong skeletonDisengageGoalsRemoved = new AtomicLong();
 	private final AtomicLong skeletonDisengageStarts = new AtomicLong();
@@ -131,6 +140,42 @@ public final class PaperMetrics {
 
 	public void axeLaunchCollisionRejected() {
 		this.axeLaunchCollisionRejects.incrementAndGet();
+	}
+
+	public void shieldGoalInstalled() {
+		this.shieldGoalsInstalled.incrementAndGet();
+	}
+
+	public void shieldGoalRemoved() {
+		this.shieldGoalsRemoved.incrementAndGet();
+	}
+
+	public void shieldGuardStarted() {
+		this.shieldGuards.incrementAndGet();
+	}
+
+	public void shieldBlock() {
+		this.shieldBlocks.incrementAndGet();
+	}
+
+	public void shieldCounterScheduled() {
+		this.shieldCountersScheduled.incrementAndGet();
+	}
+
+	public void shieldStrikeWindowOpened() {
+		this.shieldStrikeWindows.incrementAndGet();
+	}
+
+	public void shieldAttack() {
+		this.shieldAttacks.incrementAndGet();
+	}
+
+	public void shieldCounterattack() {
+		this.shieldCounterattacks.incrementAndGet();
+	}
+
+	public void shieldPathFailed() {
+		this.shieldPathFailures.incrementAndGet();
 	}
 
 	public void skeletonDisengageGoalInstalled() {
@@ -305,6 +350,15 @@ public final class PaperMetrics {
 			this.axeLaunchSightRejects.get(),
 			this.axeLaunchBandRejects.get(),
 			this.axeLaunchCollisionRejects.get(),
+			this.shieldGoalsInstalled.get(),
+			this.shieldGoalsRemoved.get(),
+			this.shieldGuards.get(),
+			this.shieldBlocks.get(),
+			this.shieldCountersScheduled.get(),
+			this.shieldStrikeWindows.get(),
+			this.shieldAttacks.get(),
+			this.shieldCounterattacks.get(),
+			this.shieldPathFailures.get(),
 			this.skeletonDisengageGoalsInstalled.get(),
 			this.skeletonDisengageGoalsRemoved.get(),
 			this.skeletonDisengageStarts.get(),
@@ -365,6 +419,15 @@ public final class PaperMetrics {
 		long axeLaunchSightRejects,
 		long axeLaunchBandRejects,
 		long axeLaunchCollisionRejects,
+		long shieldGoalsInstalled,
+		long shieldGoalsRemoved,
+		long shieldGuards,
+		long shieldBlocks,
+		long shieldCountersScheduled,
+		long shieldStrikeWindows,
+		long shieldAttacks,
+		long shieldCounterattacks,
+		long shieldPathFailures,
 		long skeletonDisengageGoalsInstalled,
 		long skeletonDisengageGoalsRemoved,
 		long skeletonDisengageStarts,

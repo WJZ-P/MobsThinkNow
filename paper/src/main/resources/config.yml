@@ -51,6 +51,28 @@ zombie:
       preparation-timeout-ticks: 30
       horizontal-speed: 0.34
       critical-damage-multiplier: 1.50
+  shield-tactics:
+    enabled: true
+    minimum-intelligence: 4
+    # Vanilla pathfinding approaches normally, then the shield state machine takes over inside this band.
+    raise-distance: 6.0
+    lower-distance: 7.5
+    movement-speed: 1.10
+    repath-ticks: 6
+    guard:
+      minimum-ticks: 12
+      maximum-ticks: 28
+    counter:
+      # A real successful block keeps the shield raised for this many extra ticks before counterattacking.
+      minimum-delay-ticks: 2
+      maximum-delay-ticks: 4
+      strike-window-ticks: 10
+      block-signal-memory-ticks: 20
+      block:
+        # Paper exposes the use-item pose for mobs, while this plugin supplies the player-style damage resolution.
+        minimum-use-ticks: 5
+        # Normalized horizontal dot product: 0.0 means the front 180-degree hemisphere.
+        minimum-facing-dot: 0.0
 
 skeleton:
   spacing:

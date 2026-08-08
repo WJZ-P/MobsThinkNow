@@ -24,6 +24,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.entity.IronGolem;
 import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Spider;
+import org.bukkit.entity.Arrow;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import net.kyori.adventure.text.Component;
@@ -40,8 +43,8 @@ public final class PaperRuntimeSelfTest {
 	);
 	private static final int STRUCTURE_VALIDATION_DELAY_TICKS = 25;
 	private static final int COMBAT_VALIDATION_DELAY_TICKS = 120;
-	private static final int AXE_PROBE_SEARCH_RADIUS = 32;
-	private static final int[] AXE_PROBE_TARGET_OFFSETS = {2, 3};
+	private static final int COMBAT_PROBE_SEARCH_RADIUS = 32;
+	private static final int[] COMBAT_PROBE_TARGET_OFFSETS = {2, 3};
 	private static final int[][] CARDINAL_DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
 	private final Plugin plugin;
@@ -51,6 +54,11 @@ public final class PaperRuntimeSelfTest {
 	private final List<Entity> activeEntities = new ArrayList<>();
 	private final List<Chunk> temporarilyForcedChunks = new ArrayList<>();
 	private BukkitTask validationTask;
+	private BukkitTask shieldProbeAttackTask;
+	private Zombie shieldProbeGuard;
+	private IronGolem shieldProbeAttacker;
+	private long shieldProbeAttackAttempts;
+	private long nextShieldProbeAttackAt;
 
 	public PaperRuntimeSelfTest(
 		final Plugin plugin,
@@ -115,6 +123,7 @@ public final class PaperRuntimeSelfTest {
 				this.activeEntities.add(mob);
 			}
 			this.spawnAxeProbe(world, anchor);
+			this.spawnShieldProbe(world, anchor);
 			this.validationTask = Bukkit.getScheduler().runTaskLater(
 				this.plugin,
 				() -> this.validateStructure(sender, target, mobs, baseline),
@@ -238,7 +247,18 @@ public final class PaperRuntimeSelfTest {
 			long axeRejectCollision = current.axeLaunchCollisionRejects() - baseline.axeLaunchCollisionRejects();
 			long mounted = current.mountedBreachMounts() - baseline.mountedBreachMounts();
 			long released = current.mountedBreachPayloadReleases() - baseline.mountedBreachPayloadReleases();
-			if (!engaging || coordinatedShots <= 0L || weaponAttacks <= 0L || axeLeaps <= 0L || mounted <= 0L) {
+			long shieldBlocks = current.shieldBlocks() - baseline.shieldBlocks();
+			long shieldCounterattacks = current.shieldCounterattacks() - baseline.shieldCounterattacks();
+			long shieldGuards = current.shieldGuards() - baseline.shieldGuards();
+			long shieldStrikeWindows = current.shieldStrikeWindows() - baseline.shieldStrikeWindows();
+			long shieldAttacks = current.shieldAttacks() - baseline.shieldAttacks();
+			if (!engaging
+				|| coordinatedShots <= 0L
+				|| weaponAttacks <= 0L
+				|| axeLeaps <= 0L
+				|| mounted <= 0L
+				|| shieldBlocks <= 0L
+				|| shieldCounterattacks <= 0L) {
 				this.report(
 					sender,
 					false,
@@ -254,6 +274,12 @@ public final class PaperRuntimeSelfTest {
 						+ ",collision:" + axeRejectCollision + "]"
 						+ ", creepersMounted=" + mounted
 						+ ", payloadReleases=" + released
+						+ ", shieldBlocks=" + shieldBlocks
+						+ ", shieldCounterattacks=" + shieldCounterattacks
+						+ ", shieldGuards=" + shieldGuards
+						+ ", shieldStrikeWindows=" + shieldStrikeWindows
+						+ ", shieldAttacks=" + shieldAttacks
+						+ ", shieldProbe=" + this.shieldProbeSnapshot()
 						+ ", carrierPathFailures="
 						+ (current.mountedBreachPathFailures() - baseline.mountedBreachPathFailures())
 						+ ", firingLanePathFailures="
@@ -270,6 +296,11 @@ public final class PaperRuntimeSelfTest {
 					+ ", axeCriticals=" + axeCriticals
 					+ ", creepersMounted=" + mounted
 					+ ", payloadReleases=" + released
+					+ ", shieldBlocks=" + shieldBlocks
+					+ ", shieldCounterattacks=" + shieldCounterattacks
+					+ ", shieldGuards=" + shieldGuards
+					+ ", shieldStrikeWindows=" + shieldStrikeWindows
+					+ ", shieldAttacks=" + shieldAttacks
 			);
 		} catch (RuntimeException exception) {
 			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -279,6 +310,14 @@ public final class PaperRuntimeSelfTest {
 	}
 
 	private void cleanup() {
+		if (this.shieldProbeAttackTask != null) {
+			this.shieldProbeAttackTask.cancel();
+			this.shieldProbeAttackTask = null;
+		}
+		this.shieldProbeGuard = null;
+		this.shieldProbeAttacker = null;
+		this.shieldProbeAttackAttempts = 0L;
+		this.nextShieldProbeAttackAt = Long.MIN_VALUE;
 		for (Entity entity : this.activeEntities) {
 			if (entity.isValid()) {
 				entity.remove();
@@ -306,7 +345,7 @@ public final class PaperRuntimeSelfTest {
 	 * 绑定在那一处，测试结果会错误地依赖实体碰撞顺序，而不是斧手 Goal 本身。
 	 */
 	private void spawnAxeProbe(final World world, final Location squadAnchor) {
-		AxeProbePlacement placement = findAxeProbePlacement(
+		CombatProbePlacement placement = findCombatProbePlacement(
 			world,
 			squadAnchor.getBlockX() + 40,
 			squadAnchor.getBlockZ()
@@ -335,8 +374,95 @@ public final class PaperRuntimeSelfTest {
 		this.activeEntities.add(axeman);
 	}
 
-	private static AxeProbePlacement findAxeProbePlacement(final World world, final int originX, final int originZ) {
-		for (int radius = 0; radius <= AXE_PROBE_SEARCH_RADIUS; radius++) {
+	/**
+	 * 由真实铁傀儡向真实举盾僵尸发射箭矢。探针既验证 Paper 正面格挡适配，也验证事件邮箱在
+	 * 2-4 tick 后驱动 Goal 主动放盾反击；高生命值仅用于让失败快照保留完整诊断窗口。
+	 */
+	private void spawnShieldProbe(final World world, final Location squadAnchor) {
+		CombatProbePlacement placement = findCombatProbePlacement(
+			world,
+			squadAnchor.getBlockX() + 80,
+			squadAnchor.getBlockZ()
+		);
+		if (placement == null) {
+			throw new IllegalStateException("no flat collision-free shield probe lane found");
+		}
+		this.forceChunk(placement.zombie());
+		this.forceChunk(placement.target());
+
+		IronGolem attacker = (IronGolem)world.spawnEntity(placement.target(), EntityType.IRON_GOLEM);
+		attacker.setAI(false);
+		attacker.setPlayerCreated(true);
+		attacker.setPersistent(false);
+		setMaximumHealth(attacker, 500.0);
+		this.activeEntities.add(attacker);
+
+		Zombie shieldGuard = (Zombie)world.spawnEntity(placement.zombie(), EntityType.ZOMBIE);
+		shieldGuard.setShouldBurnInDay(false);
+		shieldGuard.setPersistent(false);
+		shieldGuard.setRemoveWhenFarAway(false);
+		shieldGuard.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_SWORD));
+		shieldGuard.getEquipment().setItemInOffHand(new ItemStack(Material.SHIELD));
+		setMaximumHealth(shieldGuard, 200.0);
+		this.intelligence.set(shieldGuard, 10);
+		shieldGuard.setTarget(attacker);
+		this.shieldProbeGuard = shieldGuard;
+		this.shieldProbeAttacker = attacker;
+		this.shieldProbeAttackAttempts = 0L;
+		this.nextShieldProbeAttackAt = Bukkit.getCurrentTick();
+		this.activeEntities.add(shieldGuard);
+
+		this.shieldProbeAttackTask = Bukkit.getScheduler().runTaskTimer(
+			this.plugin,
+			() -> {
+				long now = Bukkit.getCurrentTick();
+				if (attacker.isValid()
+					&& shieldGuard.isValid()
+					&& now >= this.nextShieldProbeAttackAt
+					&& shieldGuard.hasActiveItem()
+					&& shieldGuard.getActiveItemUsedTime() >= 10) {
+					this.shieldProbeAttackAttempts++;
+					this.nextShieldProbeAttackAt = now + 20L;
+					attacker.lookAt(shieldGuard);
+					org.bukkit.util.Vector direction = shieldGuard.getEyeLocation().toVector()
+						.subtract(attacker.getEyeLocation().toVector())
+						.normalize();
+					Arrow arrow = world.spawnArrow(attacker.getEyeLocation(), direction, 1.8F, 0.0F);
+					arrow.setShooter(attacker);
+					arrow.setDamage(4.0);
+					this.activeEntities.add(arrow);
+				}
+			},
+			1L,
+			1L
+		);
+	}
+
+	private String shieldProbeSnapshot() {
+		Zombie guard = this.shieldProbeGuard;
+		IronGolem attacker = this.shieldProbeAttacker;
+		if (guard == null || attacker == null) {
+			return "missing";
+		}
+		org.bukkit.util.Vector facing = guard.getEyeLocation().getDirection().setY(0.0);
+		org.bukkit.util.Vector towardAttacker = attacker.getLocation().toVector()
+			.subtract(guard.getLocation().toVector())
+			.setY(0.0);
+		double facingDot = facing.lengthSquared() > 1.0E-8 && towardAttacker.lengthSquared() > 1.0E-8
+			? facing.normalize().dot(towardAttacker.normalize())
+			: Double.NaN;
+		return "attempts:" + this.shieldProbeAttackAttempts
+			+ ",guardValid:" + guard.isValid()
+			+ ",health:" + guard.getHealth()
+			+ ",active:" + guard.hasActiveItem()
+			+ ",usedTicks:" + guard.getActiveItemUsedTime()
+			+ ",yaw:" + guard.getYaw()
+			+ ",facingDot:" + facingDot
+			+ ",distance:" + Math.sqrt(guard.getLocation().distanceSquared(attacker.getLocation()));
+	}
+
+	private static CombatProbePlacement findCombatProbePlacement(final World world, final int originX, final int originZ) {
+		for (int radius = 0; radius <= COMBAT_PROBE_SEARCH_RADIUS; radius++) {
 			for (int dx = -radius; dx <= radius; dx++) {
 				for (int dz = -radius; dz <= radius; dz++) {
 					if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
@@ -346,7 +472,7 @@ public final class PaperRuntimeSelfTest {
 					int zombieZ = originZ + dz;
 					int feetY = world.getHighestBlockYAt(zombieX, zombieZ) + 1;
 					for (int[] direction : CARDINAL_DIRECTIONS) {
-						for (int targetOffset : AXE_PROBE_TARGET_OFFSETS) {
+						for (int targetOffset : COMBAT_PROBE_TARGET_OFFSETS) {
 							int targetX = zombieX + direction[0] * targetOffset;
 							int targetZ = zombieZ + direction[1] * targetOffset;
 							if (world.getHighestBlockYAt(targetX, targetZ) + 1 != feetY
@@ -362,7 +488,7 @@ public final class PaperRuntimeSelfTest {
 								|| !world.getNearbyEntities(target, 1.0, 2.0, 1.0).isEmpty()) {
 								continue;
 							}
-							return new AxeProbePlacement(zombie, target);
+							return new CombatProbePlacement(zombie, target);
 						}
 					}
 				}
@@ -383,6 +509,15 @@ public final class PaperRuntimeSelfTest {
 			}
 		}
 		return true;
+	}
+
+	private static void setMaximumHealth(final LivingEntity entity, final double health) {
+		AttributeInstance maximumHealth = entity.getAttribute(Attribute.MAX_HEALTH);
+		if (maximumHealth == null) {
+			throw new IllegalStateException(entity.getType() + " has no maximum-health attribute");
+		}
+		maximumHealth.setBaseValue(health);
+		entity.setHealth(health);
 	}
 
 	private static String targetSnapshot(final List<Mob> mobs) {
@@ -410,6 +545,6 @@ public final class PaperRuntimeSelfTest {
 		return new Location(world, x + 0.5, y, z + 0.5);
 	}
 
-	private record AxeProbePlacement(Location zombie, Location target) {
+	private record CombatProbePlacement(Location zombie, Location target) {
 	}
 }

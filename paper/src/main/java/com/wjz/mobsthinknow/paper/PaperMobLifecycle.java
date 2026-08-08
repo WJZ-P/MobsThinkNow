@@ -14,12 +14,15 @@ import com.wjz.mobsthinknow.paper.ai.PaperMountedBreachGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonDisengageGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperSquadRangedGoal;
+import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderCombatGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderPounceGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperZombieRetreatGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperZombieWeaponGoal;
+import com.wjz.mobsthinknow.paper.ai.PaperZombieShieldGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperThreats;
+import com.wjz.mobsthinknow.shared.ai.ShieldCombatPlanner;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadOrderGoal;
 import java.util.function.Supplier;
@@ -29,6 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.bukkit.Bukkit;
+import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
@@ -40,6 +45,7 @@ import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Zombie;
 import org.bukkit.entity.Spider;
 import org.bukkit.entity.EntityType;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -53,6 +59,7 @@ import org.bukkit.plugin.Plugin;
 public final class PaperMobLifecycle implements Listener {
 	private static final int ZOMBIE_RETREAT_GOAL_PRIORITY = 0;
 	private static final int ZOMBIE_WEAPON_GOAL_PRIORITY = 1;
+	private static final int ZOMBIE_SHIELD_GOAL_PRIORITY = 1;
 	private static final int SKELETON_DISENGAGE_GOAL_PRIORITY = 1;
 	private static final int SQUAD_RANGED_GOAL_PRIORITY = 2;
 	private static final int CREEPER_FUSE_GOAL_PRIORITY = 1;
@@ -64,6 +71,7 @@ public final class PaperMobLifecycle implements Listener {
 
 	private final GoalKey<Zombie> retreatGoalKey;
 	private final GoalKey<Zombie> zombieWeaponGoalKey;
+	private final GoalKey<Zombie> zombieShieldGoalKey;
 	private final NamespacedKey axeCriticalDamageKey;
 	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
 	private final GoalKey<AbstractSkeleton> squadRangedGoalKey;
@@ -80,6 +88,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final PaperPounceCoordinator pounceCoordinator;
 	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperDamageMemory damageMemory;
+	private final PaperShieldMemory shieldMemory;
 	private final PaperMetrics metrics;
 	private final Map<UUID, OriginalSpiderGoals> originalSpiderGoals = new HashMap<>();
 
@@ -92,10 +101,12 @@ public final class PaperMobLifecycle implements Listener {
 		final PaperPounceCoordinator pounceCoordinator,
 		final PaperSquadCoordinator squadCoordinator,
 		final PaperDamageMemory damageMemory,
+		final PaperShieldMemory shieldMemory,
 		final PaperMetrics metrics
 	) {
 		this.retreatGoalKey = GoalKey.of(Zombie.class, new NamespacedKey(plugin, "zombie_reactive_retreat"));
 		this.zombieWeaponGoalKey = GoalKey.of(Zombie.class, new NamespacedKey(plugin, "zombie_weapon_tactics"));
+		this.zombieShieldGoalKey = GoalKey.of(Zombie.class, new NamespacedKey(plugin, "zombie_shield_tactics"));
 		this.axeCriticalDamageKey = new NamespacedKey(plugin, "axe_leap_critical_damage");
 		this.skeletonDisengageGoalKey = GoalKey.of(
 			AbstractSkeleton.class,
@@ -121,6 +132,7 @@ public final class PaperMobLifecycle implements Listener {
 		this.pounceCoordinator = pounceCoordinator;
 		this.squadCoordinator = squadCoordinator;
 		this.damageMemory = damageMemory;
+		this.shieldMemory = shieldMemory;
 		this.metrics = metrics;
 	}
 
@@ -133,6 +145,7 @@ public final class PaperMobLifecycle implements Listener {
 	public void onEntityRemoved(final EntityRemoveFromWorldEvent event) {
 		if (event.getEntity() instanceof Zombie zombie) {
 			this.damageMemory.discard(zombie);
+			this.shieldMemory.discard(zombie);
 		}
 		if (event.getEntity() instanceof Creeper creeper) {
 			this.blastReservations.release(creeper);
@@ -179,6 +192,47 @@ public final class PaperMobLifecycle implements Listener {
 		}
 	}
 
+	/**
+	 * Paper 的公开 use-item API 会同步非玩家实体的真实举盾姿态，但原版只替玩家结算盾牌伤害修饰器。
+	 * 这里在事件层补齐同等语义：成熟举盾、正面物理攻击才会被拦截，并保留耐久、声效和反击信号。
+	 */
+	@EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+	public void onPaperShieldGuardDamage(final EntityDamageByEntityEvent event) {
+		if (!(event.getEntity() instanceof Zombie zombie)) {
+			return;
+		}
+		PaperSettings root = this.settings.get();
+		PaperShieldSettings config = root.zombieShieldTactics();
+		LivingEntity attacker = causingLivingEntity(event.getDamager());
+		if (!root.enabled()
+			|| !config.enabled()
+			|| attacker == null
+			|| event.getDamage() <= 0.0
+			|| !isShieldBlockableCause(event.getCause())
+			|| this.intelligence.get(zombie) < config.minimumIntelligence()
+			|| !hasMatureActiveShield(zombie, config)
+			|| (attacker instanceof Mob attackerMob && this.squadCoordinator.areSquadmates(attackerMob, zombie))
+			|| !isFacingSource(zombie, attacker, config.minimumFacingDot())) {
+			return;
+		}
+		if (wasBlockedByActiveShield(event, zombie)) {
+			// A future Paper implementation may expose native mob blocking; MONITOR records that path once.
+			return;
+		}
+
+		event.setCancelled(true);
+		this.shieldMemory.record(zombie, attacker, Bukkit.getCurrentTick());
+		this.metrics.shieldBlock();
+		zombie.damageItemStack(EquipmentSlot.OFF_HAND, Math.max(1, 1 + (int)Math.floor(event.getDamage())));
+		zombie.getWorld().playSound(
+			zombie.getLocation(),
+			Sound.ITEM_SHIELD_BLOCK,
+			SoundCategory.HOSTILE,
+			1.0F,
+			0.92F
+		);
+	}
+
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
 	public void onZombieDamaged(final EntityDamageByEntityEvent event) {
 		if (!(event.getEntity() instanceof Zombie zombie) || !this.settings.get().enabled()) {
@@ -186,8 +240,54 @@ public final class PaperMobLifecycle implements Listener {
 		}
 		LivingEntity attacker = causingLivingEntity(event.getDamager());
 		if (attacker != null) {
+			if (wasBlockedByActiveShield(event, zombie)) {
+				this.shieldMemory.record(zombie, attacker, Bukkit.getCurrentTick());
+				this.metrics.shieldBlock();
+			}
 			this.damageMemory.record(zombie, attacker, event.getFinalDamage(), Bukkit.getCurrentTick());
 		}
+	}
+
+	@SuppressWarnings("deprecation")
+	private static boolean wasBlockedByActiveShield(
+		final EntityDamageByEntityEvent event,
+		final Zombie zombie
+	) {
+		return event.getDamage() > 0.0
+			&& PaperZombieShieldGoal.hasShieldInOffHand(zombie)
+			&& zombie.hasActiveItem()
+			&& zombie.getActiveItemHand() == EquipmentSlot.OFF_HAND
+			&& event.isApplicable(EntityDamageEvent.DamageModifier.BLOCKING)
+			&& event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING) < -1.0E-6;
+	}
+
+	private static boolean hasMatureActiveShield(
+		final Zombie zombie,
+		final PaperShieldSettings config
+	) {
+		return PaperZombieShieldGoal.hasShieldInOffHand(zombie)
+			&& zombie.hasActiveItem()
+			&& zombie.getActiveItemHand() == EquipmentSlot.OFF_HAND
+			&& zombie.getActiveItemUsedTime() >= config.minimumBlockUseTicks();
+	}
+
+	private static boolean isFacingSource(
+		final Zombie zombie,
+		final LivingEntity source,
+		final double minimumDot
+	) {
+		org.bukkit.util.Vector facing = zombie.getEyeLocation().getDirection();
+		double sourceX = source.getX() - zombie.getX();
+		double sourceZ = source.getZ() - zombie.getZ();
+		return ShieldCombatPlanner.canGuardDirection(
+			facing.getX(), facing.getZ(), sourceX, sourceZ, minimumDot
+		);
+	}
+
+	private static boolean isShieldBlockableCause(final EntityDamageEvent.DamageCause cause) {
+		return cause == EntityDamageEvent.DamageCause.ENTITY_ATTACK
+			|| cause == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK
+			|| cause == EntityDamageEvent.DamageCause.PROJECTILE;
 	}
 
 	public void installLoadedEntities() {
@@ -214,6 +314,12 @@ public final class PaperMobLifecycle implements Listener {
 					&& Bukkit.getMobGoals().hasGoal(zombie, this.zombieWeaponGoalKey)) {
 					Bukkit.getMobGoals().removeGoal(zombie, this.zombieWeaponGoalKey);
 					this.metrics.weaponGoalRemoved();
+				}
+				if (entity instanceof Zombie zombie
+					&& Bukkit.getMobGoals().hasGoal(zombie, this.zombieShieldGoalKey)) {
+					Bukkit.getMobGoals().removeGoal(zombie, this.zombieShieldGoalKey);
+					this.shieldMemory.discard(zombie);
+					this.metrics.shieldGoalRemoved();
 				}
 				if (entity instanceof AbstractSkeleton skeleton
 					&& Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonDisengageGoalKey)) {
@@ -258,6 +364,10 @@ public final class PaperMobLifecycle implements Listener {
 			}
 		}
 		return count;
+	}
+
+	public int pendingShieldBlockSignals() {
+		return this.shieldMemory.pendingCount();
 	}
 
 	private void install(final Entity entity) {
@@ -339,6 +449,29 @@ public final class PaperMobLifecycle implements Listener {
 		} else if (!shouldHaveWeaponGoal && hasWeaponGoal) {
 			Bukkit.getMobGoals().removeGoal(zombie, this.zombieWeaponGoalKey);
 			this.metrics.weaponGoalRemoved();
+		}
+
+		boolean shouldHaveShieldGoal = config.enabled() && config.zombieShieldTactics().enabled();
+		boolean hasShieldGoal = Bukkit.getMobGoals().hasGoal(zombie, this.zombieShieldGoalKey);
+		if (shouldHaveShieldGoal && !hasShieldGoal) {
+			Bukkit.getMobGoals().addGoal(
+				zombie,
+				ZOMBIE_SHIELD_GOAL_PRIORITY,
+				new PaperZombieShieldGoal(
+					zombie,
+					this.zombieShieldGoalKey,
+					this.settings,
+					this.intelligence,
+					this.squadCoordinator,
+					this.shieldMemory,
+					this.metrics
+				)
+			);
+			this.metrics.shieldGoalInstalled();
+		} else if (!shouldHaveShieldGoal && hasShieldGoal) {
+			Bukkit.getMobGoals().removeGoal(zombie, this.zombieShieldGoalKey);
+			this.shieldMemory.discard(zombie);
+			this.metrics.shieldGoalRemoved();
 		}
 	}
 

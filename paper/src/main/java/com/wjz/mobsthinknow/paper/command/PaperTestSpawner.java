@@ -56,8 +56,9 @@ public final class PaperTestSpawner {
 		EntityType.SPIDER
 	);
 	private static final Map<String, Preset> PRESETS = Map.of(
-		"zombie_swordsman", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, 7),
-		"zombie_axeman", new Preset(EntityType.ZOMBIE, Material.IRON_AXE, 10)
+		"zombie_swordsman", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, null, 7),
+		"zombie_axeman", new Preset(EntityType.ZOMBIE, Material.IRON_AXE, null, 10),
+		"zombie_shieldguard", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, Material.SHIELD, 10)
 	);
 
 	private final PaperIntelligenceService intelligence;
@@ -159,6 +160,10 @@ public final class PaperTestSpawner {
 		}
 		zombie.getEquipment().setItemInMainHand(new ItemStack(preset.weapon()));
 		zombie.getEquipment().setItemInMainHandDropChance(0.085F);
+		if (preset.offhand() != null) {
+			zombie.getEquipment().setItemInOffHand(new ItemStack(preset.offhand()));
+			zombie.getEquipment().setItemInOffHandDropChance(0.085F);
+		}
 		this.intelligence.set(zombie, preset.intelligence());
 	}
 
@@ -246,7 +251,7 @@ public final class PaperTestSpawner {
 	private record SpawnSpec(EntityType type, Preset preset) {
 	}
 
-	private record Preset(EntityType type, Material weapon, int intelligence) {
+	private record Preset(EntityType type, Material weapon, Material offhand, int intelligence) {
 	}
 
 	public record Result(int spawned, int requested, boolean rolledBack, String detail) {

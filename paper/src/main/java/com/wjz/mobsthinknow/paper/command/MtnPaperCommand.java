@@ -163,6 +163,15 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", axeRejectSight=" + snapshot.axeLaunchSightRejects()
 				+ ", axeRejectBand=" + snapshot.axeLaunchBandRejects()
 				+ ", axeRejectCollision=" + snapshot.axeLaunchCollisionRejects()
+				+ ", shieldGoalsInstalled=" + snapshot.shieldGoalsInstalled()
+				+ ", shieldGoalsRemoved=" + snapshot.shieldGoalsRemoved()
+				+ ", shieldGuards=" + snapshot.shieldGuards()
+				+ ", shieldBlocks=" + snapshot.shieldBlocks()
+				+ ", shieldCountersScheduled=" + snapshot.shieldCountersScheduled()
+				+ ", shieldStrikeWindows=" + snapshot.shieldStrikeWindows()
+				+ ", shieldAttacks=" + snapshot.shieldAttacks()
+				+ ", shieldCounterattacks=" + snapshot.shieldCounterattacks()
+				+ ", shieldPathFailures=" + snapshot.shieldPathFailures()
 				+ ", skeletonGoalsInstalled=" + snapshot.skeletonDisengageGoalsInstalled()
 				+ ", skeletonGoalsRemoved=" + snapshot.skeletonDisengageGoalsRemoved()
 				+ ", skeletonDisengages=" + snapshot.skeletonDisengageStarts()
@@ -210,7 +219,8 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", friendlyFirePrevented=" + squads.friendlyDamagePrevented()
 				+ ", candidateChecks=" + squads.boundedCandidateChecks()
 				+ ", orderPathFailures=" + squads.orderPathFailures()
-				+ ", pendingDamageMemories=" + this.damageMemory.pendingCount(),
+				+ ", pendingDamageMemories=" + this.damageMemory.pendingCount()
+				+ ", pendingShieldSignals=" + this.lifecycle.pendingShieldBlockSignals(),
 			NamedTextColor.AQUA
 		));
 		return true;

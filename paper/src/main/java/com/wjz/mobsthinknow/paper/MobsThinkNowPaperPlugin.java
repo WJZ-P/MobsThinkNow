@@ -5,6 +5,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
+import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
 import com.wjz.mobsthinknow.paper.command.MtnPaperCommand;
 import com.wjz.mobsthinknow.paper.command.PaperRuntimeSelfTest;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
@@ -17,6 +18,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private final PaperMetrics metrics = new PaperMetrics();
 	private final PaperDamageMemory damageMemory = new PaperDamageMemory();
+	private final PaperShieldMemory shieldMemory = new PaperShieldMemory();
 	private PaperSettings settings;
 	private PaperIntelligenceService intelligence;
 	private PaperSkeletonProfile skeletonProfile;
@@ -52,6 +54,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.pounceCoordinator,
 			this.squadCoordinator,
 			this.damageMemory,
+			this.shieldMemory,
 			this.metrics
 		);
 		this.getServer().getPluginManager().registerEvents(this.mobLifecycle, this);
@@ -91,6 +94,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.squadCoordinator.stop();
 		}
 		this.damageMemory.clear();
+		this.shieldMemory.clear();
 		if (this.blastReservations != null) {
 			this.blastReservations.clear();
 		}
@@ -113,6 +117,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.settings = this.readSettings();
 		this.squadSettings = this.readSquadSettings();
 		this.damageMemory.clear();
+		this.shieldMemory.clear();
 		this.blastReservations.clear();
 		this.pounceCoordinator.clear();
 		this.squadCoordinator.reconfigure();
@@ -142,6 +147,22 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 				this.getConfig().getInt("zombie.weapon-tactics.axe.preparation-timeout-ticks", 30),
 				this.getConfig().getDouble("zombie.weapon-tactics.axe.horizontal-speed", 0.34),
 				this.getConfig().getDouble("zombie.weapon-tactics.axe.critical-damage-multiplier", 1.50)
+			),
+			PaperShieldSettings.validated(
+				this.getConfig().getBoolean("zombie.shield-tactics.enabled", true),
+				this.getConfig().getInt("zombie.shield-tactics.minimum-intelligence", 4),
+				this.getConfig().getDouble("zombie.shield-tactics.raise-distance", 6.0),
+				this.getConfig().getDouble("zombie.shield-tactics.lower-distance", 7.5),
+				this.getConfig().getDouble("zombie.shield-tactics.movement-speed", 1.10),
+				this.getConfig().getInt("zombie.shield-tactics.repath-ticks", 6),
+				this.getConfig().getInt("zombie.shield-tactics.guard.minimum-ticks", 12),
+				this.getConfig().getInt("zombie.shield-tactics.guard.maximum-ticks", 28),
+				this.getConfig().getInt("zombie.shield-tactics.counter.minimum-delay-ticks", 2),
+				this.getConfig().getInt("zombie.shield-tactics.counter.maximum-delay-ticks", 4),
+				this.getConfig().getInt("zombie.shield-tactics.strike-window-ticks", 10),
+				this.getConfig().getInt("zombie.shield-tactics.block-signal-memory-ticks", 20),
+				this.getConfig().getInt("zombie.shield-tactics.block.minimum-use-ticks", 5),
+				this.getConfig().getDouble("zombie.shield-tactics.block.minimum-facing-dot", 0.0)
 			),
 			this.getConfig().getBoolean("skeleton.spacing.enabled", true),
 			this.getConfig().getInt("skeleton.spacing.minimum-intelligence", 1),

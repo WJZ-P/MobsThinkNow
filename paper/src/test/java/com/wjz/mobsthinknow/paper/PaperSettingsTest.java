@@ -20,6 +20,7 @@ class PaperSettingsTest {
 			9.0,
 			0,
 			PaperWeaponSettings.validated(true, 99, 99.0, 99.0, 0, 99, 0, 999, 99.0, Double.NaN),
+			PaperShieldSettings.validated(true, 99, 99.0, 0.0, 99.0, 0, 0, 999, 0, 999, 0, 999, 999, Double.NaN),
 			true,
 			99,
 			100.0,
@@ -74,6 +75,19 @@ class PaperSettingsTest {
 		assertEquals(80, settings.zombieWeaponTactics().axePreparationTimeoutTicks());
 		assertEquals(0.6, settings.zombieWeaponTactics().axeHorizontalSpeed());
 		assertEquals(1.0, settings.zombieWeaponTactics().axeCriticalDamageMultiplier());
+		assertEquals(10, settings.zombieShieldTactics().minimumIntelligence());
+		assertEquals(10.0, settings.zombieShieldTactics().raiseDistance());
+		assertEquals(10.0, settings.zombieShieldTactics().lowerDistance());
+		assertEquals(1.5, settings.zombieShieldTactics().movementSpeed());
+		assertEquals(2, settings.zombieShieldTactics().repathTicks());
+		assertEquals(4, settings.zombieShieldTactics().minimumGuardTicks());
+		assertEquals(100, settings.zombieShieldTactics().maximumGuardTicks());
+		assertEquals(1, settings.zombieShieldTactics().minimumCounterDelayTicks());
+		assertEquals(20, settings.zombieShieldTactics().maximumCounterDelayTicks());
+		assertEquals(4, settings.zombieShieldTactics().strikeWindowTicks());
+		assertEquals(40, settings.zombieShieldTactics().blockSignalMemoryTicks());
+		assertEquals(20, settings.zombieShieldTactics().minimumBlockUseTicks());
+		assertEquals(-0.5, settings.zombieShieldTactics().minimumFacingDot());
 		assertEquals(10, settings.skeletonSpacingMinimumIntelligence());
 		assertEquals(24.0, settings.skeletonPreferredRange());
 		assertEquals(200, settings.skeletonDisengageMaximumTicks());
@@ -107,6 +121,7 @@ class PaperSettingsTest {
 		PaperSettings settings = PaperSettings.validated(
 			true, true, true, 1, 0.20, 0.30, 100, 5.0, 1.50, 20,
 			PaperWeaponSettings.validated(true, 3, 2.8, 1.15, 6, 6, 8, 30, 0.34, 1.50),
+			PaperShieldSettings.validated(true, 4, 6.0, 7.5, 1.10, 6, 12, 28, 2, 4, 10, 20, 5, 0.0),
 			true, 1, 10.0, 80, 20,
 			true, 4, 24.0, 16, 28, 0.75, 20, 3.0,
 			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32,
@@ -122,6 +137,11 @@ class PaperSettingsTest {
 		assertTrue(settings.zombieWeaponTactics().enabled());
 		assertEquals(2.8, settings.zombieWeaponTactics().spacingRadius());
 		assertEquals(1.50, settings.zombieWeaponTactics().axeCriticalDamageMultiplier());
+		assertTrue(settings.zombieShieldTactics().enabled());
+		assertEquals(12, settings.zombieShieldTactics().minimumGuardTicks());
+		assertEquals(28, settings.zombieShieldTactics().maximumGuardTicks());
+		assertEquals(2, settings.zombieShieldTactics().minimumCounterDelayTicks());
+		assertEquals(4, settings.zombieShieldTactics().maximumCounterDelayTicks());
 		assertEquals(10.0, settings.skeletonPreferredRange());
 		assertEquals(80, settings.skeletonDisengageMaximumTicks());
 		assertEquals(20, settings.skeletonDisengageCooldownTicks());

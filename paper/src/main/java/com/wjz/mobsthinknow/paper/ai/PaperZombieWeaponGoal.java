@@ -163,12 +163,16 @@ public final class PaperZombieWeaponGoal implements Goal<Zombie> {
 		);
 		LivingEntity selectedTarget = this.currentTarget();
 		PaperSquadDirective directive = this.squads.directiveFor(this.zombie);
+		boolean delegatedToShieldGoal = root.zombieShieldTactics().enabled()
+			&& this.intelligence.get(this.zombie) >= root.zombieShieldTactics().minimumIntelligence()
+			&& PaperZombieShieldGoal.hasShieldInOffHand(this.zombie);
 		boolean eligible = root.enabled()
 			&& config.enabled()
 			&& this.zombie.isValid()
 			&& !this.zombie.isDead()
 			&& !this.zombie.isInsideVehicle()
 			&& this.intelligence.get(this.zombie) >= config.minimumIntelligence()
+			&& !delegatedToShieldGoal
 			&& selected != PaperWeaponProfile.Kind.NONE
 			&& PaperThreats.isLiveFor(this.zombie, selectedTarget)
 			&& (directive == null || directive.state() == MixedSquadState.ENGAGING);
