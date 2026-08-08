@@ -1,7 +1,10 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.OptionalInt;
+import com.wjz.mobsthinknow.shared.squad.MixedSquadPlanner;
+import com.wjz.mobsthinknow.shared.squad.MixedSquadSpecies;
 
 /** 跨物种首领选举：只比较智力；并列最高智力者再按出生时已经随机化的 UUID 票抽签。 */
 public final class SquadLeaderElection {
@@ -9,24 +12,19 @@ public final class SquadLeaderElection {
 	}
 
 	public static OptionalInt elect(final Collection<SquadLeaderCandidate> candidates) {
-		SquadLeaderCandidate winner = null;
-		for (SquadLeaderCandidate candidate : candidates) {
-			if (winner == null || isBetter(candidate, winner)) {
-				winner = candidate;
-			}
-		}
-
-		return winner == null ? OptionalInt.empty() : OptionalInt.of(winner.entityId());
-	}
-
-	private static boolean isBetter(final SquadLeaderCandidate challenger, final SquadLeaderCandidate incumbent) {
-		if (challenger.intelligence() != incumbent.intelligence()) {
-			return challenger.intelligence() > incumbent.intelligence();
-		}
-		int ticketComparison = Long.compareUnsigned(challenger.randomTicket(), incumbent.randomTicket());
-		if (ticketComparison != 0) {
-			return ticketComparison < 0;
-		}
-		return challenger.entityId() < incumbent.entityId();
+		List<MixedSquadPlanner.Member<Integer>> snapshots = candidates.stream()
+			.map(candidate -> new MixedSquadPlanner.Member<>(
+				candidate.entityId(),
+				candidate.intelligence(),
+				candidate.randomTicket(),
+				candidate.entityId(),
+				MixedSquadSpecies.ZOMBIE,
+				false,
+				false
+			))
+			.toList();
+		return MixedSquadPlanner.electLeader(snapshots)
+			.map(OptionalInt::of)
+			.orElseGet(OptionalInt::empty);
 	}
 }
