@@ -211,6 +211,7 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", creeperShieldBaits=" + snapshot.creeperShieldBaits()
 				+ ", creeperFeintPathFailures=" + snapshot.creeperFeintPathFailures()
 				+ ", activeCreeperFeints=" + this.lifecycle.activeCreeperFeintCount()
+				+ ", coolingCreeperFeints=" + this.lifecycle.coolingCreeperFeintCount()
 				+ ", blastReservations=" + snapshot.blastReservationsAcquired()
 				+ ", blastConflicts=" + snapshot.blastReservationConflicts()
 				+ ", blastSaturations=" + snapshot.blastReservationSaturations()

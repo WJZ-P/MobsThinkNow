@@ -29,8 +29,9 @@ class CreeperFeintPlannerTest {
 			10
 		);
 		assertTrue(destination.z() < 10.0);
-		assertTrue(destination.x() >= 8.2 && destination.x() < 9.0);
+		assertTrue(destination.x() > 5.0 && destination.x() < 5.5);
 		assertEquals(4.0, destination.y());
+		assertEquals(81.0, destination.distanceSquared(new Vec3d(12.5, 4.0, 10.0)), 1.0E-9);
 	}
 
 	@Test

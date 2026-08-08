@@ -64,7 +64,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 	public boolean shouldActivate() {
 		PaperSettings config = this.settings.get();
 		if (!enabled(config)
-			|| this.feintMemory.isActive(this.creeper)
+			|| this.feintMemory.blocksCombatGoals(this.creeper)
 			|| this.intelligence.get(this.creeper) < config.creeperMinimumIntelligence()) {
 			return false;
 		}
@@ -79,7 +79,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 	public boolean shouldStayActive() {
 		PaperSettings config = this.settings.get();
 		if (!enabled(config)
-			|| this.feintMemory.isActive(this.creeper)
+			|| this.feintMemory.blocksCombatGoals(this.creeper)
 			|| this.abortRequested
 			|| !this.creeper.isValid()
 			|| this.creeper.isDead()) {

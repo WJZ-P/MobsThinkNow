@@ -65,7 +65,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 			&& this.intelligence.get(this.creeper) >= config.creeperMinimumIntelligence()
 			&& !this.creeper.isInsideVehicle()
 			&& !this.creeper.isIgnited()
-			&& !this.feintMemory.isActive(this.creeper)
+			&& !this.feintMemory.blocksCombatGoals(this.creeper)
 			&& PaperThreats.isLiveFor(this.creeper, this.creeper.getTarget())
 			&& !this.hasNearbyCat();
 	}
@@ -76,7 +76,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		return enabled(config)
 			&& !this.creeper.isInsideVehicle()
 			&& !this.creeper.isIgnited()
-			&& !this.feintMemory.isActive(this.creeper)
+			&& !this.feintMemory.blocksCombatGoals(this.creeper)
 			&& PaperThreats.isLiveFor(this.creeper, this.creeper.getTarget())
 			&& !this.hasNearbyCat();
 	}

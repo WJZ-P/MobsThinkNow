@@ -100,6 +100,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		command.setExecutor(commandHandler);
 		command.setTabCompleter(commandHandler);
 		this.mobLifecycle.installLoadedEntities();
+		this.creeperFeintMemory.start(this);
 		this.fireworkBolts.start();
 		this.squadCoordinator.start();
 		this.getLogger().info(
@@ -123,7 +124,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		}
 		this.damageMemory.clear();
 		this.shieldMemory.clear();
-		this.creeperFeintMemory.clear();
+		this.creeperFeintMemory.stop();
 		if (this.blastReservations != null) {
 			this.blastReservations.clear();
 		}

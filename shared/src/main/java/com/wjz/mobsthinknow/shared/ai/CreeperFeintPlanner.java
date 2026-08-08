@@ -10,6 +10,7 @@ import com.wjz.mobsthinknow.shared.math.Vec3d;
  */
 public final class CreeperFeintPlanner {
 	private static final double MINIMUM_STAGING_DISTANCE = 5.0;
+	private static final double REPOSITION_RADIUS = 9.0;
 
 	private CreeperFeintPlanner() {
 	}
@@ -58,10 +59,10 @@ public final class CreeperFeintPlanner {
 		Vec3d prediction = capHorizontal(targetVelocity.scale(3.0 + iq * 0.25), 2.5);
 		double rearOffset = 2.4 + iq * 0.08;
 		double sideOffset = 3.3 + iq * 0.09;
-		return targetPosition
-			.add(prediction)
-			.add(facing.scale(-rearOffset))
+		Vec3d rawOffset = facing.scale(-rearOffset)
 			.add(lateral.scale(stableSide < 0 ? -sideOffset : sideOffset));
+		Vec3d safeOffset = rawOffset.horizontalUnitOr(facing.scale(-1.0)).scale(REPOSITION_RADIUS);
+		return targetPosition.add(prediction).add(safeOffset);
 	}
 
 	public static int primeTicks(final double unitRandom) {

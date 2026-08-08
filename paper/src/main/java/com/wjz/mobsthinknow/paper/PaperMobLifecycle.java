@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
 import org.bukkit.Tag;
@@ -59,6 +60,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.projectiles.ProjectileSource;
 import org.bukkit.plugin.Plugin;
 
@@ -194,6 +196,17 @@ public final class PaperMobLifecycle implements Listener {
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
 	public void onCreeperIgnition(final CreeperIgniteEvent event) {
 		this.creeperFeintMemory.observeIgnition(event.getEntity(), event.isIgnited());
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onPlayerIgnitesFeintingCreeper(final PlayerInteractEntityEvent event) {
+		if (!(event.getRightClicked() instanceof Creeper creeper)) {
+			return;
+		}
+		Material held = event.getPlayer().getInventory().getItem(event.getHand()).getType();
+		if (held == Material.FLINT_AND_STEEL || held == Material.FIRE_CHARGE) {
+			this.creeperFeintMemory.markExternalIgnition(creeper);
+		}
 	}
 
 	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -438,6 +451,10 @@ public final class PaperMobLifecycle implements Listener {
 
 	public int activeCreeperFeintCount() {
 		return this.creeperFeintMemory.activeCount();
+	}
+
+	public int coolingCreeperFeintCount() {
+		return this.creeperFeintMemory.coolingCount();
 	}
 
 	private void install(final Entity entity) {

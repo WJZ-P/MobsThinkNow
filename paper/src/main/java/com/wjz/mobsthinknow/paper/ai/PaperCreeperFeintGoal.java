@@ -138,6 +138,10 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 			this.completed = true;
 			return;
 		}
+		// Paper 的 setIgnited(false) 只清强制点燃位；原版 swellDir 仍可能因目标关系继续增长。
+		// 假动作仍持有引信所有权时每 tick 压回零，避免侧移阶段偷偷走完真实爆炸线。
+		this.creeper.setIgnited(false);
+		this.creeper.setFuseTicks(0);
 		Location currentDestination = this.destination;
 		if (currentDestination == null) {
 			this.beginReposition(current);
@@ -175,19 +179,23 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 	@Override
 	public void stop() {
 		boolean externalIgnition = this.memory.wasExternallyIgnited(this.creeper);
+		long now = Bukkit.getCurrentTick();
 		if (this.ownsIgnition && !externalIgnition) {
 			this.setOwnedIgnited(false);
 			this.creeper.setFuseTicks(0);
+			this.memory.beginPostFeintCooling(this.creeper, now, 10);
+		} else {
+			this.memory.endOwnedIgnition(this.creeper);
 		}
 		this.creeper.getPathfinder().stopPathfinding();
 		PaperCreeperFeintSettings config = this.settings.get().creeperFeints();
 		int cooldown = CreeperFeintPlanner.cooldownTicks(
 			config.cooldownTicks(),
-			this.unitJitter(Bukkit.getCurrentTick(), 0xC001D00DL)
+			this.unitJitter(now, 0xC001D00DL)
 		);
 		this.memory.finish(
 			this.creeper,
-			Bukkit.getCurrentTick(),
+			now,
 			this.completed ? cooldown : Math.max(40, cooldown / 2)
 		);
 		if (this.completed) {
@@ -278,12 +286,12 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 	}
 
 	private void setOwnedIgnited(final boolean ignited) {
-		this.memory.beginOwnedIgnitionMutation(this.creeper);
-		try {
-			this.creeper.setIgnited(ignited);
-		} finally {
-			this.memory.endOwnedIgnitionMutation(this.creeper);
+		if (ignited) {
+			this.memory.beginOwnedIgnition(this.creeper);
+			this.creeper.setIgnited(true);
+			return;
 		}
+		this.creeper.setIgnited(false);
 	}
 
 	private static boolean enabled(
