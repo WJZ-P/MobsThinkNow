@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
+import com.wjz.mobsthinknow.shared.ai.RangedSpacingPlanner;
+
 /**
  * 骷髅战斗状态机使用的无世界依赖数学函数。
  *
@@ -7,14 +9,14 @@ package com.wjz.mobsthinknow.ai.skeleton;
  * 把“感知世界”和“如何计算”揉成一段难以验证的 tick 代码。</p>
  */
 public final class SkeletonCombatMath {
-	public static final double DEFAULT_PREFERRED_RANGE = 10.0;
+	public static final double DEFAULT_PREFERRED_RANGE = RangedSpacingPlanner.DEFAULT_PREFERRED_RANGE;
 	public static final double PROJECTILE_SPEED = 1.6;
 	public static final double MAXIMUM_LEAD_TICKS = 8.0;
 	public static final double MAXIMUM_LEAD_DISTANCE = 3.0;
 	/** 兼容旧测试与未提供智力的调用：进入偏好射程的 60% 时强制脱离。 */
-	public static final double EMERGENCY_DISENGAGE_TRIGGER_RATIO = 0.60;
+	public static final double EMERGENCY_DISENGAGE_TRIGGER_RATIO = RangedSpacingPlanner.EMERGENCY_TRIGGER_RATIO;
 	/** 接管后必须拉到偏好射程的 90% 才释放，避免在临界点逐 tick 抖动。 */
-	public static final double EMERGENCY_DISENGAGE_SAFE_RATIO = 0.90;
+	public static final double EMERGENCY_DISENGAGE_SAFE_RATIO = RangedSpacingPlanner.EMERGENCY_SAFE_RATIO;
 
 	private SkeletonCombatMath() {
 	}
@@ -25,21 +27,12 @@ public final class SkeletonCombatMath {
 		final double preferredRange,
 		final boolean dodging
 	) {
-		if (dodging) {
-			return MovementMode.DODGE;
-		}
-
-		double preferred = validPreferredRange(preferredRange);
-		double kiteRange = preferred * 0.60;
-		if (Double.isFinite(distanceSquared) && distanceSquared < kiteRange * kiteRange) {
-			return MovementMode.KITE;
-		}
-
-		double pursuitRange = preferred * 1.35;
-		if (!hasLineOfSight || !Double.isFinite(distanceSquared) || distanceSquared > pursuitRange * pursuitRange) {
-			return MovementMode.APPROACH;
-		}
-		return MovementMode.STRAFE;
+		return fromShared(RangedSpacingPlanner.chooseMovement(
+			distanceSquared,
+			hasLineOfSight,
+			preferredRange,
+			dodging
+		));
 	}
 
 	/**
@@ -47,8 +40,7 @@ public final class SkeletonCombatMath {
 	 * 避免数值差异退化成“会拉扯/完全不会拉扯”的二元开关。
 	 */
 	public static double intelligenceAdjustedPreferredRange(final double preferredRange, final int intelligence) {
-		double factor = lerp(0.85, 1.15, normalizedIntelligence(intelligence));
-		return validPreferredRange(preferredRange) * factor;
+		return RangedSpacingPlanner.intelligenceAdjustedPreferredRange(preferredRange, intelligence);
 	}
 
 	public static MovementMode chooseMovement(
@@ -67,21 +59,19 @@ public final class SkeletonCombatMath {
 	}
 
 	public static double emergencyDisengageTriggerRange(final double preferredRange) {
-		return validPreferredRange(preferredRange) * EMERGENCY_DISENGAGE_TRIGGER_RATIO;
+		return RangedSpacingPlanner.emergencyTriggerRange(preferredRange);
 	}
 
 	public static double emergencyDisengageSafeRange(final double preferredRange) {
-		return validPreferredRange(preferredRange) * EMERGENCY_DISENGAGE_SAFE_RATIO;
+		return RangedSpacingPlanner.emergencySafeRange(preferredRange);
 	}
 
 	public static double emergencyDisengageTriggerRange(final double preferredRange, final int intelligence) {
-		double ratio = lerp(0.48, 0.72, normalizedIntelligence(intelligence));
-		return intelligenceAdjustedPreferredRange(preferredRange, intelligence) * ratio;
+		return RangedSpacingPlanner.emergencyTriggerRange(preferredRange, intelligence);
 	}
 
 	public static double emergencyDisengageSafeRange(final double preferredRange, final int intelligence) {
-		double ratio = lerp(0.78, 1.05, normalizedIntelligence(intelligence));
-		return intelligenceAdjustedPreferredRange(preferredRange, intelligence) * ratio;
+		return RangedSpacingPlanner.emergencySafeRange(preferredRange, intelligence);
 	}
 
 	/**
@@ -111,9 +101,11 @@ public final class SkeletonCombatMath {
 		final double preferredRange,
 		final int intelligence
 	) {
-		double triggerRange = emergencyDisengageTriggerRange(preferredRange, intelligence);
-		return isValidSquaredDistance(horizontalDistanceSquared)
-			&& horizontalDistanceSquared < triggerRange * triggerRange;
+		return RangedSpacingPlanner.shouldStartEmergencyDisengage(
+			horizontalDistanceSquared,
+			preferredRange,
+			intelligence
+		);
 	}
 
 	public static boolean shouldContinueEmergencyDisengage(
@@ -121,27 +113,29 @@ public final class SkeletonCombatMath {
 		final double preferredRange,
 		final int intelligence
 	) {
-		double safeRange = emergencyDisengageSafeRange(preferredRange, intelligence);
-		return isValidSquaredDistance(horizontalDistanceSquared)
-			&& horizontalDistanceSquared < safeRange * safeRange;
+		return RangedSpacingPlanner.shouldContinueEmergencyDisengage(
+			horizontalDistanceSquared,
+			preferredRange,
+			intelligence
+		);
 	}
 
 	/** 全力逃跑寻路速度随智力从约 1.29 提升到 1.60。 */
 	public static double disengagePathSpeed(final int intelligence) {
-		return lerp(1.285, 1.60, normalizedIntelligence(intelligence));
+		return RangedSpacingPlanner.maximumEscapePathSpeed(intelligence);
 	}
 
 	/** 面向目标拉弓后退的输入强度；它不是转身逃跑速度。 */
 	public static float kiteBackwardInput(final int intelligence) {
-		return (float)lerp(0.68, 1.0, normalizedIntelligence(intelligence));
+		return RangedSpacingPlanner.kiteBackwardInput(intelligence);
 	}
 
 	public static float kiteSidewaysInput(final int intelligence) {
-		return (float)lerp(0.32, 0.56, normalizedIntelligence(intelligence));
+		return RangedSpacingPlanner.kiteSidewaysInput(intelligence);
 	}
 
 	public static int disengagePathRefreshTicks(final int intelligence) {
-		return Math.max(3, 9 - SkeletonIntelligence.clamp(intelligence) / 2);
+		return RangedSpacingPlanner.pathRefreshTicks(intelligence);
 	}
 
 	/**
@@ -317,23 +311,17 @@ public final class SkeletonCombatMath {
 		return Math.abs(value) < 1.0E-6 ? 0.0F : (float)value;
 	}
 
-	private static double validPreferredRange(final double preferredRange) {
-		return Double.isFinite(preferredRange) && preferredRange > 0.0
-			? preferredRange
-			: DEFAULT_PREFERRED_RANGE;
+	private static MovementMode fromShared(final RangedSpacingPlanner.MovementMode mode) {
+		return switch (mode) {
+			case APPROACH -> MovementMode.APPROACH;
+			case STRAFE -> MovementMode.STRAFE;
+			case KITE -> MovementMode.KITE;
+			case DODGE -> MovementMode.DODGE;
+		};
 	}
 
 	private static boolean isValidSquaredDistance(final double distanceSquared) {
 		return Double.isFinite(distanceSquared) && distanceSquared >= 0.0;
-	}
-
-	private static double normalizedIntelligence(final int intelligence) {
-		return (SkeletonIntelligence.clamp(intelligence) - SkeletonIntelligence.MINIMUM)
-			/ (double)(SkeletonIntelligence.MAXIMUM - SkeletonIntelligence.MINIMUM);
-	}
-
-	private static double lerp(final double start, final double end, final double amount) {
-		return start + (end - start) * amount;
 	}
 
 	public enum MovementMode {

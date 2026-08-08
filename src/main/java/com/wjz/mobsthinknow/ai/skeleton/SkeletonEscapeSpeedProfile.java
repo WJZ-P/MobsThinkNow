@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
+import com.wjz.mobsthinknow.shared.ai.DifficultyTier;
+import com.wjz.mobsthinknow.shared.ai.RangedSpacingPlanner;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
@@ -12,8 +14,8 @@ import net.minecraft.world.level.storage.ValueOutput;
  */
 public final class SkeletonEscapeSpeedProfile {
 	private static final String SPEED_FACTOR_TAG = "MobsThinkNowEscapeSpeedFactor";
-	private static final float MINIMUM_FACTOR = 0.68F;
-	private static final float MAXIMUM_FACTOR = 1.0F;
+	private static final float MINIMUM_FACTOR = (float)RangedSpacingPlanner.MINIMUM_ESCAPE_SPEED_FACTOR;
+	private static final float MAXIMUM_FACTOR = (float)RangedSpacingPlanner.MAXIMUM_ESCAPE_SPEED_FACTOR;
 
 	private SkeletonEscapeSpeedProfile() {
 	}
@@ -54,12 +56,13 @@ public final class SkeletonEscapeSpeedProfile {
 
 	/** 相同随机分位下：简单 ≤ 普通 ≤ 困难；所有难度的理论最大值都严格为 1。 */
 	static float factorForRoll(final int difficultyId, final float roll) {
-		float minimum = switch (Math.clamp(difficultyId, 0, 3)) {
-			case 0, 1 -> 0.68F;
-			case 2 -> 0.76F;
-			default -> 0.84F;
+		DifficultyTier difficulty = switch (Math.clamp(difficultyId, 0, 3)) {
+			case 0 -> DifficultyTier.PEACEFUL;
+			case 1 -> DifficultyTier.EASY;
+			case 2 -> DifficultyTier.NORMAL;
+			default -> DifficultyTier.HARD;
 		};
-		return minimum + (MAXIMUM_FACTOR - minimum) * clamp(roll, 0.0F, 1.0F);
+		return (float)RangedSpacingPlanner.escapeSpeedFactor(difficulty, roll);
 	}
 
 	private static float clamp(final float value, final float minimum, final float maximum) {
