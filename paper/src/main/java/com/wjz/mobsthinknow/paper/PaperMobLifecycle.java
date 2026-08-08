@@ -34,6 +34,7 @@ import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
+import org.bukkit.Tag;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
@@ -215,6 +216,19 @@ public final class PaperMobLifecycle implements Listener {
 			|| !isFacingSource(zombie, attacker, config.minimumFacingDot())) {
 			return;
 		}
+		if (config.axeDisableTicks() > 0 && isShieldDisablingAxe(event, attacker)) {
+			zombie.clearActiveItem();
+			this.shieldMemory.disable(zombie, Bukkit.getCurrentTick(), config.axeDisableTicks());
+			this.metrics.shieldDisabled();
+			zombie.getWorld().playSound(
+				zombie.getLocation(),
+				Sound.ITEM_SHIELD_BREAK,
+				SoundCategory.HOSTILE,
+				0.9F,
+				0.82F
+			);
+			return;
+		}
 		if (wasBlockedByActiveShield(event, zombie)) {
 			// A future Paper implementation may expose native mob blocking; MONITOR records that path once.
 			return;
@@ -288,6 +302,18 @@ public final class PaperMobLifecycle implements Listener {
 		return cause == EntityDamageEvent.DamageCause.ENTITY_ATTACK
 			|| cause == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK
 			|| cause == EntityDamageEvent.DamageCause.PROJECTILE;
+	}
+
+	private static boolean isShieldDisablingAxe(
+		final EntityDamageByEntityEvent event,
+		final LivingEntity attacker
+	) {
+		EntityDamageEvent.DamageCause cause = event.getCause();
+		org.bukkit.inventory.EntityEquipment equipment = attacker.getEquipment();
+		return (cause == EntityDamageEvent.DamageCause.ENTITY_ATTACK
+			|| cause == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK)
+			&& equipment != null
+			&& Tag.ITEMS_AXES.isTagged(equipment.getItemInMainHand().getType());
 	}
 
 	public void installLoadedEntities() {
@@ -370,6 +396,10 @@ public final class PaperMobLifecycle implements Listener {
 		return this.shieldMemory.pendingCount();
 	}
 
+	public int disabledShieldGuardCount() {
+		return this.shieldMemory.disabledCount(Bukkit.getCurrentTick());
+	}
+
 	private void install(final Entity entity) {
 		if (!(entity instanceof Mob mob) || !this.intelligence.supports(mob)) {
 			return;
@@ -442,6 +472,7 @@ public final class PaperMobLifecycle implements Listener {
 					this.settings,
 					this.intelligence,
 					this.squadCoordinator,
+					this.shieldMemory,
 					this.metrics
 				)
 			);

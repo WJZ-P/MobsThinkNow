@@ -162,7 +162,8 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 				this.getConfig().getInt("zombie.shield-tactics.strike-window-ticks", 10),
 				this.getConfig().getInt("zombie.shield-tactics.block-signal-memory-ticks", 20),
 				this.getConfig().getInt("zombie.shield-tactics.block.minimum-use-ticks", 5),
-				this.getConfig().getDouble("zombie.shield-tactics.block.minimum-facing-dot", 0.0)
+				this.getConfig().getDouble("zombie.shield-tactics.block.minimum-facing-dot", 0.0),
+				this.getConfig().getDouble("zombie.shield-tactics.axe-disable-seconds", 3.0)
 			),
 			this.getConfig().getBoolean("skeleton.spacing.enabled", true),
 			this.getConfig().getInt("skeleton.spacing.minimum-intelligence", 1),

@@ -73,6 +73,8 @@ zombie:
         minimum-use-ticks: 5
         # Normalized horizontal dot product: 0.0 means the front 180-degree hemisphere.
         minimum-facing-dot: 0.0
+      # A frontal axe hit deals normal damage and keeps this guard from raising the shield again.
+      axe-disable-seconds: 3.0
 
 skeleton:
   spacing:

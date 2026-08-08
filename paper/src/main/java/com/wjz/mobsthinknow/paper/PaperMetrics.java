@@ -30,6 +30,7 @@ public final class PaperMetrics {
 	private final AtomicLong shieldStrikeWindows = new AtomicLong();
 	private final AtomicLong shieldAttacks = new AtomicLong();
 	private final AtomicLong shieldCounterattacks = new AtomicLong();
+	private final AtomicLong shieldDisables = new AtomicLong();
 	private final AtomicLong shieldPathFailures = new AtomicLong();
 	private final AtomicLong skeletonDisengageGoalsInstalled = new AtomicLong();
 	private final AtomicLong skeletonDisengageGoalsRemoved = new AtomicLong();
@@ -172,6 +173,10 @@ public final class PaperMetrics {
 
 	public void shieldCounterattack() {
 		this.shieldCounterattacks.incrementAndGet();
+	}
+
+	public void shieldDisabled() {
+		this.shieldDisables.incrementAndGet();
 	}
 
 	public void shieldPathFailed() {
@@ -358,6 +363,7 @@ public final class PaperMetrics {
 			this.shieldStrikeWindows.get(),
 			this.shieldAttacks.get(),
 			this.shieldCounterattacks.get(),
+			this.shieldDisables.get(),
 			this.shieldPathFailures.get(),
 			this.skeletonDisengageGoalsInstalled.get(),
 			this.skeletonDisengageGoalsRemoved.get(),
@@ -427,6 +433,7 @@ public final class PaperMetrics {
 		long shieldStrikeWindows,
 		long shieldAttacks,
 		long shieldCounterattacks,
+		long shieldDisables,
 		long shieldPathFailures,
 		long skeletonDisengageGoalsInstalled,
 		long skeletonDisengageGoalsRemoved,

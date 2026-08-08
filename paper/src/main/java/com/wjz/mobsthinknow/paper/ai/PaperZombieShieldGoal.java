@@ -126,7 +126,7 @@ public final class PaperZombieShieldGoal implements Goal<Zombie> {
 		this.zombie.getPathfinder().stopPathfinding();
 		this.zombie.setArmsRaised(false);
 		this.zombie.setAggressive(this.zombie.getTarget() != null);
-		this.memory.discard(this.zombie);
+		this.memory.discardSignal(this.zombie);
 		this.phase = Phase.INACTIVE;
 		this.target = null;
 		this.guardDeadline = Long.MIN_VALUE;
@@ -288,6 +288,7 @@ public final class PaperZombieShieldGoal implements Goal<Zombie> {
 			&& !this.zombie.isDead()
 			&& !this.zombie.isInsideVehicle()
 			&& this.intelligence.get(this.zombie) >= config.minimumIntelligence()
+			&& !this.memory.isDisabled(this.zombie, Bukkit.getCurrentTick())
 			&& hasShieldInOffHand(this.zombie)
 			&& PaperThreats.isLiveFor(this.zombie, selected)
 			&& (directive == null || directive.state() == MixedSquadState.ENGAGING);

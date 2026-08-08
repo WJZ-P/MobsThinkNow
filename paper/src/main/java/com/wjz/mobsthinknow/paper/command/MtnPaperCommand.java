@@ -171,6 +171,7 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", shieldStrikeWindows=" + snapshot.shieldStrikeWindows()
 				+ ", shieldAttacks=" + snapshot.shieldAttacks()
 				+ ", shieldCounterattacks=" + snapshot.shieldCounterattacks()
+				+ ", shieldDisables=" + snapshot.shieldDisables()
 				+ ", shieldPathFailures=" + snapshot.shieldPathFailures()
 				+ ", skeletonGoalsInstalled=" + snapshot.skeletonDisengageGoalsInstalled()
 				+ ", skeletonGoalsRemoved=" + snapshot.skeletonDisengageGoalsRemoved()
@@ -220,7 +221,8 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", candidateChecks=" + squads.boundedCandidateChecks()
 				+ ", orderPathFailures=" + squads.orderPathFailures()
 				+ ", pendingDamageMemories=" + this.damageMemory.pendingCount()
-				+ ", pendingShieldSignals=" + this.lifecycle.pendingShieldBlockSignals(),
+				+ ", pendingShieldSignals=" + this.lifecycle.pendingShieldBlockSignals()
+				+ ", disabledShieldGuards=" + this.lifecycle.disabledShieldGuardCount(),
 			NamedTextColor.AQUA
 		));
 		return true;

@@ -15,7 +15,8 @@ public record PaperShieldSettings(
 	int strikeWindowTicks,
 	int blockSignalMemoryTicks,
 	int minimumBlockUseTicks,
-	double minimumFacingDot
+	double minimumFacingDot,
+	int axeDisableTicks
 ) {
 	public static PaperShieldSettings validated(
 		final boolean enabled,
@@ -31,7 +32,8 @@ public record PaperShieldSettings(
 		final int strikeWindowTicks,
 		final int blockSignalMemoryTicks,
 		final int minimumBlockUseTicks,
-		final double minimumFacingDot
+		final double minimumFacingDot,
+		final double axeDisableSeconds
 	) {
 		double checkedRaiseDistance = finiteClamp(raiseDistance, 2.5, 10.0);
 		int checkedMinimumGuard = Math.clamp(minimumGuardTicks, 4, 60);
@@ -50,7 +52,8 @@ public record PaperShieldSettings(
 			Math.clamp(strikeWindowTicks, 4, 20),
 			Math.clamp(blockSignalMemoryTicks, 5, 40),
 			Math.clamp(minimumBlockUseTicks, 0, 20),
-			finiteClamp(minimumFacingDot, -0.5, 0.95)
+			finiteClamp(minimumFacingDot, -0.5, 0.95),
+			(int)Math.round(finiteClamp(axeDisableSeconds, 0.0, 10.0) * 20.0)
 		);
 	}
 

@@ -8,7 +8,7 @@ class PaperShieldSettingsTest {
 	@Test
 	void keepsCrossFieldRangesOrderedAfterClamping() {
 		PaperShieldSettings settings = PaperShieldSettings.validated(
-			true, 4, 8.0, 3.0, 1.1, 6, 50, 10, 8, 2, 10, 20, 5, 0.0
+			true, 4, 8.0, 3.0, 1.1, 6, 50, 10, 8, 2, 10, 20, 5, 0.0, 3.0
 		);
 
 		assertEquals(8.0, settings.raiseDistance());
@@ -22,7 +22,7 @@ class PaperShieldSettingsTest {
 	@Test
 	void convertsNonFiniteDistancesAndSpeedToSafeMinimums() {
 		PaperShieldSettings settings = PaperShieldSettings.validated(
-			true, 4, Double.NaN, Double.POSITIVE_INFINITY, Double.NaN, 6, 12, 28, 2, 4, 10, 20, 5, 0.0
+			true, 4, Double.NaN, Double.POSITIVE_INFINITY, Double.NaN, 6, 12, 28, 2, 4, 10, 20, 5, 0.0, 3.0
 		);
 
 		assertEquals(2.5, settings.raiseDistance());

@@ -49,6 +49,7 @@ public final class PaperZombieWeaponGoal implements Goal<Zombie> {
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSquadCoordinator squads;
+	private final PaperShieldMemory shieldMemory;
 	private final PaperMetrics metrics;
 	private final int stableSide;
 
@@ -68,6 +69,7 @@ public final class PaperZombieWeaponGoal implements Goal<Zombie> {
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
 		final PaperSquadCoordinator squads,
+		final PaperShieldMemory shieldMemory,
 		final PaperMetrics metrics
 	) {
 		this.zombie = zombie;
@@ -76,6 +78,7 @@ public final class PaperZombieWeaponGoal implements Goal<Zombie> {
 		this.settings = settings;
 		this.intelligence = intelligence;
 		this.squads = squads;
+		this.shieldMemory = shieldMemory;
 		this.metrics = metrics;
 		this.stableSide = (zombie.getUniqueId().hashCode() & 1) == 0 ? -1 : 1;
 		this.clockwise = this.stableSide > 0;
@@ -165,6 +168,7 @@ public final class PaperZombieWeaponGoal implements Goal<Zombie> {
 		PaperSquadDirective directive = this.squads.directiveFor(this.zombie);
 		boolean delegatedToShieldGoal = root.zombieShieldTactics().enabled()
 			&& this.intelligence.get(this.zombie) >= root.zombieShieldTactics().minimumIntelligence()
+			&& !this.shieldMemory.isDisabled(this.zombie, Bukkit.getCurrentTick())
 			&& PaperZombieShieldGoal.hasShieldInOffHand(this.zombie);
 		boolean eligible = root.enabled()
 			&& config.enabled()

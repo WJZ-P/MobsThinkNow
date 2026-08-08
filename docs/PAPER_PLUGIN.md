@@ -68,6 +68,9 @@ MobsThinkNow/
   发生；未受攻击时则守候 12～28 tick 后主动试探一次，收招后重新举盾；
 - `block.minimum-use-ticks` 默认 5，避免盾牌刚抬起便瞬间生效；`block.minimum-facing-dot` 默认 0.0，
   表示只覆盖水平正面半球。主体 yaw 与 LookControl 同步平滑转向，防止只转头却拿盾背对伤害源；
+- 正面斧击不会被事件适配层吞掉：它正常造成伤害、立刻放盾并播放破盾声，默认禁盾 3 秒
+  （`axe-disable-seconds`）。禁用期间持剑/斧的普通周旋 Goal 接管；窗口到期后才重新切回盾卫，避免下一
+  tick 无视斧头继续举盾。禁用时刻计算同样复用共享规划器并防止 tick 溢出；
 - `/mtnpaper status` 分别输出 Goal 安装/移除、守候、格挡、反击排程、攻击窗口、实际攻击、反击命中、
   寻路失败与待消费盾牌信号数；配置重载、区块卸载和插件关闭都会清空邮箱。
 
@@ -217,7 +220,8 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 两名射手至少实际释放一发协调箭，并要求苦力怕真实跳上蜘蛛。另有一只 IQ 10 斧手与关闭 AI 但仍可
 攻击的铁傀儡，在有界搜索所得的同高、2～3 格间距、四格净空自然通道中独立验证真实攻击和跳劈；另一个
 隔离通道生成 IQ 10 剑盾卫与铁傀儡，待盾牌连续举起至少 10 tick 后发射真实箭矢，强制验证正面格挡、
-一次性事件信号和 2～4 tick 延迟反击均至少发生一次。探针不放置或修改方块，也不会因混编阵位碰撞
+一次性事件信号和 2～4 tick 延迟反击均至少发生一次；第三条通道由持铁斧的卫道士正面攻击成熟举盾者，
+要求伤害不被格挡且 `shieldDisables` 至少增加一次。探针不放置或修改方块，也不会因混编阵位碰撞
 产生假阴性。
 测试苦力怕的爆炸半径临时设为 0、引信
 延长到 200 tick，因此可以观察载客行为而不破坏测试世界。无论成功、失败、重载还是插件关闭，测试实体
@@ -288,6 +292,7 @@ zombie:
     block:
       minimum-use-ticks: 5
       minimum-facing-dot: 0.0
+    axe-disable-seconds: 3.0
 skeleton:
   spacing:
     enabled: true
@@ -360,7 +365,7 @@ spider:
 3. 确认插件列表和 `/mtnpaper status`；
 4. 执行 `/mtnpaper selftest`，确认先输出结构通过，再得到
    `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots` 与
-   `creepersMounted`、`shieldBlocks` 与 `shieldCounterattacks` 均大于零；
+   `creepersMounted`、`shieldBlocks`、`shieldCounterattacks` 与 `shieldDisables` 均大于零；
 5. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
 可复现隔离服务端位于 Gradle 已忽略的 `build/paper-smoke/`，Paper 本体、世界和日志不会进入发布 JAR

@@ -55,10 +55,12 @@ public final class PaperRuntimeSelfTest {
 	private final List<Chunk> temporarilyForcedChunks = new ArrayList<>();
 	private BukkitTask validationTask;
 	private BukkitTask shieldProbeAttackTask;
+	private BukkitTask shieldDisableProbeTask;
 	private Zombie shieldProbeGuard;
 	private IronGolem shieldProbeAttacker;
 	private long shieldProbeAttackAttempts;
 	private long nextShieldProbeAttackAt;
+	private long shieldDisableProbeAttempts;
 
 	public PaperRuntimeSelfTest(
 		final Plugin plugin,
@@ -124,6 +126,7 @@ public final class PaperRuntimeSelfTest {
 			}
 			this.spawnAxeProbe(world, anchor);
 			this.spawnShieldProbe(world, anchor);
+			this.spawnShieldDisableProbe(world, anchor);
 			this.validationTask = Bukkit.getScheduler().runTaskLater(
 				this.plugin,
 				() -> this.validateStructure(sender, target, mobs, baseline),
@@ -252,13 +255,15 @@ public final class PaperRuntimeSelfTest {
 			long shieldGuards = current.shieldGuards() - baseline.shieldGuards();
 			long shieldStrikeWindows = current.shieldStrikeWindows() - baseline.shieldStrikeWindows();
 			long shieldAttacks = current.shieldAttacks() - baseline.shieldAttacks();
+			long shieldDisables = current.shieldDisables() - baseline.shieldDisables();
 			if (!engaging
 				|| coordinatedShots <= 0L
 				|| weaponAttacks <= 0L
 				|| axeLeaps <= 0L
 				|| mounted <= 0L
 				|| shieldBlocks <= 0L
-				|| shieldCounterattacks <= 0L) {
+				|| shieldCounterattacks <= 0L
+				|| shieldDisables <= 0L) {
 				this.report(
 					sender,
 					false,
@@ -279,6 +284,8 @@ public final class PaperRuntimeSelfTest {
 						+ ", shieldGuards=" + shieldGuards
 						+ ", shieldStrikeWindows=" + shieldStrikeWindows
 						+ ", shieldAttacks=" + shieldAttacks
+						+ ", shieldDisables=" + shieldDisables
+						+ ", shieldDisableAttempts=" + this.shieldDisableProbeAttempts
 						+ ", shieldProbe=" + this.shieldProbeSnapshot()
 						+ ", carrierPathFailures="
 						+ (current.mountedBreachPathFailures() - baseline.mountedBreachPathFailures())
@@ -301,6 +308,7 @@ public final class PaperRuntimeSelfTest {
 					+ ", shieldGuards=" + shieldGuards
 					+ ", shieldStrikeWindows=" + shieldStrikeWindows
 					+ ", shieldAttacks=" + shieldAttacks
+					+ ", shieldDisables=" + shieldDisables
 			);
 		} catch (RuntimeException exception) {
 			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -314,10 +322,15 @@ public final class PaperRuntimeSelfTest {
 			this.shieldProbeAttackTask.cancel();
 			this.shieldProbeAttackTask = null;
 		}
+		if (this.shieldDisableProbeTask != null) {
+			this.shieldDisableProbeTask.cancel();
+			this.shieldDisableProbeTask = null;
+		}
 		this.shieldProbeGuard = null;
 		this.shieldProbeAttacker = null;
 		this.shieldProbeAttackAttempts = 0L;
 		this.nextShieldProbeAttackAt = Long.MIN_VALUE;
+		this.shieldDisableProbeAttempts = 0L;
 		for (Entity entity : this.activeEntities) {
 			if (entity.isValid()) {
 				entity.remove();
@@ -459,6 +472,57 @@ public final class PaperRuntimeSelfTest {
 			+ ",yaw:" + guard.getYaw()
 			+ ",facingDot:" + facingDot
 			+ ",distance:" + Math.sqrt(guard.getLocation().distanceSquared(attacker.getLocation()));
+	}
+
+	/** 独立斧手探针要求正面成熟举盾被打断，伤害照常结算，且不会误记为成功格挡反击。 */
+	private void spawnShieldDisableProbe(final World world, final Location squadAnchor) {
+		CombatProbePlacement placement = findCombatProbePlacement(
+			world,
+			squadAnchor.getBlockX() + 120,
+			squadAnchor.getBlockZ()
+		);
+		if (placement == null) {
+			throw new IllegalStateException("no flat collision-free shield-disable probe lane found");
+		}
+		this.forceChunk(placement.zombie());
+		this.forceChunk(placement.target());
+
+		Mob breaker = (Mob)world.spawnEntity(placement.target(), EntityType.VINDICATOR);
+		breaker.setAI(false);
+		breaker.setPersistent(false);
+		breaker.setRemoveWhenFarAway(false);
+		breaker.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_AXE));
+		setMaximumHealth(breaker, 500.0);
+		this.activeEntities.add(breaker);
+
+		Zombie shieldGuard = (Zombie)world.spawnEntity(placement.zombie(), EntityType.ZOMBIE);
+		shieldGuard.setShouldBurnInDay(false);
+		shieldGuard.setPersistent(false);
+		shieldGuard.setRemoveWhenFarAway(false);
+		shieldGuard.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_SWORD));
+		shieldGuard.getEquipment().setItemInOffHand(new ItemStack(Material.SHIELD));
+		setMaximumHealth(shieldGuard, 200.0);
+		this.intelligence.set(shieldGuard, 10);
+		shieldGuard.setTarget(breaker);
+		this.activeEntities.add(shieldGuard);
+		this.shieldDisableProbeAttempts = 0L;
+
+		this.shieldDisableProbeTask = Bukkit.getScheduler().runTaskTimer(
+			this.plugin,
+			() -> {
+				if (this.shieldDisableProbeAttempts == 0L
+					&& breaker.isValid()
+					&& shieldGuard.isValid()
+					&& shieldGuard.hasActiveItem()
+					&& shieldGuard.getActiveItemUsedTime() >= 10) {
+					this.shieldDisableProbeAttempts++;
+					breaker.lookAt(shieldGuard);
+					breaker.attack(shieldGuard);
+				}
+			},
+			1L,
+			1L
+		);
 	}
 
 	private static CombatProbePlacement findCombatProbePlacement(final World world, final int originX, final int originZ) {
