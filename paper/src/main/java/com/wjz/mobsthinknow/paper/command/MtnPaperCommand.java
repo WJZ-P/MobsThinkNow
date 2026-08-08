@@ -118,7 +118,10 @@ public final class MtnPaperCommand implements TabExecutor {
 		}
 		if (args.length == 2 && args[0].equalsIgnoreCase("spawn")) {
 			String prefix = args[1].toLowerCase(Locale.ROOT);
-			return java.util.stream.Stream.concat(SPAWN_TYPES.keySet().stream(), java.util.stream.Stream.of("assault"))
+			return java.util.stream.Stream.concat(
+				java.util.stream.Stream.concat(SPAWN_TYPES.keySet().stream(), PaperTestSpawner.presetNames().stream()),
+				java.util.stream.Stream.of("assault")
+			)
 				.sorted()
 				.filter(value -> value.startsWith(prefix))
 				.toList();
@@ -147,6 +150,19 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", retreatGoalsRemoved=" + snapshot.retreatGoalsRemoved()
 				+ ", retreats=" + snapshot.retreatStarts()
 				+ ", retreatPathFailures=" + snapshot.retreatPathFailures()
+				+ ", weaponGoalsInstalled=" + snapshot.weaponGoalsInstalled()
+				+ ", weaponGoalsRemoved=" + snapshot.weaponGoalsRemoved()
+				+ ", weaponAttacks=" + snapshot.weaponAttacks()
+				+ ", weaponSpacingMoves=" + snapshot.weaponSpacingMoves()
+				+ ", weaponPathFailures=" + snapshot.weaponPathFailures()
+				+ ", axeWindups=" + snapshot.axeWindups()
+				+ ", axeLeaps=" + snapshot.axeLeaps()
+				+ ", axeCriticalAttacks=" + snapshot.axeCriticalAttacks()
+				+ ", axeRejectAirborne=" + snapshot.axeLaunchAirborneRejects()
+				+ ", axeRejectWater=" + snapshot.axeLaunchWaterRejects()
+				+ ", axeRejectSight=" + snapshot.axeLaunchSightRejects()
+				+ ", axeRejectBand=" + snapshot.axeLaunchBandRejects()
+				+ ", axeRejectCollision=" + snapshot.axeLaunchCollisionRejects()
 				+ ", skeletonGoalsInstalled=" + snapshot.skeletonDisengageGoalsInstalled()
 				+ ", skeletonGoalsRemoved=" + snapshot.skeletonDisengageGoalsRemoved()
 				+ ", skeletonDisengages=" + snapshot.skeletonDisengageStarts()
@@ -272,7 +288,8 @@ public final class MtnPaperCommand implements TabExecutor {
 			return this.spawnAssault(sender, args, 2);
 		}
 		EntityType type = SPAWN_TYPES.get(typeName);
-		if (type == null) {
+		boolean preset = PaperTestSpawner.presetNames().contains(typeName);
+		if (type == null && !preset) {
 			sender.sendMessage(Component.text("Unknown Paper AI type: " + typeName, NamedTextColor.RED));
 			return true;
 		}
@@ -287,7 +304,12 @@ public final class MtnPaperCommand implements TabExecutor {
 		if (count == null) {
 			return true;
 		}
-		return this.reportSpawn(sender, this.testSpawner.spawnType(player, type, count));
+		return this.reportSpawn(
+			sender,
+			preset
+				? this.testSpawner.spawnPreset(player, typeName, count)
+				: this.testSpawner.spawnType(player, type, count)
+		);
 	}
 
 	private boolean selfTest(final CommandSender sender) {

@@ -11,12 +11,16 @@ import java.util.List;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
+import org.bukkit.entity.Zombie;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.entity.IronGolem;
 import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Spider;
@@ -36,6 +40,9 @@ public final class PaperRuntimeSelfTest {
 	);
 	private static final int STRUCTURE_VALIDATION_DELAY_TICKS = 25;
 	private static final int COMBAT_VALIDATION_DELAY_TICKS = 120;
+	private static final int AXE_PROBE_SEARCH_RADIUS = 24;
+	private static final int AXE_PROBE_TARGET_OFFSET = 3;
+	private static final int[][] CARDINAL_DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
 	private final Plugin plugin;
 	private final PaperIntelligenceService intelligence;
@@ -98,12 +105,16 @@ public final class PaperRuntimeSelfTest {
 					creeper.setExplosionRadius(0);
 					creeper.setMaxFuseTicks(200);
 				}
+				if (mob instanceof Zombie zombie) {
+					zombie.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_SWORD));
+				}
 				this.intelligence.set(mob, 10);
 				this.squads.observeTarget(mob, target);
 				mob.setTarget(target);
 				mobs.add(mob);
 				this.activeEntities.add(mob);
 			}
+			this.spawnAxeProbe(world, anchor);
 			this.validationTask = Bukkit.getScheduler().runTaskLater(
 				this.plugin,
 				() -> this.validateStructure(sender, target, mobs, baseline),
@@ -217,14 +228,30 @@ public final class PaperRuntimeSelfTest {
 					&& directive.state() == MixedSquadState.ENGAGING);
 			PaperMetrics.Snapshot current = this.metrics.snapshot();
 			long coordinatedShots = current.coordinatedShots() - baseline.coordinatedShots();
+			long weaponAttacks = current.weaponAttacks() - baseline.weaponAttacks();
+			long axeLeaps = current.axeLeaps() - baseline.axeLeaps();
+			long axeCriticals = current.axeCriticalAttacks() - baseline.axeCriticalAttacks();
+			long axeRejectAirborne = current.axeLaunchAirborneRejects() - baseline.axeLaunchAirborneRejects();
+			long axeRejectWater = current.axeLaunchWaterRejects() - baseline.axeLaunchWaterRejects();
+			long axeRejectSight = current.axeLaunchSightRejects() - baseline.axeLaunchSightRejects();
+			long axeRejectBand = current.axeLaunchBandRejects() - baseline.axeLaunchBandRejects();
+			long axeRejectCollision = current.axeLaunchCollisionRejects() - baseline.axeLaunchCollisionRejects();
 			long mounted = current.mountedBreachMounts() - baseline.mountedBreachMounts();
 			long released = current.mountedBreachPayloadReleases() - baseline.mountedBreachPayloadReleases();
-			if (!engaging || coordinatedShots <= 0L || mounted <= 0L) {
+			if (!engaging || coordinatedShots <= 0L || weaponAttacks <= 0L || axeLeaps <= 0L || mounted <= 0L) {
 				this.report(
 					sender,
 					false,
 					"engaging=" + engaging
 						+ ", coordinatedShots=" + coordinatedShots
+						+ ", weaponAttacks=" + weaponAttacks
+						+ ", axeLeaps=" + axeLeaps
+						+ ", axeCriticals=" + axeCriticals
+						+ ", axeRejects=[airborne:" + axeRejectAirborne
+						+ ",water:" + axeRejectWater
+						+ ",sight:" + axeRejectSight
+						+ ",band:" + axeRejectBand
+						+ ",collision:" + axeRejectCollision + "]"
 						+ ", creepersMounted=" + mounted
 						+ ", payloadReleases=" + released
 						+ ", carrierPathFailures="
@@ -238,6 +265,9 @@ public final class PaperRuntimeSelfTest {
 				sender,
 				true,
 				"state=ENGAGING, plan=COMBINED_ARMS, coordinatedShots=" + coordinatedShots
+					+ ", weaponAttacks=" + weaponAttacks
+					+ ", axeLeaps=" + axeLeaps
+					+ ", axeCriticals=" + axeCriticals
 					+ ", creepersMounted=" + mounted
 					+ ", payloadReleases=" + released
 			);
@@ -271,6 +301,88 @@ public final class PaperRuntimeSelfTest {
 		}
 	}
 
+	/**
+	 * 把斧手物理动作放到独立的平坦样本中验证。混编战场会被射手、载具和阵位共同占用，若把跳劈断言
+	 * 绑定在那一处，测试结果会错误地依赖实体碰撞顺序，而不是斧手 Goal 本身。
+	 */
+	private void spawnAxeProbe(final World world, final Location squadAnchor) {
+		AxeProbePlacement placement = findAxeProbePlacement(
+			world,
+			squadAnchor.getBlockX() + 40,
+			squadAnchor.getBlockZ()
+		);
+		if (placement == null) {
+			throw new IllegalStateException("no flat collision-free axe probe lane found");
+		}
+		this.forceChunk(placement.zombie());
+		this.forceChunk(placement.target());
+
+		IronGolem target = (IronGolem)world.spawnEntity(placement.target(), EntityType.IRON_GOLEM);
+		// 不设无敌：原版目标选择器会清除不可攻击目标。默认 100 点生命足以覆盖 145 tick 的探针窗口。
+		target.setAI(false);
+		target.setPlayerCreated(true);
+		target.setPersistent(false);
+		this.activeEntities.add(target);
+
+		Zombie axeman = (Zombie)world.spawnEntity(placement.zombie(), EntityType.ZOMBIE);
+		axeman.setInvulnerable(true);
+		axeman.setShouldBurnInDay(false);
+		axeman.setPersistent(false);
+		axeman.setRemoveWhenFarAway(false);
+		axeman.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_AXE));
+		this.intelligence.set(axeman, 10);
+		axeman.setTarget(target);
+		this.activeEntities.add(axeman);
+	}
+
+	private static AxeProbePlacement findAxeProbePlacement(final World world, final int originX, final int originZ) {
+		for (int radius = 0; radius <= AXE_PROBE_SEARCH_RADIUS; radius++) {
+			for (int dx = -radius; dx <= radius; dx++) {
+				for (int dz = -radius; dz <= radius; dz++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
+						continue;
+					}
+					int zombieX = originX + dx;
+					int zombieZ = originZ + dz;
+					int feetY = world.getHighestBlockYAt(zombieX, zombieZ) + 1;
+					for (int[] direction : CARDINAL_DIRECTIONS) {
+						int targetX = zombieX + direction[0] * AXE_PROBE_TARGET_OFFSET;
+						int targetZ = zombieZ + direction[1] * AXE_PROBE_TARGET_OFFSET;
+						if (world.getHighestBlockYAt(targetX, targetZ) + 1 != feetY
+							|| !isClearStandingColumn(world, zombieX, feetY, zombieZ)
+							|| !isClearStandingColumn(world, targetX, feetY, targetZ)) {
+							continue;
+						}
+						Location zombie = new Location(world, zombieX + 0.5, feetY, zombieZ + 0.5);
+						Location target = new Location(world, targetX + 0.5, feetY, targetZ + 0.5);
+						if (!world.getWorldBorder().isInside(zombie)
+							|| !world.getWorldBorder().isInside(target)
+							|| !world.getNearbyEntities(zombie, 1.0, 1.5, 1.0).isEmpty()
+							|| !world.getNearbyEntities(target, 1.0, 2.0, 1.0).isEmpty()) {
+							continue;
+						}
+						return new AxeProbePlacement(zombie, target);
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	private static boolean isClearStandingColumn(final World world, final int x, final int feetY, final int z) {
+		Block floor = world.getBlockAt(x, feetY - 1, z);
+		if (!floor.getType().isSolid()) {
+			return false;
+		}
+		for (int offset = 0; offset <= 3; offset++) {
+			Block block = world.getBlockAt(x, feetY + offset, z);
+			if (!block.isPassable() || block.isLiquid()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	private static String targetSnapshot(final List<Mob> mobs) {
 		return mobs.stream()
 			.map(mob -> mob.getType().key().asString()
@@ -294,5 +406,8 @@ public final class PaperRuntimeSelfTest {
 	private static Location safeSurface(final World world, final int x, final int z) {
 		int y = world.getHighestBlockYAt(x, z) + 1;
 		return new Location(world, x + 0.5, y, z + 0.5);
+	}
+
+	private record AxeProbePlacement(Location zombie, Location target) {
 	}
 }

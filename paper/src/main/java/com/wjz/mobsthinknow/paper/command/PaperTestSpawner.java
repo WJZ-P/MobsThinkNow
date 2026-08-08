@@ -5,6 +5,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperThreats;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -14,6 +15,8 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Zombie;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Vector;
 
 /** 管理员测试生成器：先规划全部安全位置，生成失败时事务式移除本批实体。 */
@@ -52,6 +55,10 @@ public final class PaperTestSpawner {
 		EntityType.CREEPER,
 		EntityType.SPIDER
 	);
+	private static final Map<String, Preset> PRESETS = Map.of(
+		"zombie_swordsman", new Preset(EntityType.ZOMBIE, Material.IRON_SWORD, 7),
+		"zombie_axeman", new Preset(EntityType.ZOMBIE, Material.IRON_AXE, 10)
+	);
 
 	private final PaperIntelligenceService intelligence;
 
@@ -60,17 +67,36 @@ public final class PaperTestSpawner {
 	}
 
 	public Result spawnType(final Player player, final EntityType type, final int count) {
-		return this.spawn(player, repeat(type, count), false);
+		return this.spawn(player, repeat(new SpawnSpec(type, null), count), false);
+	}
+
+	public Result spawnPreset(final Player player, final String name, final int count) {
+		Preset preset = PRESETS.get(name);
+		if (preset == null) {
+			return new Result(0, count, true, "unknown preset: " + name);
+		}
+		return this.spawn(player, repeat(new SpawnSpec(preset.type(), preset), count), false);
 	}
 
 	public Result spawnAll(final Player player) {
-		return this.spawn(player, ALL_SUPPORTED_TYPES, false);
+		List<SpawnSpec> specs = new ArrayList<>(ALL_SUPPORTED_TYPES.size() + PRESETS.size());
+		for (EntityType type : ALL_SUPPORTED_TYPES) {
+			specs.add(new SpawnSpec(type, null));
+		}
+		PRESETS.entrySet().stream()
+			.sorted(Map.Entry.comparingByKey())
+			.map(Map.Entry::getValue)
+			.map(preset -> new SpawnSpec(preset.type(), preset))
+			.forEach(specs::add);
+		return this.spawn(player, specs, false);
 	}
 
 	public Result spawnAssault(final Player player, final int groups) {
-		List<EntityType> types = new ArrayList<>(groups * ASSAULT_GROUP.size());
+		List<SpawnSpec> types = new ArrayList<>(groups * ASSAULT_GROUP.size());
 		for (int group = 0; group < groups; group++) {
-			types.addAll(ASSAULT_GROUP);
+			for (EntityType type : ASSAULT_GROUP) {
+				types.add(new SpawnSpec(type, null));
+			}
 		}
 		return this.spawn(player, types, true);
 	}
@@ -83,7 +109,11 @@ public final class PaperTestSpawner {
 		return ALL_SUPPORTED_TYPES;
 	}
 
-	private Result spawn(final Player player, final List<EntityType> types, final boolean maximumIntelligence) {
+	public static Set<String> presetNames() {
+		return PRESETS.keySet();
+	}
+
+	private Result spawn(final Player player, final List<SpawnSpec> types, final boolean maximumIntelligence) {
 		if (types.isEmpty()) {
 			return new Result(0, 0, false, "empty batch");
 		}
@@ -95,12 +125,15 @@ public final class PaperTestSpawner {
 		List<Entity> spawned = new ArrayList<>(types.size());
 		try {
 			for (int index = 0; index < types.size(); index++) {
-				Entity entity = player.getWorld().spawnEntity(placements.get(index), types.get(index));
+				SpawnSpec spec = types.get(index);
+				Entity entity = player.getWorld().spawnEntity(placements.get(index), spec.type());
 				spawned.add(entity);
 				if (!(entity instanceof Mob mob) || !this.intelligence.supports(mob)) {
 					throw new IllegalStateException("spawned entity is not supported: " + entity.getType());
 				}
-				if (maximumIntelligence) {
+				if (spec.preset() != null) {
+					this.configurePreset(mob, spec.preset());
+				} else if (maximumIntelligence) {
 					this.intelligence.set(mob, 10);
 				} else {
 					this.intelligence.ensure(mob);
@@ -118,6 +151,15 @@ public final class PaperTestSpawner {
 			}
 			return new Result(0, types.size(), true, exception.getClass().getSimpleName() + ": " + exception.getMessage());
 		}
+	}
+
+	private void configurePreset(final Mob mob, final Preset preset) {
+		if (!(mob instanceof Zombie zombie)) {
+			throw new IllegalStateException("weapon preset requires zombie, got " + mob.getType());
+		}
+		zombie.getEquipment().setItemInMainHand(new ItemStack(preset.weapon()));
+		zombie.getEquipment().setItemInMainHandDropChance(0.085F);
+		this.intelligence.set(zombie, preset.intelligence());
 	}
 
 	private List<Location> planPlacements(final Player player, final int count) {
@@ -193,12 +235,18 @@ public final class PaperTestSpawner {
 		return block.isPassable() && !block.isLiquid() && !HAZARDS.contains(block.getType());
 	}
 
-	private static List<EntityType> repeat(final EntityType type, final int count) {
-		List<EntityType> result = new ArrayList<>(count);
+	private static <T> List<T> repeat(final T value, final int count) {
+		List<T> result = new ArrayList<>(count);
 		for (int index = 0; index < count; index++) {
-			result.add(type);
+			result.add(value);
 		}
 		return result;
+	}
+
+	private record SpawnSpec(EntityType type, Preset preset) {
+	}
+
+	private record Preset(EntityType type, Material weapon, int intelligence) {
 	}
 
 	public record Result(int spawned, int requested, boolean rolledBack, String detail) {

@@ -9,6 +9,19 @@ public final class PaperMetrics {
 	private final AtomicLong retreatGoalsRemoved = new AtomicLong();
 	private final AtomicLong retreatStarts = new AtomicLong();
 	private final AtomicLong retreatPathFailures = new AtomicLong();
+	private final AtomicLong weaponGoalsInstalled = new AtomicLong();
+	private final AtomicLong weaponGoalsRemoved = new AtomicLong();
+	private final AtomicLong weaponAttacks = new AtomicLong();
+	private final AtomicLong weaponSpacingMoves = new AtomicLong();
+	private final AtomicLong weaponPathFailures = new AtomicLong();
+	private final AtomicLong axeWindups = new AtomicLong();
+	private final AtomicLong axeLeaps = new AtomicLong();
+	private final AtomicLong axeCriticalAttacks = new AtomicLong();
+	private final AtomicLong axeLaunchAirborneRejects = new AtomicLong();
+	private final AtomicLong axeLaunchWaterRejects = new AtomicLong();
+	private final AtomicLong axeLaunchSightRejects = new AtomicLong();
+	private final AtomicLong axeLaunchBandRejects = new AtomicLong();
+	private final AtomicLong axeLaunchCollisionRejects = new AtomicLong();
 	private final AtomicLong skeletonDisengageGoalsInstalled = new AtomicLong();
 	private final AtomicLong skeletonDisengageGoalsRemoved = new AtomicLong();
 	private final AtomicLong skeletonDisengageStarts = new AtomicLong();
@@ -66,6 +79,58 @@ public final class PaperMetrics {
 
 	public void retreatPathFailed() {
 		this.retreatPathFailures.incrementAndGet();
+	}
+
+	public void weaponGoalInstalled() {
+		this.weaponGoalsInstalled.incrementAndGet();
+	}
+
+	public void weaponGoalRemoved() {
+		this.weaponGoalsRemoved.incrementAndGet();
+	}
+
+	public void weaponAttack() {
+		this.weaponAttacks.incrementAndGet();
+	}
+
+	public void weaponSpacingMove() {
+		this.weaponSpacingMoves.incrementAndGet();
+	}
+
+	public void weaponPathFailed() {
+		this.weaponPathFailures.incrementAndGet();
+	}
+
+	public void axeWindupStarted() {
+		this.axeWindups.incrementAndGet();
+	}
+
+	public void axeLeapStarted() {
+		this.axeLeaps.incrementAndGet();
+	}
+
+	public void axeCriticalAttack() {
+		this.axeCriticalAttacks.incrementAndGet();
+	}
+
+	public void axeLaunchAirborneRejected() {
+		this.axeLaunchAirborneRejects.incrementAndGet();
+	}
+
+	public void axeLaunchWaterRejected() {
+		this.axeLaunchWaterRejects.incrementAndGet();
+	}
+
+	public void axeLaunchSightRejected() {
+		this.axeLaunchSightRejects.incrementAndGet();
+	}
+
+	public void axeLaunchBandRejected() {
+		this.axeLaunchBandRejects.incrementAndGet();
+	}
+
+	public void axeLaunchCollisionRejected() {
+		this.axeLaunchCollisionRejects.incrementAndGet();
 	}
 
 	public void skeletonDisengageGoalInstalled() {
@@ -227,6 +292,19 @@ public final class PaperMetrics {
 			this.retreatGoalsRemoved.get(),
 			this.retreatStarts.get(),
 			this.retreatPathFailures.get(),
+			this.weaponGoalsInstalled.get(),
+			this.weaponGoalsRemoved.get(),
+			this.weaponAttacks.get(),
+			this.weaponSpacingMoves.get(),
+			this.weaponPathFailures.get(),
+			this.axeWindups.get(),
+			this.axeLeaps.get(),
+			this.axeCriticalAttacks.get(),
+			this.axeLaunchAirborneRejects.get(),
+			this.axeLaunchWaterRejects.get(),
+			this.axeLaunchSightRejects.get(),
+			this.axeLaunchBandRejects.get(),
+			this.axeLaunchCollisionRejects.get(),
 			this.skeletonDisengageGoalsInstalled.get(),
 			this.skeletonDisengageGoalsRemoved.get(),
 			this.skeletonDisengageStarts.get(),
@@ -274,6 +352,19 @@ public final class PaperMetrics {
 		long retreatGoalsRemoved,
 		long retreatStarts,
 		long retreatPathFailures,
+		long weaponGoalsInstalled,
+		long weaponGoalsRemoved,
+		long weaponAttacks,
+		long weaponSpacingMoves,
+		long weaponPathFailures,
+		long axeWindups,
+		long axeLeaps,
+		long axeCriticalAttacks,
+		long axeLaunchAirborneRejects,
+		long axeLaunchWaterRejects,
+		long axeLaunchSightRejects,
+		long axeLaunchBandRejects,
+		long axeLaunchCollisionRejects,
 		long skeletonDisengageGoalsInstalled,
 		long skeletonDisengageGoalsRemoved,
 		long skeletonDisengageStarts,

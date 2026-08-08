@@ -36,10 +36,24 @@ MobsThinkNow/
 - `EntityDamageByEntityEvent` 在伤害结算后记录最终伤害，盾挡、取消事件和零伤害不会触发；
 - 同一 Goal 评估前连续受击时，低血逻辑远离最近攻击者，重击逻辑远离最大单次伤害来源；
 - 伤害邮箱只保存 UUID 和数值、一次消费，并在重载/卸载/关闭时清理；
-- 自定义 Goal 以优先级 1 占用 `MOVE` 与 `LOOK`，仍让原版浮水等最高生存行为抢占；
+- 自定义 Goal 以优先级 0 占用 `MOVE` 与 `LOOK`，在受伤触发后优先于其他战斗行为；原版浮水仍由
+  `MobGoals` 的并发 Goal 类型与服务端物理共同处理；
 - 路线由共享 `RetreatPlanner` 生成固定五个背向候选，再逐个交给 Paper `Pathfinder#findPath`。不存在
   “每只怪物扫描每只怪物”的平方复杂度；
 - 结束时明确停止逃跑路径并恢复攻击状态，40 tick 内不会因同一低血状态反复起停。
+
+### 僵尸持械节奏与斧手跳劈
+
+- IQ 至少 3、主手持剑或斧的僵尸使用公开 `MobGoals` 战斗 Goal；没有支持武器时保留原版近战 Goal；
+- 共享 `MeleeWeaponPlanner` 同时服务 Fabric 与 Paper，负责水平距离、周旋落点、斧手起跳带、起跳速度
+  和空中有限转向。攻击后僵尸退到默认 2.8 格左右等待武器冷却，而不是持续贴脸空挥；
+- 剑手冷却完成后沿真实 `Pathfinder` 接近并调用公开 `LivingEntity#attack`；Goal 被撤退或会议短暂抢占时，
+  已有攻击冷却会继续保留，不能通过 Goal 重启刷新；
+- IQ 至少 6 的斧手在 `1.8～3.3` 格且视线、承重和扫掠碰撞满足时，先做默认 8 tick 前摇，再施加
+  `0.42` 垂直速度和可配置水平速度跳劈；下降段命中时仅在本次公开 API 攻击期间临时应用默认 `1.5x`
+  `ATTACK_DAMAGE` 修饰符，攻击结束立即移除；
+- 30 tick 内没有适合的跳劈窗口、路径失败、落水或飞行超时都会取消空中序列并降级为普通地面攻击；
+  `status` 分别记录安装、周旋、寻路失败、前摇、起跳、实际攻击和暴击命中次数。
 
 ### 骷髅紧急脱离
 
@@ -156,19 +170,23 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 | `/mtnpaper reload` | `mobsthinknow.admin` | 重载、校验配置并刷新已加载实体 |
 | `/mtnpaper setiq <1-10>` | `mobsthinknow.admin` | 修改附近受支持怪物的持久 IQ |
 | `/mtnpaper spawn <type> [1-100]` | `mobsthinknow.admin` | 在玩家前方事务式批量生成指定 Paper 智能怪物 |
-| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种 |
+| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种，并追加剑手与斧手测试预设 |
 | `/mtnpaper assault [1-8]` | `mobsthinknow.admin` | 每组生成 IQ 10 僵尸、骷髅、苦力怕、蜘蛛以测试联合兵种 |
 | `/mtnpaper selftest` | `mobsthinknow.admin` | 控制台可用；真实 tick 验证联合编队、错峰射击和蜘蛛载客后自动清理 |
 
 `spawn` 类型为：`zombie`、`husk`、`drowned`、`zombie_villager`、`skeleton`、`stray`、`bogged`、
-`wither_skeleton`、`creeper`、`spider`，另可用 `spawn assault [组数]`。生成器先为整批实体规划有承重、
+`wither_skeleton`、`creeper`、`spider`，以及 `zombie_swordsman`、`zombie_axeman` 两个装备/IQ 预设；
+另可用 `spawn assault [组数]`。生成器先为整批实体规划有承重、
 两格净空、无液体/火焰/仙人掌等危险的互不重叠落点；任意实体生成失败会移除本批已经生成的实体，
 不会留下半套测试阵容。
 
-`selftest` 不要求在线玩家：它会临时保活测试区块，生成一只僵尸、两只骷髅、一只苦力怕、一只蜘蛛
+`selftest` 不要求在线玩家：它会临时保活测试区块，生成一只持剑僵尸、两只骷髅、一只苦力怕、一只蜘蛛
 和一个关闭 AI、无敌的铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后先要求
 五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后再运行 120 tick，要求
-两名射手至少实际释放一发协调箭，并要求苦力怕真实跳上蜘蛛。测试苦力怕的爆炸半径临时设为 0、引信
+两名射手至少实际释放一发协调箭，并要求苦力怕真实跳上蜘蛛。另有一只 IQ 10 斧手与关闭 AI 但仍可
+攻击的铁傀儡，在有界搜索所得的同高、三格间距、四格净空自然通道中独立验证真实攻击和跳劈；该探针
+不放置或修改方块，也不会因混编阵位碰撞产生假阴性。
+测试苦力怕的爆炸半径临时设为 0、引信
 延长到 200 tick，因此可以观察载客行为而不破坏测试世界。无论成功、失败、重载还是插件关闭，测试实体
 和临时区块票都会清理。中间结构检查输出 `[MTN SELFTEST STRUCTURE PASS]`，最终日志只以
 `[MTN SELFTEST PASS]` 或 `[MTN SELFTEST FAIL]` 表示机器可识别结论。
@@ -207,6 +225,18 @@ zombie:
     safe-distance: 5.0
     speed: 1.50
     damage-memory-ticks: 20
+  weapon-tactics:
+    enabled: true
+    minimum-intelligence: 3
+    spacing-radius: 2.8
+    movement-speed: 1.15
+    repath-ticks: 6
+    axe:
+      minimum-intelligence: 6
+      windup-ticks: 8
+      preparation-timeout-ticks: 30
+      horizontal-speed: 0.34
+      critical-damage-multiplier: 1.50
 skeleton:
   spacing:
     enabled: true
@@ -260,7 +290,7 @@ spider:
 
 | 功能类型 | Fabric | Paper |
 |---|---|---|
-| 纯数学决策、智力分布、队形/冷却 | 共享内核 | 共享内核 |
+| 纯数学决策、智力分布、队形/武器节奏/冷却 | 共享内核 | 共享内核 |
 | 导航与自定义 Goal | Mojang/Fabric 实体 API | Paper `MobGoals`/`Pathfinder` |
 | 持久状态 | 实体存档字段/数据附件 | PDC |
 | 服务端声音、粒子、装备、骑乘 | 完整 | 公共 API 能力内实现 |
@@ -278,7 +308,8 @@ spider:
 2. 等待服务端输出 `Done (...)` 后才发送控制台命令，避免启动前空世界命令源；
 3. 确认插件列表和 `/mtnpaper status`；
 4. 执行 `/mtnpaper selftest`，确认先输出结构通过，再得到
-   `state=ENGAGING, plan=COMBINED_ARMS`，且 `coordinatedShots` 与 `creepersMounted` 均大于零；
+   `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots` 与
+   `creepersMounted` 均大于零；
 5. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
 隔离服务端位于 Gradle 已忽略的 `build/paper-runtime/`，Paper 本体、世界和日志不会进入发布 JAR 或 Git。

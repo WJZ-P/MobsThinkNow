@@ -131,6 +131,18 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getDouble("zombie.retreat.safe-distance", 5.0),
 			this.getConfig().getDouble("zombie.retreat.speed", 1.50),
 			this.getConfig().getInt("zombie.retreat.damage-memory-ticks", 20),
+			PaperWeaponSettings.validated(
+				this.getConfig().getBoolean("zombie.weapon-tactics.enabled", true),
+				this.getConfig().getInt("zombie.weapon-tactics.minimum-intelligence", 3),
+				this.getConfig().getDouble("zombie.weapon-tactics.spacing-radius", 2.8),
+				this.getConfig().getDouble("zombie.weapon-tactics.movement-speed", 1.15),
+				this.getConfig().getInt("zombie.weapon-tactics.repath-ticks", 6),
+				this.getConfig().getInt("zombie.weapon-tactics.axe.minimum-intelligence", 6),
+				this.getConfig().getInt("zombie.weapon-tactics.axe.windup-ticks", 8),
+				this.getConfig().getInt("zombie.weapon-tactics.axe.preparation-timeout-ticks", 30),
+				this.getConfig().getDouble("zombie.weapon-tactics.axe.horizontal-speed", 0.34),
+				this.getConfig().getDouble("zombie.weapon-tactics.axe.critical-damage-multiplier", 1.50)
+			),
 			this.getConfig().getBoolean("skeleton.spacing.enabled", true),
 			this.getConfig().getInt("skeleton.spacing.minimum-intelligence", 1),
 			this.getConfig().getDouble("skeleton.spacing.preferred-range", 10.0),

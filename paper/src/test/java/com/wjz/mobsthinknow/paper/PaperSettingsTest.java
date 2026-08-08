@@ -19,6 +19,7 @@ class PaperSettingsTest {
 			1.0,
 			9.0,
 			0,
+			PaperWeaponSettings.validated(true, 99, 99.0, 99.0, 0, 99, 0, 999, 99.0, Double.NaN),
 			true,
 			99,
 			100.0,
@@ -64,6 +65,15 @@ class PaperSettingsTest {
 		assertEquals(2.0, settings.retreatSafeDistance());
 		assertEquals(2.0, settings.retreatSpeed());
 		assertEquals(2, settings.damageMemoryTicks());
+		assertEquals(10, settings.zombieWeaponTactics().minimumIntelligence());
+		assertEquals(5.0, settings.zombieWeaponTactics().spacingRadius());
+		assertEquals(1.5, settings.zombieWeaponTactics().movementSpeed());
+		assertEquals(2, settings.zombieWeaponTactics().repathTicks());
+		assertEquals(10, settings.zombieWeaponTactics().axeMinimumIntelligence());
+		assertEquals(4, settings.zombieWeaponTactics().axeWindupTicks());
+		assertEquals(80, settings.zombieWeaponTactics().axePreparationTimeoutTicks());
+		assertEquals(0.6, settings.zombieWeaponTactics().axeHorizontalSpeed());
+		assertEquals(1.0, settings.zombieWeaponTactics().axeCriticalDamageMultiplier());
 		assertEquals(10, settings.skeletonSpacingMinimumIntelligence());
 		assertEquals(24.0, settings.skeletonPreferredRange());
 		assertEquals(200, settings.skeletonDisengageMaximumTicks());
@@ -96,6 +106,7 @@ class PaperSettingsTest {
 	void preservesTheFabricCompatibleRetreatDefaults() {
 		PaperSettings settings = PaperSettings.validated(
 			true, true, true, 1, 0.20, 0.30, 100, 5.0, 1.50, 20,
+			PaperWeaponSettings.validated(true, 3, 2.8, 1.15, 6, 6, 8, 30, 0.34, 1.50),
 			true, 1, 10.0, 80, 20,
 			true, 4, 24.0, 16, 28, 0.75, 20, 3.0,
 			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32,
@@ -108,6 +119,9 @@ class PaperSettingsTest {
 		assertEquals(100, settings.retreatMaximumTicks());
 		assertEquals(5.0, settings.retreatSafeDistance());
 		assertEquals(1.50, settings.retreatSpeed());
+		assertTrue(settings.zombieWeaponTactics().enabled());
+		assertEquals(2.8, settings.zombieWeaponTactics().spacingRadius());
+		assertEquals(1.50, settings.zombieWeaponTactics().axeCriticalDamageMultiplier());
 		assertEquals(10.0, settings.skeletonPreferredRange());
 		assertEquals(80, settings.skeletonDisengageMaximumTicks());
 		assertEquals(20, settings.skeletonDisengageCooldownTicks());

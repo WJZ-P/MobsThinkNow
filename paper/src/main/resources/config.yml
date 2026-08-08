@@ -37,6 +37,20 @@ zombie:
     speed: 1.50
     # Damage observations are consumed once and never survive a config reload.
     damage-memory-ticks: 20
+  weapon-tactics:
+    enabled: true
+    minimum-intelligence: 3
+    # Sword and axe users orbit here while their real weapon cooldown is not ready.
+    spacing-radius: 2.8
+    movement-speed: 1.15
+    repath-ticks: 6
+    axe:
+      minimum-intelligence: 6
+      # A visible windup precedes every valid leap; blocked terrain falls back to a ground strike.
+      windup-ticks: 8
+      preparation-timeout-ticks: 30
+      horizontal-speed: 0.34
+      critical-damage-multiplier: 1.50
 
 skeleton:
   spacing:
