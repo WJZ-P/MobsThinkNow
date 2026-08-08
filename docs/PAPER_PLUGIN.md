@@ -82,6 +82,27 @@ MobsThinkNow/
   安装自己的两个 Goal。配置关闭、插件卸载或实体离开世界前会移除自定义 Goal 并恢复保存对象，避免
   破坏其他插件的 GoalSelector 状态。
 
+### 四物种混编小队
+
+- 僵尸家族、骷髅家族、普通苦力怕和普通蜘蛛只要靠近并锁定同一目标，就能组成默认 `2～20` 人小队；
+  没有当前目标的空闲成员也可被附近小队招募，并只继承服务端已经可见、仍合法存活的共享目标；
+- 首领不再绑定僵尸：四种怪物统一按 IQ 最高者选举，并列者用 UUID 派生的稳定随机票抽签。首领死亡或
+  离开世界后从剩余成员自动换届，任期递增并短暂进入 `REORGANIZING`；
+- 共享 `MixedSquadPlanner` 根据阵容和首领 IQ 选择 `SWARM`、`SHIELD_WEDGE`、`PIN_AND_FLANK`、
+  `CROSSFIRE`、`MOUNTED_BREACH` 或 `COMBINED_ARMS`，再把成员分成正面、左右翼、左右射手、爆破、
+  载具、辅助和首领职责；Fabric 的首领选举与总攻方案也已改为委托同一规划器；
+- 小队依次经历 `FORMING → BRIEFING → DEPLOYING → ENGAGING`。会议时成员沿原版可达路径站到首领
+  周围，首领挥手并播放对应物种叫声；部署阶段射手前往交叉射界、两翼与爆破手去各自阵位。目标进入
+  默认 8 格紧急圈时会直接交战，不会为了“演完动画”挨打；
+- 撤退、骷髅紧急脱离和苦力怕引信继续拥有更高优先级；蜘蛛会议期间暂停个人跳扑，进入交战后才恢复
+  预测扑击。通用小队 Goal 只在非交战阶段持有 `MOVE/LOOK`，不会每 tick 传送或改坐标；
+- 协调器每 `5 tick` 在主线程更新一次实体所在桶。组队查询只访问中心及周围八个桶，默认单次最多
+  检查 64 个原始候选、接收 20 人，因此不存在全服成员两两互扫；
+- 同队成员互相设为目标时事件会被取消；可配置阻止普通近战和弹射物误伤。苦力怕的实体爆炸伤害特意
+  保留，避免混编小队获得无提示免伤，也要求爆破兵继续遵守已有爆点预约；
+- `/mtnpaper inspect` 会显示最近怪物的小队 ID、任期、首领、阶段、方案和职责；`status` 会显示活跃
+  小队、成员、招募、换届、目标共享、有界候选检查和阵位寻路失败计数。
+
 ## 构建与安装
 
 需要 JDK 25：
@@ -105,8 +126,8 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 
 | 命令 | 权限 | 作用 |
 |---|---|---|
-| `/mtnpaper status` | 所有人 | 查看已加载受支持怪物、僵尸/骷髅 Goal、撤退和寻路失败计数 |
-| `/mtnpaper inspect` | 所有人 | 查看 12 格内最近受支持怪物的 UUID、IQ 和目标 |
+| `/mtnpaper status` | 所有人 | 查看各兵种 Goal、活跃小队/预约、战术次数、候选预算与寻路失败计数 |
+| `/mtnpaper inspect` | 所有人 | 查看 12 格内最近怪物的 UUID、IQ、目标、小队阶段、方案和职责 |
 | `/mtnpaper reload` | `mobsthinknow.admin` | 重载、校验配置并刷新已加载实体 |
 | `/mtnpaper setiq <1-10>` | `mobsthinknow.admin` | 修改附近受支持怪物的持久 IQ |
 
@@ -116,6 +137,22 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 
 ```yaml
 enabled: true
+coordination:
+  enabled: true
+  share-targets: true
+  prevent-friendly-fire: true
+  formation-radius: 16.0
+  minimum-members: 2
+  maximum-members: 20
+  raw-scan-limit: 64
+  heartbeat-ticks: 5
+  forming-timeout-ticks: 40
+  briefing-ticks: 30
+  deployment-timeout-ticks: 40
+  reorganizing-ticks: 20
+  emergency-distance: 8.0
+  maximum-separation: 48.0
+  target-memory-ticks: 100
 identity:
   show-intelligence-names: true
 zombie:

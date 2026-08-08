@@ -1,5 +1,25 @@
 enabled: true
 
+coordination:
+  enabled: true
+  # Members without a live target inherit the squad's visible target on the main thread.
+  share-targets: true
+  prevent-friendly-fire: true
+  formation-radius: 16.0
+  minimum-members: 2
+  # Matches the Fabric default and is clamped to 4..100.
+  maximum-members: 20
+  # A query only visits 3x3 cells and stops after this many raw candidates.
+  raw-scan-limit: 64
+  heartbeat-ticks: 5
+  forming-timeout-ticks: 40
+  briefing-ticks: 30
+  deployment-timeout-ticks: 40
+  reorganizing-ticks: 20
+  emergency-distance: 8.0
+  maximum-separation: 48.0
+  target-memory-ticks: 100
+
 identity:
   # Only unnamed mobs, or names previously owned by this plugin, are updated.
   show-intelligence-names: true

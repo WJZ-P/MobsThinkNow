@@ -16,6 +16,8 @@ import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderCombatGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderPounceGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperZombieRetreatGoal;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadOrderGoal;
 import java.util.function.Supplier;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +40,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.projectiles.ProjectileSource;
 import org.bukkit.plugin.Plugin;
 
@@ -48,6 +52,7 @@ public final class PaperMobLifecycle implements Listener {
 	private static final int CREEPER_APPROACH_GOAL_PRIORITY = 3;
 	private static final int SPIDER_POUNCE_GOAL_PRIORITY = 2;
 	private static final int SPIDER_COMBAT_GOAL_PRIORITY = 4;
+	private static final int SQUAD_ORDER_GOAL_PRIORITY = 2;
 
 	private final GoalKey<Zombie> retreatGoalKey;
 	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
@@ -55,11 +60,13 @@ public final class PaperMobLifecycle implements Listener {
 	private final GoalKey<Creeper> creeperApproachGoalKey;
 	private final GoalKey<Spider> spiderPounceGoalKey;
 	private final GoalKey<Spider> spiderCombatGoalKey;
+	private final GoalKey<Mob> squadOrderGoalKey;
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSkeletonProfile skeletonProfile;
 	private final PaperBlastReservationBoard blastReservations;
 	private final PaperPounceCoordinator pounceCoordinator;
+	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperDamageMemory damageMemory;
 	private final PaperMetrics metrics;
 	private final Map<UUID, OriginalSpiderGoals> originalSpiderGoals = new HashMap<>();
@@ -71,6 +78,7 @@ public final class PaperMobLifecycle implements Listener {
 		final PaperSkeletonProfile skeletonProfile,
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
+		final PaperSquadCoordinator squadCoordinator,
 		final PaperDamageMemory damageMemory,
 		final PaperMetrics metrics
 	) {
@@ -83,11 +91,13 @@ public final class PaperMobLifecycle implements Listener {
 		this.creeperApproachGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_approach"));
 		this.spiderPounceGoalKey = GoalKey.of(Spider.class, new NamespacedKey(plugin, "spider_predictive_pounce"));
 		this.spiderCombatGoalKey = GoalKey.of(Spider.class, new NamespacedKey(plugin, "spider_tactical_combat"));
+		this.squadOrderGoalKey = GoalKey.of(Mob.class, new NamespacedKey(plugin, "mixed_squad_orders"));
 		this.settings = settings;
 		this.intelligence = intelligence;
 		this.skeletonProfile = skeletonProfile;
 		this.blastReservations = blastReservations;
 		this.pounceCoordinator = pounceCoordinator;
+		this.squadCoordinator = squadCoordinator;
 		this.damageMemory = damageMemory;
 		this.metrics = metrics;
 	}
@@ -113,6 +123,35 @@ public final class PaperMobLifecycle implements Listener {
 				this.restoreOriginalSpiderGoals(spider);
 			}
 			this.pounceCoordinator.release(spider, false);
+		}
+		if (event.getEntity() instanceof Mob mob) {
+			this.squadCoordinator.untrack(mob);
+		}
+	}
+
+	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+	public void onFriendlySquadTarget(final EntityTargetLivingEntityEvent event) {
+		if (!(event.getEntity() instanceof Mob actor)
+			|| !(event.getTarget() instanceof Mob target)
+			|| !this.squadCoordinator.enabled()
+			|| !this.squadCoordinator.areSquadmates(actor, target)) {
+			return;
+		}
+		event.setCancelled(true);
+		this.squadCoordinator.metrics().friendlyTargetPrevented();
+	}
+
+	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+	public void onFriendlySquadDamage(final EntityDamageByEntityEvent event) {
+		if (!this.squadCoordinator.preventsFriendlyFire()
+			|| event.getCause() == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION
+			|| !(event.getEntity() instanceof Mob victim)) {
+			return;
+		}
+		Mob attacker = causingMob(event.getDamager());
+		if (attacker != null && this.squadCoordinator.areSquadmates(attacker, victim)) {
+			event.setCancelled(true);
+			this.squadCoordinator.metrics().friendlyDamagePrevented();
 		}
 	}
 
@@ -168,6 +207,9 @@ public final class PaperMobLifecycle implements Listener {
 					this.restoreOriginalSpiderGoals(spider);
 					this.pounceCoordinator.release(spider, false);
 				}
+				if (entity instanceof Mob mob && Bukkit.getMobGoals().hasGoal(mob, this.squadOrderGoalKey)) {
+					Bukkit.getMobGoals().removeGoal(mob, this.squadOrderGoalKey);
+				}
 			}
 		}
 	}
@@ -189,6 +231,7 @@ public final class PaperMobLifecycle implements Listener {
 			return;
 		}
 		this.intelligence.ensure(mob);
+		this.squadCoordinator.track(mob);
 		if (mob instanceof Zombie zombie) {
 			this.synchronizeZombieGoal(zombie);
 		}
@@ -200,6 +243,21 @@ public final class PaperMobLifecycle implements Listener {
 		}
 		if (mob instanceof Spider spider && spider.getType() == EntityType.SPIDER) {
 			this.synchronizeSpiderGoals(spider);
+		}
+		this.synchronizeSquadOrderGoal(mob);
+	}
+
+	private void synchronizeSquadOrderGoal(final Mob mob) {
+		boolean shouldHaveGoal = this.settings.get().enabled() && this.squadCoordinator.enabled();
+		boolean hasGoal = Bukkit.getMobGoals().hasGoal(mob, this.squadOrderGoalKey);
+		if (shouldHaveGoal && !hasGoal) {
+			Bukkit.getMobGoals().addGoal(
+				mob,
+				SQUAD_ORDER_GOAL_PRIORITY,
+				new PaperSquadOrderGoal(mob, this.squadOrderGoalKey, this.squadCoordinator)
+			);
+		} else if (!shouldHaveGoal && hasGoal) {
+			Bukkit.getMobGoals().removeGoal(mob, this.squadOrderGoalKey);
 		}
 	}
 
@@ -313,6 +371,7 @@ public final class PaperMobLifecycle implements Listener {
 						this.settings,
 						this.intelligence,
 						this.pounceCoordinator,
+						this.squadCoordinator,
 						this.metrics
 					)
 				);
@@ -327,6 +386,7 @@ public final class PaperMobLifecycle implements Listener {
 						this.spiderCombatGoalKey,
 						this.settings,
 						this.intelligence,
+						this.squadCoordinator,
 						this.metrics
 					)
 				);
@@ -407,5 +467,10 @@ public final class PaperMobLifecycle implements Listener {
 			return shooter instanceof LivingEntity living ? living : null;
 		}
 		return null;
+	}
+
+	private static Mob causingMob(final Entity damager) {
+		LivingEntity source = causingLivingEntity(damager);
+		return source instanceof Mob mob ? mob : null;
 	}
 }

@@ -7,6 +7,9 @@ import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadMetrics;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -30,6 +33,7 @@ public final class MtnPaperCommand implements TabExecutor {
 	private final PaperDamageMemory damageMemory;
 	private final PaperBlastReservationBoard blastReservations;
 	private final PaperPounceCoordinator pounceCoordinator;
+	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperMetrics metrics;
 
 	public MtnPaperCommand(
@@ -39,6 +43,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		final PaperDamageMemory damageMemory,
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
+		final PaperSquadCoordinator squadCoordinator,
 		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
@@ -47,6 +52,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		this.damageMemory = damageMemory;
 		this.blastReservations = blastReservations;
 		this.pounceCoordinator = pounceCoordinator;
+		this.squadCoordinator = squadCoordinator;
 		this.metrics = metrics;
 	}
 
@@ -92,6 +98,7 @@ public final class MtnPaperCommand implements TabExecutor {
 
 	private boolean status(final CommandSender sender) {
 		PaperMetrics.Snapshot snapshot = this.metrics.snapshot();
+		PaperSquadMetrics.Snapshot squads = this.squadCoordinator.metrics().snapshot();
 		sender.sendMessage(Component.text(
 			"Mobs Think Now Paper | enabled=" + this.plugin.settings().enabled()
 				+ ", loadedSupportedMobs=" + this.lifecycle.loadedSupportedMobCount()
@@ -125,6 +132,16 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", unsafeLandings=" + snapshot.spiderUnsafeLandingsRejected()
 				+ ", pounceConflicts=" + snapshot.spiderPounceReservationConflicts()
 				+ ", activePounceReservations=" + this.pounceCoordinator.activeCount()
+				+ ", activeSquads=" + this.squadCoordinator.activeSquadCount()
+				+ ", squadMembers=" + this.squadCoordinator.assignedMemberCount()
+				+ ", squadsFormed=" + squads.squadsFormed()
+				+ ", squadRecruits=" + squads.membersRecruited()
+				+ ", leaderReplacements=" + squads.leaderReplacements()
+				+ ", phaseTransitions=" + squads.phaseTransitions()
+				+ ", sharedTargets=" + squads.sharedTargets()
+				+ ", friendlyFirePrevented=" + squads.friendlyDamagePrevented()
+				+ ", candidateChecks=" + squads.boundedCandidateChecks()
+				+ ", orderPathFailures=" + squads.orderPathFailures()
 				+ ", pendingDamageMemories=" + this.damageMemory.pendingCount(),
 			NamedTextColor.AQUA
 		));
@@ -146,11 +163,18 @@ public final class MtnPaperCommand implements TabExecutor {
 			sender.sendMessage(Component.text("No supported mob found within 12 blocks.", NamedTextColor.YELLOW));
 			return true;
 		}
+		PaperSquadDirective directive = this.squadCoordinator.directiveFor(mob);
 		sender.sendMessage(Component.text(
 			mob.getType().key().asString()
 				+ " | uuid=" + mob.getUniqueId()
 				+ ", intelligence=" + this.intelligence.get(mob)
-				+ ", target=" + (mob.getTarget() == null ? "none" : mob.getTarget().getUniqueId()),
+				+ ", target=" + (mob.getTarget() == null ? "none" : mob.getTarget().getUniqueId())
+				+ (directive == null ? ", squad=none" : ", squad=" + directive.squadId()
+					+ ", term=" + directive.term()
+					+ ", leader=" + directive.leaderId()
+					+ ", state=" + directive.state()
+					+ ", plan=" + directive.plan()
+					+ ", role=" + directive.role()),
 			NamedTextColor.AQUA
 		));
 		return true;

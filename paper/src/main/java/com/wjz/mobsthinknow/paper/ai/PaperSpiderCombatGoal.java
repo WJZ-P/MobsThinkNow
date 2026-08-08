@@ -6,6 +6,7 @@ import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.shared.ai.SpiderTacticalPlanner;
 import com.wjz.mobsthinknow.shared.math.Vec3d;
 import java.util.EnumSet;
@@ -23,6 +24,7 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperMetrics metrics;
+	private final PaperSquadCoordinator squadCoordinator;
 	private final int stableSide;
 
 	private long nextRepathAt;
@@ -35,12 +37,14 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 		final GoalKey<Spider> key,
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
+		final PaperSquadCoordinator squadCoordinator,
 		final PaperMetrics metrics
 	) {
 		this.spider = spider;
 		this.key = key;
 		this.settings = settings;
 		this.intelligence = intelligence;
+		this.squadCoordinator = squadCoordinator;
 		this.metrics = metrics;
 		this.stableSide = (spider.getUniqueId().hashCode() & 1) == 0 ? -1 : 1;
 	}
@@ -49,6 +53,7 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 	public boolean shouldActivate() {
 		PaperSettings config = this.settings.get();
 		return enabled(config)
+			&& !this.squadCoordinator.isHoldingForOrders(this.spider)
 			&& this.intelligence.get(this.spider) >= config.spiderMinimumIntelligence()
 			&& this.spider.getPassengers().isEmpty()
 			&& !this.spider.isInsideVehicle()

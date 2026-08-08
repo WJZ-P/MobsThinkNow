@@ -6,6 +6,8 @@ import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.command.MtnPaperCommand;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadSettings;
 import java.util.Objects;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -19,16 +21,25 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private PaperSkeletonProfile skeletonProfile;
 	private PaperBlastReservationBoard blastReservations;
 	private PaperPounceCoordinator pounceCoordinator;
+	private PaperSquadSettings squadSettings;
+	private PaperSquadCoordinator squadCoordinator;
 	private PaperMobLifecycle mobLifecycle;
 
 	@Override
 	public void onEnable() {
 		this.saveDefaultConfig();
 		this.settings = this.readSettings();
+		this.squadSettings = this.readSquadSettings();
 		this.intelligence = new PaperIntelligenceService(this, this::settings, this.metrics);
 		this.skeletonProfile = new PaperSkeletonProfile(this);
 		this.blastReservations = new PaperBlastReservationBoard(this::settings, this.metrics);
 		this.pounceCoordinator = new PaperPounceCoordinator(this::settings, this.metrics);
+		this.squadCoordinator = new PaperSquadCoordinator(
+			this,
+			() -> this.settings.enabled(),
+			this::squadSettings,
+			this.intelligence
+		);
 		this.mobLifecycle = new PaperMobLifecycle(
 			this,
 			this::settings,
@@ -36,6 +47,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.skeletonProfile,
 			this.blastReservations,
 			this.pounceCoordinator,
+			this.squadCoordinator,
 			this.damageMemory,
 			this.metrics
 		);
@@ -47,6 +59,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.damageMemory,
 			this.blastReservations,
 			this.pounceCoordinator,
+			this.squadCoordinator,
 			this.metrics
 		);
 		PluginCommand command = Objects.requireNonNull(
@@ -56,6 +69,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		command.setExecutor(commandHandler);
 		command.setTabCompleter(commandHandler);
 		this.mobLifecycle.installLoadedEntities();
+		this.squadCoordinator.start();
 		this.getLogger().info(
 			"Mobs Think Now Paper enabled: loadedSupportedMobs=" + this.mobLifecycle.loadedSupportedMobCount()
 		);
@@ -65,6 +79,9 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	public void onDisable() {
 		if (this.mobLifecycle != null) {
 			this.mobLifecycle.removeGoalsFromLoadedEntities();
+		}
+		if (this.squadCoordinator != null) {
+			this.squadCoordinator.stop();
 		}
 		this.damageMemory.clear();
 		if (this.blastReservations != null) {
@@ -79,12 +96,18 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		return this.settings;
 	}
 
+	public PaperSquadSettings squadSettings() {
+		return this.squadSettings;
+	}
+
 	public void reloadPluginSettings() {
 		this.reloadConfig();
 		this.settings = this.readSettings();
+		this.squadSettings = this.readSquadSettings();
 		this.damageMemory.clear();
 		this.blastReservations.clear();
 		this.pounceCoordinator.clear();
+		this.squadCoordinator.reconfigure();
 		this.mobLifecycle.refreshLoadedEntities();
 	}
 
@@ -122,6 +145,26 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getInt("spider.tactics.pounce-stagger-ticks", 10),
 			this.getConfig().getInt("spider.tactics.pounce-lease-ticks", 20),
 			this.getConfig().getInt("spider.tactics.maximum-air-ticks", 40)
+		);
+	}
+
+	private PaperSquadSettings readSquadSettings() {
+		return PaperSquadSettings.validated(
+			this.getConfig().getBoolean("coordination.enabled", true),
+			this.getConfig().getBoolean("coordination.share-targets", true),
+			this.getConfig().getBoolean("coordination.prevent-friendly-fire", true),
+			this.getConfig().getDouble("coordination.formation-radius", 16.0),
+			this.getConfig().getInt("coordination.minimum-members", 2),
+			this.getConfig().getInt("coordination.maximum-members", 20),
+			this.getConfig().getInt("coordination.raw-scan-limit", 64),
+			this.getConfig().getInt("coordination.heartbeat-ticks", 5),
+			this.getConfig().getInt("coordination.forming-timeout-ticks", 40),
+			this.getConfig().getInt("coordination.briefing-ticks", 30),
+			this.getConfig().getInt("coordination.deployment-timeout-ticks", 40),
+			this.getConfig().getInt("coordination.reorganizing-ticks", 20),
+			this.getConfig().getDouble("coordination.emergency-distance", 8.0),
+			this.getConfig().getDouble("coordination.maximum-separation", 48.0),
+			this.getConfig().getInt("coordination.target-memory-ticks", 100)
 		);
 	}
 }

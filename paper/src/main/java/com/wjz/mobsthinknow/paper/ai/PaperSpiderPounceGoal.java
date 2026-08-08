@@ -6,6 +6,7 @@ import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.shared.ai.SpiderTacticalPlanner;
 import com.wjz.mobsthinknow.shared.math.Vec3d;
 import java.util.EnumSet;
@@ -26,6 +27,7 @@ public final class PaperSpiderPounceGoal implements Goal<Spider> {
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperPounceCoordinator coordinator;
+	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperMetrics metrics;
 	private final int stableSide;
 
@@ -43,6 +45,7 @@ public final class PaperSpiderPounceGoal implements Goal<Spider> {
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
 		final PaperPounceCoordinator coordinator,
+		final PaperSquadCoordinator squadCoordinator,
 		final PaperMetrics metrics
 	) {
 		this.spider = spider;
@@ -50,6 +53,7 @@ public final class PaperSpiderPounceGoal implements Goal<Spider> {
 		this.settings = settings;
 		this.intelligence = intelligence;
 		this.coordinator = coordinator;
+		this.squadCoordinator = squadCoordinator;
 		this.metrics = metrics;
 		this.stableSide = (spider.getUniqueId().hashCode() & 1) == 0 ? -1 : 1;
 	}
@@ -60,6 +64,7 @@ public final class PaperSpiderPounceGoal implements Goal<Spider> {
 		LivingEntity current = this.spider.getTarget();
 		int iq = this.intelligence.get(this.spider);
 		return enabled(config)
+			&& !this.squadCoordinator.isHoldingForOrders(this.spider)
 			&& config.spiderPredictivePounceEnabled()
 			&& iq >= Math.max(4, config.spiderMinimumIntelligence())
 			&& Bukkit.getCurrentTick() >= this.nextPounceAt
