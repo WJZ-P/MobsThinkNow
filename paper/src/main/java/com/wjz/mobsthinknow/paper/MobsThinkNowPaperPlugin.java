@@ -26,6 +26,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private final PaperCreeperFeintMemory creeperFeintMemory = new PaperCreeperFeintMemory();
 	private PaperSettings settings;
 	private PaperProjectileEvasionSettings projectileEvasionSettings;
+	private PaperCoverSettings coverSettings;
 	private PaperIntelligenceService intelligence;
 	private PaperSkeletonProfile skeletonProfile;
 	private PaperSkeletonLoadoutService skeletonLoadouts;
@@ -43,6 +44,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.saveDefaultConfig();
 		this.settings = this.readSettings();
 		this.projectileEvasionSettings = this.readProjectileEvasionSettings();
+		this.coverSettings = this.readCoverSettings();
 		this.squadSettings = this.readSquadSettings();
 		this.intelligence = new PaperIntelligenceService(this, this::settings, this.metrics);
 		this.skeletonProfile = new PaperSkeletonProfile(this);
@@ -78,6 +80,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.skeletonProfile,
 			this.skeletonLoadouts,
 			this::projectileEvasionSettings,
+			this::coverSettings,
 			this.projectileThreats,
 			this.creeperFeintMemory,
 			this.blastReservations,
@@ -158,11 +161,16 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		return this.projectileEvasionSettings;
 	}
 
+	public PaperCoverSettings coverSettings() {
+		return this.coverSettings;
+	}
+
 	public void reloadPluginSettings() {
 		this.runtimeSelfTest.close();
 		this.reloadConfig();
 		this.settings = this.readSettings();
 		this.projectileEvasionSettings = this.readProjectileEvasionSettings();
+		this.coverSettings = this.readCoverSettings();
 		this.squadSettings = this.readSquadSettings();
 		this.damageMemory.clear();
 		this.shieldMemory.clear();
@@ -185,6 +193,24 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getDouble("skeleton.projectile-evasion.dodge-distance", 3.25),
 			this.getConfig().getDouble("skeleton.projectile-evasion.movement-speed", 1.35),
 			this.getConfig().getInt("skeleton.projectile-evasion.cooldown-ticks", 14)
+		);
+	}
+
+	private PaperCoverSettings readCoverSettings() {
+		return PaperCoverSettings.validated(
+			this.getConfig().getBoolean("skeleton.cover-peeking.enabled", true),
+			this.getConfig().getInt("skeleton.cover-peeking.minimum-intelligence", 5),
+			this.getConfig().getInt("skeleton.cover-peeking.search-radius", 4),
+			this.getConfig().getInt("skeleton.cover-peeking.maximum-candidate-checks", 96),
+			this.getConfig().getInt("skeleton.cover-peeking.maximum-path-checks", 4),
+			this.getConfig().getInt("skeleton.cover-peeking.search-cooldown-ticks", 60),
+			this.getConfig().getDouble("skeleton.cover-peeking.movement-speed", 1.10),
+			this.getConfig().getInt("skeleton.cover-peeking.hidden-wait.minimum-ticks", 4),
+			this.getConfig().getInt("skeleton.cover-peeking.hidden-wait.maximum-ticks", 8),
+			this.getConfig().getInt("skeleton.cover-peeking.draw-ticks", 20),
+			this.getConfig().getInt("skeleton.cover-peeking.maximum-shots-per-cover", 2),
+			this.getConfig().getInt("skeleton.cover-peeking.cycle-timeout-ticks", 240),
+			this.getConfig().getDouble("skeleton.cover-peeking.target-movement-tolerance", 6.0)
 		);
 	}
 

@@ -23,6 +23,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperProjectileThreatBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProjectileEvasionGoal;
+import com.wjz.mobsthinknow.paper.ai.PaperSkeletonCoverGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderCombatGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderPounceGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperZombieRetreatGoal;
@@ -74,6 +75,7 @@ public final class PaperMobLifecycle implements Listener {
 	private static final int SKELETON_DISENGAGE_GOAL_PRIORITY = 1;
 	private static final int SKELETON_PROJECTILE_EVASION_GOAL_PRIORITY = 0;
 	private static final int SQUAD_RANGED_GOAL_PRIORITY = 2;
+	private static final int SKELETON_COVER_GOAL_PRIORITY = 3;
 	private static final int CREEPER_FEINT_GOAL_PRIORITY = 0;
 	private static final int CREEPER_FUSE_GOAL_PRIORITY = 1;
 	private static final int CREEPER_APPROACH_GOAL_PRIORITY = 3;
@@ -88,6 +90,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final NamespacedKey axeCriticalDamageKey;
 	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
 	private final GoalKey<AbstractSkeleton> skeletonProjectileEvasionGoalKey;
+	private final GoalKey<AbstractSkeleton> skeletonCoverGoalKey;
 	private final GoalKey<AbstractSkeleton> squadRangedGoalKey;
 	private final GoalKey<Creeper> creeperFeintGoalKey;
 	private final GoalKey<Creeper> creeperFuseGoalKey;
@@ -101,6 +104,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final PaperSkeletonProfile skeletonProfile;
 	private final PaperSkeletonLoadoutService skeletonLoadouts;
 	private final Supplier<PaperProjectileEvasionSettings> projectileEvasionSettings;
+	private final Supplier<PaperCoverSettings> coverSettings;
 	private final PaperProjectileThreatBoard projectileThreats;
 	private final PaperCreeperFeintMemory creeperFeintMemory;
 	private final PaperBlastReservationBoard blastReservations;
@@ -119,6 +123,7 @@ public final class PaperMobLifecycle implements Listener {
 		final PaperSkeletonProfile skeletonProfile,
 		final PaperSkeletonLoadoutService skeletonLoadouts,
 		final Supplier<PaperProjectileEvasionSettings> projectileEvasionSettings,
+		final Supplier<PaperCoverSettings> coverSettings,
 		final PaperProjectileThreatBoard projectileThreats,
 		final PaperCreeperFeintMemory creeperFeintMemory,
 		final PaperBlastReservationBoard blastReservations,
@@ -141,6 +146,10 @@ public final class PaperMobLifecycle implements Listener {
 			AbstractSkeleton.class,
 			new NamespacedKey(plugin, "skeleton_projectile_evasion")
 		);
+		this.skeletonCoverGoalKey = GoalKey.of(
+			AbstractSkeleton.class,
+			new NamespacedKey(plugin, "skeleton_cover_peeking")
+		);
 		this.squadRangedGoalKey = GoalKey.of(
 			AbstractSkeleton.class,
 			new NamespacedKey(plugin, "skeleton_coordinated_fire")
@@ -160,6 +169,7 @@ public final class PaperMobLifecycle implements Listener {
 		this.skeletonProfile = skeletonProfile;
 		this.skeletonLoadouts = skeletonLoadouts;
 		this.projectileEvasionSettings = projectileEvasionSettings;
+		this.coverSettings = coverSettings;
 		this.projectileThreats = projectileThreats;
 		this.creeperFeintMemory = creeperFeintMemory;
 		this.blastReservations = blastReservations;
@@ -418,6 +428,11 @@ public final class PaperMobLifecycle implements Listener {
 					this.metrics.skeletonDisengageGoalRemoved();
 				}
 				if (entity instanceof AbstractSkeleton skeleton
+					&& Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonCoverGoalKey)) {
+					Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonCoverGoalKey);
+					this.metrics.skeletonCoverGoalRemoved();
+				}
+				if (entity instanceof AbstractSkeleton skeleton
 					&& Bukkit.getMobGoals().hasGoal(skeleton, this.squadRangedGoalKey)) {
 					Bukkit.getMobGoals().removeGoal(skeleton, this.squadRangedGoalKey);
 					this.metrics.squadRangedGoalRemoved();
@@ -627,6 +642,29 @@ public final class PaperMobLifecycle implements Listener {
 		} else if (!shouldHaveGoal && hasGoal) {
 			Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonDisengageGoalKey);
 			this.metrics.skeletonDisengageGoalRemoved();
+		}
+
+		PaperCoverSettings cover = this.coverSettings.get();
+		boolean shouldHaveCoverGoal = config.enabled() && cover.enabled();
+		boolean hasCoverGoal = Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonCoverGoalKey);
+		if (shouldHaveCoverGoal && !hasCoverGoal) {
+			Bukkit.getMobGoals().addGoal(
+				skeleton,
+				SKELETON_COVER_GOAL_PRIORITY,
+				new PaperSkeletonCoverGoal(
+					skeleton,
+					this.skeletonCoverGoalKey,
+					this.settings,
+					this.coverSettings,
+					this.intelligence,
+					this.squadCoordinator,
+					this.metrics
+				)
+			);
+			this.metrics.skeletonCoverGoalInstalled();
+		} else if (!shouldHaveCoverGoal && hasCoverGoal) {
+			Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonCoverGoalKey);
+			this.metrics.skeletonCoverGoalRemoved();
 		}
 
 		boolean shouldHaveSquadRangedGoal = config.enabled()

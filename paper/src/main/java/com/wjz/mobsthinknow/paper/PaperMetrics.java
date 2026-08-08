@@ -44,6 +44,16 @@ public final class PaperMetrics {
 	private final AtomicLong projectileThreatCandidatesChecked = new AtomicLong();
 	private final AtomicLong projectileThreatsDetected = new AtomicLong();
 	private final AtomicLong projectileTrackingCapacityRejects = new AtomicLong();
+	private final AtomicLong skeletonCoverGoalsInstalled = new AtomicLong();
+	private final AtomicLong skeletonCoverGoalsRemoved = new AtomicLong();
+	private final AtomicLong skeletonCoverSearches = new AtomicLong();
+	private final AtomicLong skeletonCoverCandidatesChecked = new AtomicLong();
+	private final AtomicLong skeletonCoverPlansFound = new AtomicLong();
+	private final AtomicLong skeletonCoverCyclesStarted = new AtomicLong();
+	private final AtomicLong skeletonCoverPeekShots = new AtomicLong();
+	private final AtomicLong skeletonCoverReturnsCompleted = new AtomicLong();
+	private final AtomicLong skeletonCoverPathFailures = new AtomicLong();
+	private final AtomicLong skeletonCoverCyclesAborted = new AtomicLong();
 	private final AtomicLong naturalSkeletonLoadoutInitializations = new AtomicLong();
 	private final AtomicLong naturalCrossbowsEquipped = new AtomicLong();
 	private final AtomicLong naturalFireworkCrossbowsEquipped = new AtomicLong();
@@ -251,6 +261,61 @@ public final class PaperMetrics {
 
 	public void projectileTrackingCapacityRejected() {
 		this.projectileTrackingCapacityRejects.incrementAndGet();
+	}
+
+	public void skeletonCoverGoalInstalled() {
+		this.skeletonCoverGoalsInstalled.incrementAndGet();
+	}
+
+	public void skeletonCoverGoalRemoved() {
+		this.skeletonCoverGoalsRemoved.incrementAndGet();
+	}
+
+	public void skeletonCoverSearch() {
+		this.skeletonCoverSearches.incrementAndGet();
+	}
+
+	public void skeletonCoverCandidatesChecked(final long count) {
+		this.skeletonCoverCandidatesChecked.addAndGet(Math.max(0L, count));
+	}
+
+	public void skeletonCoverPlansFound(final long count) {
+		this.skeletonCoverPlansFound.addAndGet(Math.max(0L, count));
+	}
+
+	public void skeletonCoverCycleStarted() {
+		this.skeletonCoverCyclesStarted.incrementAndGet();
+	}
+
+	public void skeletonCoverPeekShot() {
+		this.skeletonCoverPeekShots.incrementAndGet();
+	}
+
+	public void skeletonCoverReturnCompleted() {
+		this.skeletonCoverReturnsCompleted.incrementAndGet();
+	}
+
+	public void skeletonCoverPathFailed() {
+		this.skeletonCoverPathFailures.incrementAndGet();
+	}
+
+	public void skeletonCoverCycleAborted() {
+		this.skeletonCoverCyclesAborted.incrementAndGet();
+	}
+
+	public CoverSnapshot coverSnapshot() {
+		return new CoverSnapshot(
+			this.skeletonCoverGoalsInstalled.get(),
+			this.skeletonCoverGoalsRemoved.get(),
+			this.skeletonCoverSearches.get(),
+			this.skeletonCoverCandidatesChecked.get(),
+			this.skeletonCoverPlansFound.get(),
+			this.skeletonCoverCyclesStarted.get(),
+			this.skeletonCoverPeekShots.get(),
+			this.skeletonCoverReturnsCompleted.get(),
+			this.skeletonCoverPathFailures.get(),
+			this.skeletonCoverCyclesAborted.get()
+		);
 	}
 
 	public void naturalSkeletonLoadoutInitialized() {
@@ -626,6 +691,20 @@ public final class PaperMetrics {
 		long mountedBreachPayloadReleases,
 		long mountedBreachPathFailures,
 		long mountedBreachAborts
+	) {
+	}
+
+	public record CoverSnapshot(
+		long goalsInstalled,
+		long goalsRemoved,
+		long searches,
+		long candidatesChecked,
+		long plansFound,
+		long cyclesStarted,
+		long peekShots,
+		long returnsCompleted,
+		long pathFailures,
+		long cyclesAborted
 	) {
 	}
 }

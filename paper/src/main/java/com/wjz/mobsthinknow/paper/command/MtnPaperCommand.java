@@ -149,6 +149,7 @@ public final class MtnPaperCommand implements TabExecutor {
 
 	private boolean status(final CommandSender sender) {
 		PaperMetrics.Snapshot snapshot = this.metrics.snapshot();
+		PaperMetrics.CoverSnapshot cover = this.metrics.coverSnapshot();
 		PaperSquadMetrics.Snapshot squads = this.squadCoordinator.metrics().snapshot();
 		sender.sendMessage(Component.text(
 			"Mobs Think Now Paper | enabled=" + this.plugin.settings().enabled()
@@ -194,6 +195,16 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", projectileThreats=" + snapshot.projectileThreatsDetected()
 				+ ", projectileCapacityRejects=" + snapshot.projectileTrackingCapacityRejects()
 				+ ", trackedProjectiles=" + this.projectileThreats.trackedCount()
+				+ ", coverGoals=" + cover.goalsInstalled()
+				+ ", coverGoalsRemoved=" + cover.goalsRemoved()
+				+ ", coverSearches=" + cover.searches()
+				+ ", coverCandidates=" + cover.candidatesChecked()
+				+ ", coverPlans=" + cover.plansFound()
+				+ ", coverCycles=" + cover.cyclesStarted()
+				+ ", coverPeekShots=" + cover.peekShots()
+				+ ", coverReturns=" + cover.returnsCompleted()
+				+ ", coverPathFailures=" + cover.pathFailures()
+				+ ", coverAborts=" + cover.cyclesAborted()
 				+ ", naturalSkeletonLoadouts=" + snapshot.naturalSkeletonLoadoutInitializations()
 				+ ", naturalCrossbows=" + snapshot.naturalCrossbowsEquipped()
 				+ ", naturalFireworkCrossbows=" + snapshot.naturalFireworkCrossbowsEquipped()

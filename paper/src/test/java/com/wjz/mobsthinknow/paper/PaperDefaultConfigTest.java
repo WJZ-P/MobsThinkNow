@@ -23,6 +23,9 @@ class PaperDefaultConfigTest {
 		assertEquals(20, configuration.getInt("skeleton.spacing.timeout-cooldown-ticks"));
 		assertTrue(configuration.getBoolean("skeleton.projectile-evasion.enabled"));
 		assertEquals(256, configuration.getInt("skeleton.projectile-evasion.maximum-tracked-projectiles"));
+		assertTrue(configuration.getBoolean("skeleton.cover-peeking.enabled"));
+		assertEquals(96, configuration.getInt("skeleton.cover-peeking.maximum-candidate-checks"));
+		assertEquals(4, configuration.getInt("skeleton.cover-peeking.maximum-path-checks"));
 		assertTrue(configuration.getBoolean("skeleton.coordinated-fire.enabled"));
 	}
 }

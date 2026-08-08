@@ -125,6 +125,22 @@ skeleton:
     dodge-distance: 3.25
     movement-speed: 1.35
     cooldown-ticks: 14
+  cover-peeking:
+    enabled: true
+    minimum-intelligence: 5
+    # Candidate geometry is scored by the shared kernel; only the best few plans reach Paper's pathfinder.
+    search-radius: 4
+    maximum-candidate-checks: 96
+    maximum-path-checks: 4
+    search-cooldown-ticks: 60
+    movement-speed: 1.10
+    hidden-wait:
+      minimum-ticks: 4
+      maximum-ticks: 8
+    draw-ticks: 20
+    maximum-shots-per-cover: 2
+    cycle-timeout-ticks: 240
+    target-movement-tolerance: 6.0
   coordinated-fire:
     enabled: true
     minimum-intelligence: 4

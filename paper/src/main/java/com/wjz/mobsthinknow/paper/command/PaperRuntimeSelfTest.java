@@ -10,7 +10,9 @@ import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadPlan;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadState;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
@@ -19,6 +21,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -50,7 +53,7 @@ public final class PaperRuntimeSelfTest {
 		EntityType.SPIDER
 	);
 	private static final int STRUCTURE_VALIDATION_DELAY_TICKS = 25;
-	private static final int COMBAT_VALIDATION_DELAY_TICKS = 120;
+	private static final int COMBAT_VALIDATION_DELAY_TICKS = 180;
 	private static final int COMBAT_PROBE_SEARCH_RADIUS = 32;
 	private static final int[] COMBAT_PROBE_TARGET_OFFSETS = {2, 3};
 	private static final int[] FIREWORK_PROBE_TARGET_OFFSETS = {12, 10, 8};
@@ -65,11 +68,13 @@ public final class PaperRuntimeSelfTest {
 	private final PaperMetrics metrics;
 	private final List<Entity> activeEntities = new ArrayList<>();
 	private final List<Chunk> temporarilyForcedChunks = new ArrayList<>();
+	private final Map<String, BlockState> temporaryBlocks = new LinkedHashMap<>();
 	private BukkitTask validationTask;
 	private BukkitTask shieldProbeAttackTask;
 	private BukkitTask shieldDisableProbeTask;
 	private BukkitTask creeperFeintProbeTask;
 	private BukkitTask projectileEvasionProbeTask;
+	private BukkitTask coverProbeTask;
 	private Zombie shieldProbeGuard;
 	private IronGolem shieldProbeAttacker;
 	private AbstractSkeleton fireworkProbeShooter;
@@ -83,6 +88,12 @@ public final class PaperRuntimeSelfTest {
 	private boolean projectileEvasionProbeDodged;
 	private long projectileEvasionDodgeBaseline;
 	private long nextProjectileEvasionShotAt;
+	private Skeleton coverProbe;
+	private IronGolem coverProbeTarget;
+	private Location coverProbeStart;
+	private double coverProbeMaximumDisplacement;
+	private long coverPeekShotBaseline;
+	private long coverReturnBaseline;
 	private boolean naturalLoadoutProbeExpected;
 	private long shieldProbeAttackAttempts;
 	private long nextShieldProbeAttackAt;
@@ -167,6 +178,7 @@ public final class PaperRuntimeSelfTest {
 			this.spawnFireworkProbe(world, anchor);
 			this.spawnCreeperFeintProbe(world, anchor);
 			this.spawnProjectileEvasionProbe(world, anchor);
+			this.spawnCoverProbe(world, anchor);
 			this.naturalLoadoutProbeExpected = this.skeletonLoadouts.guaranteesCrossbow(world.getDifficulty());
 			if (this.naturalLoadoutProbeExpected) {
 				this.spawnNaturalLoadoutProbe(world, anchor);
@@ -318,6 +330,9 @@ public final class PaperRuntimeSelfTest {
 			long creeperFeints = current.creeperFeints() - baseline.creeperFeints();
 			long creeperFeintsCompleted = current.creeperFeintsCompleted() - baseline.creeperFeintsCompleted();
 			long projectileDodges = current.skeletonProjectileDodges() - baseline.skeletonProjectileDodges();
+			PaperMetrics.CoverSnapshot cover = this.metrics.coverSnapshot();
+			long coverPeekShots = cover.peekShots() - this.coverPeekShotBaseline;
+			long coverReturns = cover.returnsCompleted() - this.coverReturnBaseline;
 			boolean feintProbeCooled = this.creeperFeintProbe != null
 				&& this.creeperFeintProbe.isValid()
 				&& !this.creeperFeintProbe.isIgnited()
@@ -343,7 +358,10 @@ public final class PaperRuntimeSelfTest {
 				|| creeperFeintsCompleted <= 0L
 				|| !feintProbeCooled
 				|| projectileDodges <= 0L
-				|| !this.projectileEvasionProbeDodged) {
+				|| !this.projectileEvasionProbeDodged
+				|| coverPeekShots <= 0L
+				|| coverReturns <= 0L
+				|| this.coverProbeMaximumDisplacement < 0.75) {
 				this.report(
 					sender,
 					false,
@@ -383,6 +401,9 @@ public final class PaperRuntimeSelfTest {
 						+ ", projectileDodges=" + projectileDodges
 						+ ", projectileEvasionProbeDodged=" + this.projectileEvasionProbeDodged
 						+ ", projectileEvasionProbe=" + this.projectileEvasionProbeSnapshot()
+						+ ", coverPeekShots=" + coverPeekShots
+						+ ", coverReturns=" + coverReturns
+						+ ", coverProbe=" + this.coverProbeSnapshot()
 						+ ", shieldDisableAttempts=" + this.shieldDisableProbeAttempts
 						+ ", shieldProbe=" + this.shieldProbeSnapshot()
 						+ ", carrierPathFailures="
@@ -422,6 +443,9 @@ public final class PaperRuntimeSelfTest {
 					+ ", feintProbeCooled=" + feintProbeCooled
 					+ ", projectileDodges=" + projectileDodges
 					+ ", projectileEvasionProbeDodged=" + this.projectileEvasionProbeDodged
+					+ ", coverPeekShots=" + coverPeekShots
+					+ ", coverReturns=" + coverReturns
+					+ ", coverProbeMoved=" + this.coverProbeMaximumDisplacement
 			);
 		} catch (RuntimeException exception) {
 			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -447,6 +471,10 @@ public final class PaperRuntimeSelfTest {
 			this.projectileEvasionProbeTask.cancel();
 			this.projectileEvasionProbeTask = null;
 		}
+		if (this.coverProbeTask != null) {
+			this.coverProbeTask.cancel();
+			this.coverProbeTask = null;
+		}
 		this.shieldProbeGuard = null;
 		this.shieldProbeAttacker = null;
 		this.fireworkProbeShooter = null;
@@ -460,6 +488,12 @@ public final class PaperRuntimeSelfTest {
 		this.projectileEvasionProbeDodged = false;
 		this.projectileEvasionDodgeBaseline = 0L;
 		this.nextProjectileEvasionShotAt = Long.MIN_VALUE;
+		this.coverProbe = null;
+		this.coverProbeTarget = null;
+		this.coverProbeStart = null;
+		this.coverProbeMaximumDisplacement = 0.0;
+		this.coverPeekShotBaseline = 0L;
+		this.coverReturnBaseline = 0L;
 		this.naturalLoadoutProbeExpected = false;
 		this.shieldProbeAttackAttempts = 0L;
 		this.nextShieldProbeAttackAt = Long.MIN_VALUE;
@@ -475,6 +509,11 @@ public final class PaperRuntimeSelfTest {
 			}
 		}
 		this.activeEntities.clear();
+		List<BlockState> snapshots = new ArrayList<>(this.temporaryBlocks.values());
+		for (int index = snapshots.size() - 1; index >= 0; index--) {
+			snapshots.get(index).update(true, false);
+		}
+		this.temporaryBlocks.clear();
 		for (Chunk chunk : this.temporarilyForcedChunks) {
 			if (chunk.isLoaded()) {
 				chunk.setForceLoaded(false);
@@ -798,7 +837,7 @@ public final class PaperRuntimeSelfTest {
 
 		IronGolem target = (IronGolem)world.spawnEntity(placement.target(), EntityType.IRON_GOLEM);
 		target.setAI(false);
-		target.setInvulnerable(true);
+		setMaximumHealth(target, 1000.0);
 		target.setPlayerCreated(true);
 		target.setPersistent(false);
 		target.setRemoveWhenFarAway(false);
@@ -876,6 +915,90 @@ public final class PaperRuntimeSelfTest {
 			+ ",lateral:" + Math.abs(displacement.dot(this.projectileEvasionRight))
 			+ ",distance:" + displacement.length()
 			+ ",nextShotAt:" + this.nextProjectileEvasionShotAt;
+	}
+
+	/** Builds and later restores a deterministic two-block wall, then verifies a real archer leaves its start cell. */
+	private void spawnCoverProbe(final World world, final Location squadAnchor) {
+		Location surface = safeSurface(
+			world,
+			squadAnchor.getBlockX() + 320,
+			squadAnchor.getBlockZ()
+		);
+		int centerX = surface.getBlockX();
+		int feetY = surface.getBlockY() + 2;
+		int centerZ = surface.getBlockZ();
+		for (int x = -5; x <= 5; x++) {
+			for (int z = -2; z <= 12; z++) {
+				this.setTemporaryBlock(world.getBlockAt(centerX + x, feetY - 1, centerZ + z), Material.STONE);
+				for (int y = 0; y <= 2; y++) {
+					this.setTemporaryBlock(world.getBlockAt(centerX + x, feetY + y, centerZ + z), Material.AIR);
+				}
+			}
+		}
+		// The archer starts offset to the east and can see the target; the nearest hidden cell is behind this pillar.
+		this.setTemporaryBlock(world.getBlockAt(centerX, feetY, centerZ + 4), Material.STONE);
+		this.setTemporaryBlock(world.getBlockAt(centerX, feetY + 1, centerZ + 4), Material.STONE);
+		Location skeletonLocation = new Location(world, centerX + 2.5, feetY, centerZ + 0.5);
+		Location targetLocation = new Location(world, centerX + 0.5, feetY, centerZ + 10.5);
+		this.forceChunk(skeletonLocation);
+		this.forceChunk(targetLocation);
+
+		IronGolem target = (IronGolem)world.spawnEntity(targetLocation, EntityType.IRON_GOLEM);
+		target.setAI(false);
+		setMaximumHealth(target, 1000.0);
+		target.setPlayerCreated(true);
+		target.setPersistent(false);
+		target.setRemoveWhenFarAway(false);
+		this.activeEntities.add(target);
+
+		Skeleton skeleton = (Skeleton)world.spawnEntity(skeletonLocation, EntityType.SKELETON);
+		skeleton.setShouldBurnInDay(false);
+		skeleton.setInvulnerable(true);
+		skeleton.setPersistent(false);
+		skeleton.setRemoveWhenFarAway(false);
+		skeleton.getEquipment().setItemInMainHand(new ItemStack(Material.BOW));
+		this.intelligence.set(skeleton, 10);
+		skeleton.setTarget(target);
+		this.activeEntities.add(skeleton);
+
+		PaperMetrics.CoverSnapshot baseline = this.metrics.coverSnapshot();
+		this.coverProbe = skeleton;
+		this.coverProbeTarget = target;
+		this.coverProbeStart = skeleton.getLocation().clone();
+		this.coverProbeMaximumDisplacement = 0.0;
+		this.coverPeekShotBaseline = baseline.peekShots();
+		this.coverReturnBaseline = baseline.returnsCompleted();
+		this.coverProbeTask = Bukkit.getScheduler().runTaskTimer(
+			this.plugin,
+			() -> {
+				if (!skeleton.isValid() || this.coverProbeStart == null) {
+					return;
+				}
+				double displacement = skeleton.getLocation().toVector()
+					.subtract(this.coverProbeStart.toVector())
+					.length();
+				this.coverProbeMaximumDisplacement = Math.max(this.coverProbeMaximumDisplacement, displacement);
+			},
+			1L,
+			1L
+		);
+	}
+
+	private String coverProbeSnapshot() {
+		return this.coverProbe == null || this.coverProbeTarget == null
+			? "missing"
+			: "valid:" + this.coverProbe.isValid()
+				+ ",targetValid:" + this.coverProbeTarget.isValid()
+				+ ",target:" + (this.coverProbe.getTarget() == null
+					? "none"
+					: this.coverProbe.getTarget().getType().key().asString())
+				+ ",maximumDisplacement:" + this.coverProbeMaximumDisplacement;
+	}
+
+	private void setTemporaryBlock(final Block block, final Material material) {
+		String key = block.getWorld().getUID() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
+		this.temporaryBlocks.computeIfAbsent(key, ignored -> block.getState());
+		block.setType(material, false);
 	}
 
 	private void spawnNaturalLoadoutProbe(final World world, final Location squadAnchor) {

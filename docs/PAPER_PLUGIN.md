@@ -100,6 +100,22 @@ MobsThinkNow/
   和当前跟踪箭数。`/mtnpaper selftest` 会从十格外发射真实 Paper 箭，除计数增长外还要求探针骷髅实际
   横移至少 0.55 格。
 
+### 骷髅掩体探头
+
+- Fabric/Paper 现在共用纯 Java `CoverPositionPlanner`：它只处理固定半径的格点顺序、有效射程、稳定侧向
+  打散与评分；是否可站、是否被遮挡、探头处是否有射界由平台主线程适配器提供，不把 Bukkit 世界对象
+  放进共享层；
+- Paper 默认只让 IQ 至少 5 的持弓骷髅使用该战术。一次搜索最多检查半径四格内 96 个藏身候选，最多
+  返回 4 个方案并依次交给公开 `Pathfinder`，所以方块查询和 A* 次数都有硬上限；失败后默认等待 60 tick；
+- 完整状态机为“进入藏身格 → 随机等待 4～8 tick → 前往相邻射界格 → 真实举弓 20 tick →
+  `RangedEntity#rangedAttack` 放箭 → 保持瞄准两 tick → 缩回”。默认每处最多两箭，目标移动超过六格、
+  地形/射界变化或 240 tick 超时都会结束本轮；
+- 优先级 0 的来箭闪避和优先级 1 的贴脸脱离都会抢占优先级 3 的掩体循环。进入交叉火力方案的远程成员
+  则交由优先级 2 的小队射手 Goal 排阵；独行射手探头释放前仍使用有界友军胶囊检查，避免为了掩体打中队友；
+- `/mtnpaper status` 显示搜索、原始候选、有效方案、循环、探头箭、回撤、寻路失败与中止次数。
+  `selftest` 会搭建一面临时双高石墙，要求真实完成至少一次探头射击、回撤和 0.75 格位移，随后逐块恢复
+  原世界快照。
+
 ### 骷髅交叉火力与友军射界
 
 - `CROSSFIRE`/`COMBINED_ARMS` 进入交战后，左右射手用共享 `SquadVolleyPlanner` 取得相差半个周期的
@@ -250,13 +266,14 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 
 `selftest` 不要求在线玩家：它会临时保活测试区块，生成一只持剑僵尸、一名弓手与一名弩手、一只苦力怕、一只蜘蛛
 和一个关闭 AI、无敌的铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后先要求
-五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后再运行 120 tick，要求
+五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后再运行 180 tick，要求
 两名射手至少实际释放一发协调箭，且弩手必须累计真实举弩 tick、装填和发射，并要求苦力怕真实跳上蜘蛛。另有一只 IQ 10 斧手与关闭 AI 但仍可
 攻击的铁傀儡，在有界搜索所得的同高、2～3 格间距、四格净空自然通道中独立验证真实攻击和跳劈；另一个
 隔离通道生成 IQ 10 剑盾卫与铁傀儡，待盾牌连续举起至少 10 tick 后发射真实箭矢，强制验证正面格挡、
 一次性事件信号和 2～4 tick 延迟反击均至少发生一次；第三条通道由持铁斧的卫道士正面攻击成熟举盾者，
-要求伤害不被格挡且 `shieldDisables` 至少增加一次。探针不放置或修改方块，也不会因混编阵位碰撞
-产生假阴性。第四条相隔 160 格的远距通道生成独行烟花弩手和 500 点生命铁傀儡，
+要求伤害不被格挡且 `shieldDisables` 至少增加一次。战斗探针彼此隔离，不会因混编阵位碰撞产生假阴性。
+掩体探针会暂时铺设并逐块恢复一段平台和双高石墙，以验证真实探头、放箭及回撤；第四条相隔 160 格的
+远距通道生成独行烟花弩手和 500 点生命铁傀儡，
 要求副手火箭真实消耗、集中弹体服务至少发射并碰撞引爆一次，清理后活跃弹体数回到零。
 第五条 6 格注视通道生成 IQ 10 苦力怕，强制验证可见假点燃、9 格侧后重定位、完成计数和残余引信归零。
 混编样本中的苦力怕爆炸半径临时设为 0、引信延长到 200 tick，因此可以观察载客行为而不破坏测试世界。
@@ -371,6 +388,21 @@ skeleton:
     dodge-distance: 3.25
     movement-speed: 1.35
     cooldown-ticks: 14
+  cover-peeking:
+    enabled: true
+    minimum-intelligence: 5
+    search-radius: 4
+    maximum-candidate-checks: 96
+    maximum-path-checks: 4
+    search-cooldown-ticks: 60
+    movement-speed: 1.10
+    hidden-wait:
+      minimum-ticks: 4
+      maximum-ticks: 8
+    draw-ticks: 20
+    maximum-shots-per-cover: 2
+    cycle-timeout-ticks: 240
+    target-movement-tolerance: 6.0
   coordinated-fire:
     enabled: true
     minimum-intelligence: 4
@@ -442,7 +474,8 @@ spider:
    `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots`、
    `crossbowPoseTicks`、`fireworkLaunches`、`fireworkDetonations`、`creepersMounted`、`shieldBlocks`、
    `creeperFeints`、`creeperFeintsCompleted` 与 `feintProbeCooled` 均满足真实行为断言，并要求
-   `projectileDodges > 0`、独立十格来箭探针产生至少 0.55 格真实横移；
+   `projectileDodges > 0`、独立十格来箭探针产生至少 0.55 格真实横移，并要求临时石墙探针完成至少一次
+   掩体探头射击、回撤和 0.75 格实际移动；
    `shieldCounterattacks` 与 `shieldDisables` 均大于零；
 5. 隔离运行器额外把世界设为困难、自然弩手基础概率设为 100%，通过真实 `NATURAL` 出生事件断言
    `naturalLoadoutInitializations=1` 与 `naturalCrossbows=1`；自测主动再初始化一次，计数仍为 1，证明 PDC 幂等；
