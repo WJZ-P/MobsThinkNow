@@ -116,10 +116,12 @@ MobsThinkNow/
   优先侧后切入，寻路失败按“侧翼 → 拦截 → 直追”逐级降级；
 - 点火 Goal 先向空间预约板申请预计爆点和预计爆炸 tick，成功后播放嘶声并继续追踪目标的速度提前量；
 - `CreeperFeintPlanner` 已进入无平台依赖的共享层。IQ 8～10、未带电且引信尚未推进的个体在真实起爆圈外
-  被目标注视或举盾时，以优先级 0 执行 `6～8 tick` 可见假点燃，再退火并预测目标速度移动到稳定侧后方。
+  被目标注视或举盾时，以优先级 0 执行 `6～8 tick` 可见假点燃，再退火并预测目标速度移动到 9 格侧后退出线。
   冷却默认 240 tick 并带 `80%～120%` 的确定性个体抖动；原侧路线失败只尝试一次镜像侧，工作量有硬界；
-- Paper 适配器用 `CreeperIgniteEvent` 区分插件自己的姿态写入与外部点燃。玩家在假动作期间用打火石接管
-  后，假动作立即结束但不清零引信，随后真实引信 Goal 接手；插件重载、实体卸载和关闭都会清理短期所有权；
+- Paper 适配器用持续引信所有权过滤重复 `CreeperIgniteEvent`，并在未被取消的玩家实体交互中识别打火石/
+  火焰弹接管；假动作随即结束但不清零真实引信。原版 `swellDir` 不会随公开退火 API 立刻归零，
+  因此插件用一个全服集中任务维护最多 64 个、每个 10 tick 的退火条目；期间接敌/真引信 Goal 让位，退出线
+  令原版 SwellGoal 自行切回负方向。插件重载、实体卸载和关闭都会清理短期所有权与集中队列；
 - 玩家真正跑出提交距离时，插件点燃的苦力怕会退火并释放预约。由玩家打火石等外部来源强制点燃的
   苦力怕只登记强制预约，绝不被插件取消；
 - 冲突个体不会在首爆中心干等，而是去目标后侧的稳定候场点；首爆预约释放或过期后才重新竞争；
@@ -241,8 +243,9 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 要求伤害不被格挡且 `shieldDisables` 至少增加一次。探针不放置或修改方块，也不会因混编阵位碰撞
 产生假阴性。第四条相隔 160 格的远距通道生成独行烟花弩手和 500 点生命铁傀儡，
 要求副手火箭真实消耗、集中弹体服务至少发射并碰撞引爆一次，清理后活跃弹体数回到零。
-测试苦力怕的爆炸半径临时设为 0、引信
-延长到 200 tick，因此可以观察载客行为而不破坏测试世界。无论成功、失败、重载还是插件关闭，测试实体
+第五条 6 格注视通道生成 IQ 10 苦力怕，强制验证可见假点燃、9 格侧后重定位、完成计数和残余引信归零。
+混编样本中的苦力怕爆炸半径临时设为 0、引信延长到 200 tick，因此可以观察载客行为而不破坏测试世界。
+无论成功、失败、重载还是插件关闭，测试实体
 和临时区块票都会清理。中间结构检查输出 `[MTN SELFTEST STRUCTURE PASS]`，最终日志只以
 `[MTN SELFTEST PASS]` 或 `[MTN SELFTEST FAIL]` 表示机器可识别结论。
 
@@ -414,6 +417,7 @@ spider:
 4. 执行 `/mtnpaper selftest`，确认先输出结构通过，再得到
    `state=ENGAGING, plan=COMBINED_ARMS`，且 `weaponAttacks`、`axeLeaps`、`coordinatedShots`、
    `crossbowPoseTicks`、`fireworkLaunches`、`fireworkDetonations`、`creepersMounted`、`shieldBlocks`、
+   `creeperFeints`、`creeperFeintsCompleted` 与 `feintProbeCooled` 均满足真实行为断言；
    `shieldCounterattacks` 与 `shieldDisables` 均大于零；
 5. 隔离运行器额外把世界设为困难、自然弩手基础概率设为 100%，通过真实 `NATURAL` 出生事件断言
    `naturalLoadoutInitializations=1` 与 `naturalCrossbows=1`；自测主动再初始化一次，计数仍为 1，证明 PDC 幂等；

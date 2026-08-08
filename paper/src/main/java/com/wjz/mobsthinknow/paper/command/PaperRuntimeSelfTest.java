@@ -66,14 +66,18 @@ public final class PaperRuntimeSelfTest {
 	private BukkitTask validationTask;
 	private BukkitTask shieldProbeAttackTask;
 	private BukkitTask shieldDisableProbeTask;
+	private BukkitTask creeperFeintProbeTask;
 	private Zombie shieldProbeGuard;
 	private IronGolem shieldProbeAttacker;
 	private AbstractSkeleton fireworkProbeShooter;
 	private Skeleton naturalLoadoutProbe;
+	private Creeper creeperFeintProbe;
+	private IronGolem creeperFeintTarget;
 	private boolean naturalLoadoutProbeExpected;
 	private long shieldProbeAttackAttempts;
 	private long nextShieldProbeAttackAt;
 	private long shieldDisableProbeAttempts;
+	private long creeperFeintCompletedBaseline;
 
 	public PaperRuntimeSelfTest(
 		final Plugin plugin,
@@ -149,6 +153,7 @@ public final class PaperRuntimeSelfTest {
 			this.spawnShieldProbe(world, anchor);
 			this.spawnShieldDisableProbe(world, anchor);
 			this.spawnFireworkProbe(world, anchor);
+			this.spawnCreeperFeintProbe(world, anchor);
 			this.naturalLoadoutProbeExpected = this.skeletonLoadouts.guaranteesCrossbow(world.getDifficulty());
 			if (this.naturalLoadoutProbeExpected) {
 				this.spawnNaturalLoadoutProbe(world, anchor);
@@ -297,6 +302,12 @@ public final class PaperRuntimeSelfTest {
 			long shieldStrikeWindows = current.shieldStrikeWindows() - baseline.shieldStrikeWindows();
 			long shieldAttacks = current.shieldAttacks() - baseline.shieldAttacks();
 			long shieldDisables = current.shieldDisables() - baseline.shieldDisables();
+			long creeperFeints = current.creeperFeints() - baseline.creeperFeints();
+			long creeperFeintsCompleted = current.creeperFeintsCompleted() - baseline.creeperFeintsCompleted();
+			boolean feintProbeCooled = this.creeperFeintProbe != null
+				&& this.creeperFeintProbe.isValid()
+				&& !this.creeperFeintProbe.isIgnited()
+				&& this.creeperFeintProbe.getFuseTicks() == 0;
 			if (!engaging
 				|| coordinatedShots <= 0L
 				|| crossbowCharges <= 0L
@@ -313,7 +324,10 @@ public final class PaperRuntimeSelfTest {
 				|| mounted <= 0L
 				|| shieldBlocks <= 0L
 				|| shieldCounterattacks <= 0L
-				|| shieldDisables <= 0L) {
+				|| shieldDisables <= 0L
+				|| creeperFeints <= 0L
+				|| creeperFeintsCompleted <= 0L
+				|| !feintProbeCooled) {
 				this.report(
 					sender,
 					false,
@@ -346,6 +360,10 @@ public final class PaperRuntimeSelfTest {
 						+ ", shieldStrikeWindows=" + shieldStrikeWindows
 						+ ", shieldAttacks=" + shieldAttacks
 						+ ", shieldDisables=" + shieldDisables
+						+ ", creeperFeints=" + creeperFeints
+						+ ", creeperFeintsCompleted=" + creeperFeintsCompleted
+						+ ", feintProbeCooled=" + feintProbeCooled
+						+ ", feintProbe=" + this.creeperFeintProbeSnapshot()
 						+ ", shieldDisableAttempts=" + this.shieldDisableProbeAttempts
 						+ ", shieldProbe=" + this.shieldProbeSnapshot()
 						+ ", carrierPathFailures="
@@ -380,6 +398,9 @@ public final class PaperRuntimeSelfTest {
 					+ ", shieldStrikeWindows=" + shieldStrikeWindows
 					+ ", shieldAttacks=" + shieldAttacks
 					+ ", shieldDisables=" + shieldDisables
+					+ ", creeperFeints=" + creeperFeints
+					+ ", creeperFeintsCompleted=" + creeperFeintsCompleted
+					+ ", feintProbeCooled=" + feintProbeCooled
 			);
 		} catch (RuntimeException exception) {
 			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -397,14 +418,21 @@ public final class PaperRuntimeSelfTest {
 			this.shieldDisableProbeTask.cancel();
 			this.shieldDisableProbeTask = null;
 		}
+		if (this.creeperFeintProbeTask != null) {
+			this.creeperFeintProbeTask.cancel();
+			this.creeperFeintProbeTask = null;
+		}
 		this.shieldProbeGuard = null;
 		this.shieldProbeAttacker = null;
 		this.fireworkProbeShooter = null;
 		this.naturalLoadoutProbe = null;
+		this.creeperFeintProbe = null;
+		this.creeperFeintTarget = null;
 		this.naturalLoadoutProbeExpected = false;
 		this.shieldProbeAttackAttempts = 0L;
 		this.nextShieldProbeAttackAt = Long.MIN_VALUE;
 		this.shieldDisableProbeAttempts = 0L;
+		this.creeperFeintCompletedBaseline = 0L;
 		Set<java.util.UUID> cleanupIds = this.activeEntities.stream()
 			.map(Entity::getUniqueId)
 			.collect(Collectors.toUnmodifiableSet());
@@ -637,6 +665,86 @@ public final class PaperRuntimeSelfTest {
 		this.activeEntities.add(skeleton);
 	}
 
+	/**
+	 * 独立 6 格注视样本强制覆盖“假点燃 → 退火 → 侧后移位”。探针观测到完成计数后立即清空目标，
+	 * 避免后续真实引信污染最终的退火断言；目标与本体都是真实 Paper 实体和真实 MobGoal tick。
+	 */
+	private void spawnCreeperFeintProbe(final World world, final Location squadAnchor) {
+		CombatProbePlacement placement = findCombatProbePlacement(
+			world,
+			squadAnchor.getBlockX() + 220,
+			squadAnchor.getBlockZ(),
+			new int[] {6}
+		);
+		if (placement == null) {
+			throw new IllegalStateException("no flat collision-free creeper-feint probe lane found");
+		}
+		this.forceChunk(placement.zombie());
+		this.forceChunk(placement.target());
+
+		IronGolem target = (IronGolem)world.spawnEntity(placement.target(), EntityType.IRON_GOLEM);
+		target.setAI(false);
+		target.setPlayerCreated(true);
+		target.setPersistent(false);
+		target.setRemoveWhenFarAway(false);
+		setMaximumHealth(target, 500.0);
+		this.activeEntities.add(target);
+
+		Creeper creeper = (Creeper)world.spawnEntity(placement.zombie(), EntityType.CREEPER);
+		creeper.setExplosionRadius(0);
+		creeper.setPersistent(false);
+		creeper.setRemoveWhenFarAway(false);
+		creeper.setInvulnerable(true);
+		this.intelligence.set(creeper, 10);
+		creeper.setTarget(target);
+		faceEntity(target, creeper);
+		this.creeperFeintProbe = creeper;
+		this.creeperFeintTarget = target;
+		this.creeperFeintCompletedBaseline = this.metrics.snapshot().creeperFeintsCompleted();
+		this.activeEntities.add(creeper);
+
+		this.creeperFeintProbeTask = Bukkit.getScheduler().runTaskTimer(
+			this.plugin,
+			() -> {
+				if (!creeper.isValid() || !target.isValid()) {
+					return;
+				}
+				faceEntity(target, creeper);
+				if (this.metrics.snapshot().creeperFeintsCompleted() > this.creeperFeintCompletedBaseline) {
+					creeper.setTarget(null);
+					creeper.getPathfinder().stopPathfinding();
+					if (this.creeperFeintProbeTask != null) {
+						this.creeperFeintProbeTask.cancel();
+						this.creeperFeintProbeTask = null;
+					}
+				}
+			},
+			1L,
+			1L
+		);
+	}
+
+	private String creeperFeintProbeSnapshot() {
+		Creeper creeper = this.creeperFeintProbe;
+		IronGolem target = this.creeperFeintTarget;
+		if (creeper == null || target == null) {
+			return "missing";
+		}
+		org.bukkit.util.Vector targetFacing = target.getEyeLocation().getDirection().setY(0.0);
+		org.bukkit.util.Vector towardCreeper = creeper.getLocation().toVector()
+			.subtract(target.getLocation().toVector())
+			.setY(0.0);
+		double watchingDot = targetFacing.lengthSquared() > 1.0E-8 && towardCreeper.lengthSquared() > 1.0E-8
+			? targetFacing.normalize().dot(towardCreeper.normalize())
+			: Double.NaN;
+		return "valid:" + creeper.isValid()
+			+ ",ignited:" + creeper.isIgnited()
+			+ ",fuseTicks:" + creeper.getFuseTicks()
+			+ ",target:" + (creeper.getTarget() == null ? "none" : creeper.getTarget().getType().key().asString())
+			+ ",distance:" + Math.sqrt(creeper.getLocation().distanceSquared(target.getLocation()))
+			+ ",watchingDot:" + watchingDot;
+	}
+
 	/** 由 Paper 自己发出 NATURAL 出生事件；第二次显式初始化必须被 PDC 标记幂等拒绝。 */
 	private void spawnNaturalLoadoutProbe(final World world, final Location squadAnchor) {
 		Location location = safeSurface(
@@ -727,6 +835,20 @@ public final class PaperRuntimeSelfTest {
 		}
 		maximumHealth.setBaseValue(health);
 		entity.setHealth(health);
+	}
+
+	/** lookAt 只保证生物头控件转动；探针还同步实体 yaw，让公开 Location 视线快照可观察。 */
+	private static void faceEntity(final Mob observer, final LivingEntity subject) {
+		org.bukkit.util.Vector direction = subject.getEyeLocation().toVector()
+			.subtract(observer.getEyeLocation().toVector());
+		if (direction.lengthSquared() < 1.0E-8) {
+			return;
+		}
+		Location facing = observer.getLocation();
+		facing.setDirection(direction);
+		observer.setRotation(facing.getYaw(), facing.getPitch());
+		observer.setBodyYaw(facing.getYaw());
+		observer.lookAt(subject);
 	}
 
 	private static String targetSnapshot(final List<Mob> mobs) {
