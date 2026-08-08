@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadShieldOrder;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.shared.ai.ShieldCombatPlanner;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -461,29 +462,25 @@ final class ZombieShieldCombat {
 		final long guardDeadline,
 		final boolean attackReady
 	) {
-		if (!attackReady) {
-			return false;
-		}
-		return counterPending ? now >= counterStrikeAt : now >= guardDeadline;
+		return ShieldCombatPlanner.shouldOpenStrike(
+			counterPending, now, counterStrikeAt, guardDeadline, attackReady
+		);
 	}
 
 	static boolean isFreshAttackSignal(final long now, final long signalTime) {
-		long age = now - signalTime;
-		return age >= 0L && age <= ATTACK_SIGNAL_MAX_AGE_TICKS;
+		return ShieldCombatPlanner.isFreshSignal(now, signalTime, ATTACK_SIGNAL_MAX_AGE_TICKS);
 	}
 
 	static int guardDurationTicks(final int minimum, final int maximum, final int zeroBasedRoll) {
-		if (zeroBasedRoll < 0 || zeroBasedRoll > maximum - minimum) {
-			throw new IllegalArgumentException("Shield guard duration roll is outside the configured range");
-		}
-		return minimum + zeroBasedRoll;
+		return ShieldCombatPlanner.guardDurationTicks(minimum, maximum, zeroBasedRoll);
 	}
 
 	static int counterDelayTicks(final int zeroBasedRoll) {
-		if (zeroBasedRoll < 0 || zeroBasedRoll > MAXIMUM_COUNTER_DELAY_TICKS - MINIMUM_COUNTER_DELAY_TICKS) {
-			throw new IllegalArgumentException("Shield counter delay roll is outside the configured range");
-		}
-		return MINIMUM_COUNTER_DELAY_TICKS + zeroBasedRoll;
+		return ShieldCombatPlanner.counterDelayTicks(
+			MINIMUM_COUNTER_DELAY_TICKS,
+			MAXIMUM_COUNTER_DELAY_TICKS,
+			zeroBasedRoll
+		);
 	}
 
 	static boolean shouldScheduleBash(
@@ -493,10 +490,9 @@ final class ZombieShieldCombat {
 		final double randomRoll,
 		final double chance
 	) {
-		return enabled
-			&& intelligence >= minimumIntelligence
-			&& randomRoll >= 0.0
-			&& randomRoll < chance;
+		return ShieldCombatPlanner.shouldScheduleBash(
+			enabled, intelligence, minimumIntelligence, randomRoll, chance
+		);
 	}
 
 	private enum Phase {
