@@ -133,6 +133,12 @@ creeper:
     maximum-fuse-start-distance: 4.0
     moving-fuse: true
     maximum-fuse-movement-speed: 1.25
+    feint:
+      # IQ 8+ creepers briefly prime outside the real fuse envelope when watched or shielded against.
+      enabled: true
+      # Shared planning hard-limits the visible fake prime to 6..8 ticks; this controls only reuse frequency.
+      cooldown-ticks: 240
+      reposition-speed: 1.16
   blast-reservation:
     # Nearby creepers reserve distinct blast windows instead of entering one clumped fuse race.
     conflict-radius: 6.0

@@ -115,6 +115,11 @@ MobsThinkNow/
 - 接敌 Goal 根据 IQ 在直追、速度拦截和稳定左右侧翼之间切换；目标正看向苦力怕或举盾时，高 IQ 个体
   优先侧后切入，寻路失败按“侧翼 → 拦截 → 直追”逐级降级；
 - 点火 Goal 先向空间预约板申请预计爆点和预计爆炸 tick，成功后播放嘶声并继续追踪目标的速度提前量；
+- `CreeperFeintPlanner` 已进入无平台依赖的共享层。IQ 8～10、未带电且引信尚未推进的个体在真实起爆圈外
+  被目标注视或举盾时，以优先级 0 执行 `6～8 tick` 可见假点燃，再退火并预测目标速度移动到稳定侧后方。
+  冷却默认 240 tick 并带 `80%～120%` 的确定性个体抖动；原侧路线失败只尝试一次镜像侧，工作量有硬界；
+- Paper 适配器用 `CreeperIgniteEvent` 区分插件自己的姿态写入与外部点燃。玩家在假动作期间用打火石接管
+  后，假动作立即结束但不清零引信，随后真实引信 Goal 接手；插件重载、实体卸载和关闭都会清理短期所有权；
 - 玩家真正跑出提交距离时，插件点燃的苦力怕会退火并释放预约。由玩家打火石等外部来源强制点燃的
   苦力怕只登记强制预约，绝不被插件取消；
 - 冲突个体不会在首爆中心干等，而是去目标后侧的稳定候场点；首爆预约释放或过期后才重新竞争；
@@ -356,6 +361,10 @@ creeper:
     maximum-fuse-start-distance: 4.0
     moving-fuse: true
     maximum-fuse-movement-speed: 1.25
+    feint:
+      enabled: true
+      cooldown-ticks: 240
+      reposition-speed: 1.16
   blast-reservation:
     conflict-radius: 6.0
     separation-ticks: 24

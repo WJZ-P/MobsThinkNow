@@ -5,9 +5,12 @@ import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.VanillaGoal;
 import com.destroystokyo.paper.event.entity.EntityAddToWorldEvent;
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
+import com.destroystokyo.paper.event.entity.CreeperIgniteEvent;
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperCreeperApproachGoal;
+import com.wjz.mobsthinknow.paper.ai.PaperCreeperFeintGoal;
+import com.wjz.mobsthinknow.paper.ai.PaperCreeperFeintMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperCreeperFuseGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
@@ -66,6 +69,7 @@ public final class PaperMobLifecycle implements Listener {
 	private static final int ZOMBIE_SHIELD_GOAL_PRIORITY = 1;
 	private static final int SKELETON_DISENGAGE_GOAL_PRIORITY = 1;
 	private static final int SQUAD_RANGED_GOAL_PRIORITY = 2;
+	private static final int CREEPER_FEINT_GOAL_PRIORITY = 0;
 	private static final int CREEPER_FUSE_GOAL_PRIORITY = 1;
 	private static final int CREEPER_APPROACH_GOAL_PRIORITY = 3;
 	private static final int SPIDER_MOUNTED_BREACH_GOAL_PRIORITY = 1;
@@ -79,6 +83,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final NamespacedKey axeCriticalDamageKey;
 	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
 	private final GoalKey<AbstractSkeleton> squadRangedGoalKey;
+	private final GoalKey<Creeper> creeperFeintGoalKey;
 	private final GoalKey<Creeper> creeperFuseGoalKey;
 	private final GoalKey<Creeper> creeperApproachGoalKey;
 	private final GoalKey<Spider> spiderMountedBreachGoalKey;
@@ -89,6 +94,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final PaperIntelligenceService intelligence;
 	private final PaperSkeletonProfile skeletonProfile;
 	private final PaperSkeletonLoadoutService skeletonLoadouts;
+	private final PaperCreeperFeintMemory creeperFeintMemory;
 	private final PaperBlastReservationBoard blastReservations;
 	private final PaperPounceCoordinator pounceCoordinator;
 	private final PaperSquadCoordinator squadCoordinator;
@@ -104,6 +110,7 @@ public final class PaperMobLifecycle implements Listener {
 		final PaperIntelligenceService intelligence,
 		final PaperSkeletonProfile skeletonProfile,
 		final PaperSkeletonLoadoutService skeletonLoadouts,
+		final PaperCreeperFeintMemory creeperFeintMemory,
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
 		final PaperSquadCoordinator squadCoordinator,
@@ -124,6 +131,7 @@ public final class PaperMobLifecycle implements Listener {
 			AbstractSkeleton.class,
 			new NamespacedKey(plugin, "skeleton_coordinated_fire")
 		);
+		this.creeperFeintGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_fuse_feint"));
 		this.creeperFuseGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_fuse"));
 		this.creeperApproachGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_approach"));
 		this.spiderMountedBreachGoalKey = GoalKey.of(
@@ -137,6 +145,7 @@ public final class PaperMobLifecycle implements Listener {
 		this.intelligence = intelligence;
 		this.skeletonProfile = skeletonProfile;
 		this.skeletonLoadouts = skeletonLoadouts;
+		this.creeperFeintMemory = creeperFeintMemory;
 		this.blastReservations = blastReservations;
 		this.pounceCoordinator = pounceCoordinator;
 		this.squadCoordinator = squadCoordinator;
@@ -165,6 +174,7 @@ public final class PaperMobLifecycle implements Listener {
 			this.shieldMemory.discard(zombie);
 		}
 		if (event.getEntity() instanceof Creeper creeper) {
+			this.creeperFeintMemory.discard(creeper);
 			this.blastReservations.release(creeper);
 		}
 		if (event.getEntity() instanceof Spider spider) {
@@ -179,6 +189,11 @@ public final class PaperMobLifecycle implements Listener {
 		if (event.getEntity() instanceof Mob mob) {
 			this.squadCoordinator.untrack(mob);
 		}
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onCreeperIgnition(final CreeperIgniteEvent event) {
+		this.creeperFeintMemory.observeIgnition(event.getEntity(), event.isIgnited());
 	}
 
 	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -374,6 +389,10 @@ public final class PaperMobLifecycle implements Listener {
 					this.metrics.squadRangedGoalRemoved();
 				}
 				if (entity instanceof Creeper creeper) {
+					if (Bukkit.getMobGoals().hasGoal(creeper, this.creeperFeintGoalKey)) {
+						Bukkit.getMobGoals().removeGoal(creeper, this.creeperFeintGoalKey);
+						this.metrics.creeperGoalRemoved();
+					}
 					if (Bukkit.getMobGoals().hasGoal(creeper, this.creeperFuseGoalKey)) {
 						Bukkit.getMobGoals().removeGoal(creeper, this.creeperFuseGoalKey);
 						this.metrics.creeperGoalRemoved();
@@ -382,6 +401,7 @@ public final class PaperMobLifecycle implements Listener {
 						Bukkit.getMobGoals().removeGoal(creeper, this.creeperApproachGoalKey);
 						this.metrics.creeperGoalRemoved();
 					}
+					this.creeperFeintMemory.discard(creeper);
 					this.blastReservations.release(creeper);
 				}
 				if (entity instanceof Spider spider && spider.getType() == EntityType.SPIDER) {
@@ -414,6 +434,10 @@ public final class PaperMobLifecycle implements Listener {
 
 	public int disabledShieldGuardCount() {
 		return this.shieldMemory.disabledCount(Bukkit.getCurrentTick());
+	}
+
+	public int activeCreeperFeintCount() {
+		return this.creeperFeintMemory.activeCount();
 	}
 
 	private void install(final Entity entity) {
@@ -572,8 +596,29 @@ public final class PaperMobLifecycle implements Listener {
 	private void synchronizeCreeperGoals(final Creeper creeper) {
 		PaperSettings config = this.settings.get();
 		boolean shouldHaveGoals = config.enabled() && config.creeperTacticsEnabled();
+		boolean shouldHaveFeint = shouldHaveGoals && config.creeperFeints().enabled();
+		boolean hasFeint = Bukkit.getMobGoals().hasGoal(creeper, this.creeperFeintGoalKey);
 		boolean hasFuse = Bukkit.getMobGoals().hasGoal(creeper, this.creeperFuseGoalKey);
 		boolean hasApproach = Bukkit.getMobGoals().hasGoal(creeper, this.creeperApproachGoalKey);
+		if (shouldHaveFeint && !hasFeint) {
+			Bukkit.getMobGoals().addGoal(
+				creeper,
+				CREEPER_FEINT_GOAL_PRIORITY,
+				new PaperCreeperFeintGoal(
+					creeper,
+					this.creeperFeintGoalKey,
+					this.settings,
+					this.intelligence,
+					this.creeperFeintMemory,
+					this.metrics
+				)
+			);
+			this.metrics.creeperGoalInstalled();
+		} else if (!shouldHaveFeint && hasFeint) {
+			Bukkit.getMobGoals().removeGoal(creeper, this.creeperFeintGoalKey);
+			this.creeperFeintMemory.discard(creeper);
+			this.metrics.creeperGoalRemoved();
+		}
 		if (shouldHaveGoals && !hasFuse) {
 			Bukkit.getMobGoals().addGoal(
 				creeper,
@@ -583,6 +628,7 @@ public final class PaperMobLifecycle implements Listener {
 					this.creeperFuseGoalKey,
 					this.settings,
 					this.intelligence,
+					this.creeperFeintMemory,
 					this.blastReservations,
 					this.metrics
 				)
@@ -601,6 +647,7 @@ public final class PaperMobLifecycle implements Listener {
 					this.creeperApproachGoalKey,
 					this.settings,
 					this.intelligence,
+					this.creeperFeintMemory,
 					this.blastReservations,
 					this.metrics
 				)
@@ -611,6 +658,7 @@ public final class PaperMobLifecycle implements Listener {
 			this.metrics.creeperGoalRemoved();
 		}
 		if (!shouldHaveGoals) {
+			this.creeperFeintMemory.discard(creeper);
 			this.blastReservations.release(creeper);
 		}
 	}

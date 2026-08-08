@@ -45,6 +45,7 @@ class PaperSettingsTest {
 			99.0,
 			true,
 			99.0,
+			PaperCreeperFeintSettings.validated(true, 9999, Double.NaN),
 			99.0,
 			999,
 			0,
@@ -126,6 +127,8 @@ class PaperSettingsTest {
 		assertEquals(10, settings.creeperMinimumIntelligence());
 		assertEquals(5.0, settings.creeperMaximumFuseStartDistance());
 		assertEquals(1.5, settings.creeperMaximumFuseMovementSpeed());
+		assertEquals(1200, settings.creeperFeints().cooldownTicks());
+		assertEquals(1.16, settings.creeperFeints().repositionSpeed());
 		assertEquals(12.0, settings.creeperBlastConflictRadius());
 		assertEquals(80, settings.creeperBlastSeparationTicks());
 		assertEquals(10, settings.creeperBlastReservationLeaseTicks());
@@ -153,7 +156,9 @@ class PaperSettingsTest {
 			),
 			true, 1, 10.0, 80, 20,
 			true, 4, 24.0, 16, 28, 0.75, 20, 3.0,
-			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32,
+			true, 1, true, 4.0, true, 1.25,
+			PaperCreeperFeintSettings.validated(true, 240, 1.16),
+			6.0, 24, 40, 32,
 			true, 1, true, true, 10, 20, 40,
 			true, 1.35, 0.35, 100, 100
 		);
@@ -186,6 +191,8 @@ class PaperSettingsTest {
 		assertEquals(24.0, settings.skeletonCoordinatedFireMaximumRange());
 		assertEquals(4.0, settings.creeperMaximumFuseStartDistance());
 		assertEquals(1.25, settings.creeperMaximumFuseMovementSpeed());
+		assertTrue(settings.creeperFeints().enabled());
+		assertEquals(240, settings.creeperFeints().cooldownTicks());
 		assertEquals(6.0, settings.creeperBlastConflictRadius());
 		assertEquals(24, settings.creeperBlastSeparationTicks());
 		assertEquals(10, settings.spiderPounceStaggerTicks());

@@ -60,6 +60,10 @@ public final class PaperMetrics {
 	private final AtomicLong creeperFuseStarts = new AtomicLong();
 	private final AtomicLong creeperMovingFusePaths = new AtomicLong();
 	private final AtomicLong creeperFuseAborts = new AtomicLong();
+	private final AtomicLong creeperFeints = new AtomicLong();
+	private final AtomicLong creeperFeintsCompleted = new AtomicLong();
+	private final AtomicLong creeperShieldBaits = new AtomicLong();
+	private final AtomicLong creeperFeintPathFailures = new AtomicLong();
 	private final AtomicLong blastReservationsAcquired = new AtomicLong();
 	private final AtomicLong blastReservationConflicts = new AtomicLong();
 	private final AtomicLong blastReservationSaturations = new AtomicLong();
@@ -305,6 +309,21 @@ public final class PaperMetrics {
 		this.creeperFuseAborts.incrementAndGet();
 	}
 
+	public void creeperFeintStarted(final boolean targetWasBlocking) {
+		this.creeperFeints.incrementAndGet();
+		if (targetWasBlocking) {
+			this.creeperShieldBaits.incrementAndGet();
+		}
+	}
+
+	public void creeperFeintCompleted() {
+		this.creeperFeintsCompleted.incrementAndGet();
+	}
+
+	public void creeperFeintPathFailed() {
+		this.creeperFeintPathFailures.incrementAndGet();
+	}
+
 	public void blastReservationAcquired() {
 		this.blastReservationsAcquired.incrementAndGet();
 	}
@@ -443,6 +462,10 @@ public final class PaperMetrics {
 			this.creeperFuseStarts.get(),
 			this.creeperMovingFusePaths.get(),
 			this.creeperFuseAborts.get(),
+			this.creeperFeints.get(),
+			this.creeperFeintsCompleted.get(),
+			this.creeperShieldBaits.get(),
+			this.creeperFeintPathFailures.get(),
 			this.blastReservationsAcquired.get(),
 			this.blastReservationConflicts.get(),
 			this.blastReservationSaturations.get(),
@@ -523,6 +546,10 @@ public final class PaperMetrics {
 		long creeperFuseStarts,
 		long creeperMovingFusePaths,
 		long creeperFuseAborts,
+		long creeperFeints,
+		long creeperFeintsCompleted,
+		long creeperShieldBaits,
+		long creeperFeintPathFailures,
 		long blastReservationsAcquired,
 		long blastReservationConflicts,
 		long blastReservationSaturations,

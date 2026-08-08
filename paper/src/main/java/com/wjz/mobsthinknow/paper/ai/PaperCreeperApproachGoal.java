@@ -29,6 +29,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 	private final GoalKey<Creeper> key;
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
+	private final PaperCreeperFeintMemory feintMemory;
 	private final PaperBlastReservationBoard reservations;
 	private final PaperMetrics metrics;
 	private final int stableSide;
@@ -43,6 +44,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		final GoalKey<Creeper> key,
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
+		final PaperCreeperFeintMemory feintMemory,
 		final PaperBlastReservationBoard reservations,
 		final PaperMetrics metrics
 	) {
@@ -50,6 +52,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		this.key = key;
 		this.settings = settings;
 		this.intelligence = intelligence;
+		this.feintMemory = feintMemory;
 		this.reservations = reservations;
 		this.metrics = metrics;
 		this.stableSide = (creeper.getUniqueId().hashCode() & 1) == 0 ? -1 : 1;
@@ -62,6 +65,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 			&& this.intelligence.get(this.creeper) >= config.creeperMinimumIntelligence()
 			&& !this.creeper.isInsideVehicle()
 			&& !this.creeper.isIgnited()
+			&& !this.feintMemory.isActive(this.creeper)
 			&& PaperThreats.isLiveFor(this.creeper, this.creeper.getTarget())
 			&& !this.hasNearbyCat();
 	}
@@ -72,6 +76,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		return enabled(config)
 			&& !this.creeper.isInsideVehicle()
 			&& !this.creeper.isIgnited()
+			&& !this.feintMemory.isActive(this.creeper)
 			&& PaperThreats.isLiveFor(this.creeper, this.creeper.getTarget())
 			&& !this.hasNearbyCat();
 	}

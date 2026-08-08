@@ -28,6 +28,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 	private final GoalKey<Creeper> key;
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
+	private final PaperCreeperFeintMemory feintMemory;
 	private final PaperBlastReservationBoard reservations;
 	private final PaperMetrics metrics;
 	private final int stableSide;
@@ -45,6 +46,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		final GoalKey<Creeper> key,
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
+		final PaperCreeperFeintMemory feintMemory,
 		final PaperBlastReservationBoard reservations,
 		final PaperMetrics metrics
 	) {
@@ -52,6 +54,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		this.key = key;
 		this.settings = settings;
 		this.intelligence = intelligence;
+		this.feintMemory = feintMemory;
 		this.reservations = reservations;
 		this.metrics = metrics;
 		this.stableSide = (creeper.getUniqueId().hashCode() & 1) == 0 ? -1 : 1;
@@ -60,7 +63,9 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 	@Override
 	public boolean shouldActivate() {
 		PaperSettings config = this.settings.get();
-		if (!enabled(config) || this.intelligence.get(this.creeper) < config.creeperMinimumIntelligence()) {
+		if (!enabled(config)
+			|| this.feintMemory.isActive(this.creeper)
+			|| this.intelligence.get(this.creeper) < config.creeperMinimumIntelligence()) {
 			return false;
 		}
 		LivingEntity current = this.creeper.getTarget();
@@ -73,7 +78,11 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 	@Override
 	public boolean shouldStayActive() {
 		PaperSettings config = this.settings.get();
-		if (!enabled(config) || this.abortRequested || !this.creeper.isValid() || this.creeper.isDead()) {
+		if (!enabled(config)
+			|| this.feintMemory.isActive(this.creeper)
+			|| this.abortRequested
+			|| !this.creeper.isValid()
+			|| this.creeper.isDead()) {
 			return false;
 		}
 		if (this.externallyIgnited && this.creeper.isIgnited()) {

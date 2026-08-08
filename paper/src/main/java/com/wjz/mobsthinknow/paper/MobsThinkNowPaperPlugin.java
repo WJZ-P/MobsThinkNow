@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.paper;
 
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
+import com.wjz.mobsthinknow.paper.ai.PaperCreeperFeintMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
@@ -21,6 +22,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private final PaperMetrics metrics = new PaperMetrics();
 	private final PaperDamageMemory damageMemory = new PaperDamageMemory();
 	private final PaperShieldMemory shieldMemory = new PaperShieldMemory();
+	private final PaperCreeperFeintMemory creeperFeintMemory = new PaperCreeperFeintMemory();
 	private PaperSettings settings;
 	private PaperIntelligenceService intelligence;
 	private PaperSkeletonProfile skeletonProfile;
@@ -69,6 +71,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.intelligence,
 			this.skeletonProfile,
 			this.skeletonLoadouts,
+			this.creeperFeintMemory,
 			this.blastReservations,
 			this.pounceCoordinator,
 			this.squadCoordinator,
@@ -120,6 +123,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		}
 		this.damageMemory.clear();
 		this.shieldMemory.clear();
+		this.creeperFeintMemory.clear();
 		if (this.blastReservations != null) {
 			this.blastReservations.clear();
 		}
@@ -143,6 +147,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.squadSettings = this.readSquadSettings();
 		this.damageMemory.clear();
 		this.shieldMemory.clear();
+		this.creeperFeintMemory.clear();
 		this.blastReservations.clear();
 		this.pounceCoordinator.clear();
 		this.fireworkBolts.stop();
@@ -239,6 +244,11 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getDouble("creeper.tactics.maximum-fuse-start-distance", 4.0),
 			this.getConfig().getBoolean("creeper.tactics.moving-fuse", true),
 			this.getConfig().getDouble("creeper.tactics.maximum-fuse-movement-speed", 1.25),
+			PaperCreeperFeintSettings.validated(
+				this.getConfig().getBoolean("creeper.tactics.feint.enabled", true),
+				this.getConfig().getInt("creeper.tactics.feint.cooldown-ticks", 240),
+				this.getConfig().getDouble("creeper.tactics.feint.reposition-speed", 1.16)
+			),
 			this.getConfig().getDouble("creeper.blast-reservation.conflict-radius", 6.0),
 			this.getConfig().getInt("creeper.blast-reservation.separation-ticks", 24),
 			this.getConfig().getInt("creeper.blast-reservation.lease-ticks", 40),
