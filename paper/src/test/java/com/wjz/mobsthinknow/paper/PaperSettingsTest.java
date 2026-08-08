@@ -23,7 +23,17 @@ class PaperSettingsTest {
 			99,
 			100.0,
 			999,
-			-10
+			-10,
+			true,
+			99,
+			true,
+			99.0,
+			true,
+			99.0,
+			99.0,
+			999,
+			0,
+			999
 		);
 
 		assertTrue(settings.enabled());
@@ -38,13 +48,21 @@ class PaperSettingsTest {
 		assertEquals(24.0, settings.skeletonPreferredRange());
 		assertEquals(200, settings.skeletonDisengageMaximumTicks());
 		assertEquals(0, settings.skeletonDisengageCooldownTicks());
+		assertEquals(10, settings.creeperMinimumIntelligence());
+		assertEquals(5.0, settings.creeperMaximumFuseStartDistance());
+		assertEquals(1.5, settings.creeperMaximumFuseMovementSpeed());
+		assertEquals(12.0, settings.creeperBlastConflictRadius());
+		assertEquals(80, settings.creeperBlastSeparationTicks());
+		assertEquals(10, settings.creeperBlastReservationLeaseTicks());
+		assertEquals(64, settings.creeperBlastMaximumChecks());
 	}
 
 	@Test
 	void preservesTheFabricCompatibleRetreatDefaults() {
 		PaperSettings settings = PaperSettings.validated(
 			true, true, true, 1, 0.20, 0.30, 100, 5.0, 1.50, 20,
-			true, 1, 10.0, 80, 20
+			true, 1, 10.0, 80, 20,
+			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32
 		);
 
 		assertEquals(0.20, settings.retreatHealthThreshold());
@@ -55,5 +73,9 @@ class PaperSettingsTest {
 		assertEquals(10.0, settings.skeletonPreferredRange());
 		assertEquals(80, settings.skeletonDisengageMaximumTicks());
 		assertEquals(20, settings.skeletonDisengageCooldownTicks());
+		assertEquals(4.0, settings.creeperMaximumFuseStartDistance());
+		assertEquals(1.25, settings.creeperMaximumFuseMovementSpeed());
+		assertEquals(6.0, settings.creeperBlastConflictRadius());
+		assertEquals(24, settings.creeperBlastSeparationTicks());
 	}
 }

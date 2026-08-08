@@ -4,6 +4,9 @@ import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.event.entity.EntityAddToWorldEvent;
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
+import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
+import com.wjz.mobsthinknow.paper.ai.PaperCreeperApproachGoal;
+import com.wjz.mobsthinknow.paper.ai.PaperCreeperFuseGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonDisengageGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
@@ -14,6 +17,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.AbstractSkeleton;
+import org.bukkit.entity.Creeper;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Projectile;
@@ -28,12 +32,17 @@ import org.bukkit.plugin.Plugin;
 /** 实体装载、伤害事件与 Paper MobGoals 注册的唯一边界。 */
 public final class PaperMobLifecycle implements Listener {
 	private static final int RETREAT_GOAL_PRIORITY = 1;
+	private static final int CREEPER_FUSE_GOAL_PRIORITY = 1;
+	private static final int CREEPER_APPROACH_GOAL_PRIORITY = 3;
 
 	private final GoalKey<Zombie> retreatGoalKey;
 	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
+	private final GoalKey<Creeper> creeperFuseGoalKey;
+	private final GoalKey<Creeper> creeperApproachGoalKey;
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSkeletonProfile skeletonProfile;
+	private final PaperBlastReservationBoard blastReservations;
 	private final PaperDamageMemory damageMemory;
 	private final PaperMetrics metrics;
 
@@ -42,6 +51,7 @@ public final class PaperMobLifecycle implements Listener {
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
 		final PaperSkeletonProfile skeletonProfile,
+		final PaperBlastReservationBoard blastReservations,
 		final PaperDamageMemory damageMemory,
 		final PaperMetrics metrics
 	) {
@@ -50,9 +60,12 @@ public final class PaperMobLifecycle implements Listener {
 			AbstractSkeleton.class,
 			new NamespacedKey(plugin, "skeleton_emergency_disengage")
 		);
+		this.creeperFuseGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_fuse"));
+		this.creeperApproachGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_approach"));
 		this.settings = settings;
 		this.intelligence = intelligence;
 		this.skeletonProfile = skeletonProfile;
+		this.blastReservations = blastReservations;
 		this.damageMemory = damageMemory;
 		this.metrics = metrics;
 	}
@@ -66,6 +79,9 @@ public final class PaperMobLifecycle implements Listener {
 	public void onEntityRemoved(final EntityRemoveFromWorldEvent event) {
 		if (event.getEntity() instanceof Zombie zombie) {
 			this.damageMemory.discard(zombie);
+		}
+		if (event.getEntity() instanceof Creeper creeper) {
+			this.blastReservations.release(creeper);
 		}
 	}
 
@@ -105,6 +121,17 @@ public final class PaperMobLifecycle implements Listener {
 					Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonDisengageGoalKey);
 					this.metrics.skeletonDisengageGoalRemoved();
 				}
+				if (entity instanceof Creeper creeper) {
+					if (Bukkit.getMobGoals().hasGoal(creeper, this.creeperFuseGoalKey)) {
+						Bukkit.getMobGoals().removeGoal(creeper, this.creeperFuseGoalKey);
+						this.metrics.creeperGoalRemoved();
+					}
+					if (Bukkit.getMobGoals().hasGoal(creeper, this.creeperApproachGoalKey)) {
+						Bukkit.getMobGoals().removeGoal(creeper, this.creeperApproachGoalKey);
+						this.metrics.creeperGoalRemoved();
+					}
+					this.blastReservations.release(creeper);
+				}
 			}
 		}
 	}
@@ -131,6 +158,9 @@ public final class PaperMobLifecycle implements Listener {
 		}
 		if (mob instanceof AbstractSkeleton skeleton) {
 			this.synchronizeSkeletonGoal(skeleton);
+		}
+		if (mob instanceof Creeper creeper) {
+			this.synchronizeCreeperGoals(creeper);
 		}
 	}
 
@@ -180,6 +210,52 @@ public final class PaperMobLifecycle implements Listener {
 		} else if (!shouldHaveGoal && hasGoal) {
 			Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonDisengageGoalKey);
 			this.metrics.skeletonDisengageGoalRemoved();
+		}
+	}
+
+	private void synchronizeCreeperGoals(final Creeper creeper) {
+		PaperSettings config = this.settings.get();
+		boolean shouldHaveGoals = config.enabled() && config.creeperTacticsEnabled();
+		boolean hasFuse = Bukkit.getMobGoals().hasGoal(creeper, this.creeperFuseGoalKey);
+		boolean hasApproach = Bukkit.getMobGoals().hasGoal(creeper, this.creeperApproachGoalKey);
+		if (shouldHaveGoals && !hasFuse) {
+			Bukkit.getMobGoals().addGoal(
+				creeper,
+				CREEPER_FUSE_GOAL_PRIORITY,
+				new PaperCreeperFuseGoal(
+					creeper,
+					this.creeperFuseGoalKey,
+					this.settings,
+					this.intelligence,
+					this.blastReservations,
+					this.metrics
+				)
+			);
+			this.metrics.creeperGoalInstalled();
+		} else if (!shouldHaveGoals && hasFuse) {
+			Bukkit.getMobGoals().removeGoal(creeper, this.creeperFuseGoalKey);
+			this.metrics.creeperGoalRemoved();
+		}
+		if (shouldHaveGoals && !hasApproach) {
+			Bukkit.getMobGoals().addGoal(
+				creeper,
+				CREEPER_APPROACH_GOAL_PRIORITY,
+				new PaperCreeperApproachGoal(
+					creeper,
+					this.creeperApproachGoalKey,
+					this.settings,
+					this.intelligence,
+					this.blastReservations,
+					this.metrics
+				)
+			);
+			this.metrics.creeperGoalInstalled();
+		} else if (!shouldHaveGoals && hasApproach) {
+			Bukkit.getMobGoals().removeGoal(creeper, this.creeperApproachGoalKey);
+			this.metrics.creeperGoalRemoved();
+		}
+		if (!shouldHaveGoals) {
+			this.blastReservations.release(creeper);
 		}
 	}
 

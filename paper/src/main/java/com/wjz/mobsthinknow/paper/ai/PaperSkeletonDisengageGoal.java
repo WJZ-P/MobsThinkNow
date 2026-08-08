@@ -13,12 +13,10 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.function.Supplier;
 import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.AbstractSkeleton;
 import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
 /**
@@ -75,7 +73,7 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 			return false;
 		}
 		LivingEntity target = this.skeleton.getTarget();
-		if (!isLiveThreat(target) || !RangedSpacingPlanner.shouldStartEmergencyDisengage(
+		if (!PaperThreats.isLiveFor(this.skeleton, target) || !RangedSpacingPlanner.shouldStartEmergencyDisengage(
 			horizontalDistanceSquared(this.skeleton.getLocation(), target.getLocation()),
 			config.skeletonPreferredRange(),
 			iq
@@ -92,7 +90,7 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 		LivingEntity current = this.threat;
 		if (!enabled(config)
 			|| !this.holdsRangedWeapon()
-			|| !isLiveThreat(current)
+			|| !PaperThreats.isLiveFor(this.skeleton, current)
 			|| this.skeleton.getTarget() != current
 			|| Bukkit.getCurrentTick() - this.startedAt >= config.skeletonDisengageMaximumTicks()) {
 			return false;
@@ -135,7 +133,7 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 		PaperSettings config = this.settings.get();
 		LivingEntity current = this.threat;
 		boolean timedOutUnsafe = current != null
-			&& isLiveThreat(current)
+			&& PaperThreats.isLiveFor(this.skeleton, current)
 			&& Bukkit.getCurrentTick() - this.startedAt >= config.skeletonDisengageMaximumTicks()
 			&& RangedSpacingPlanner.shouldContinueEmergencyDisengage(
 				horizontalDistanceSquared(this.skeleton.getLocation(), current.getLocation()),
@@ -164,7 +162,7 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 
 	private void updateEscapePath(final long now) {
 		LivingEntity current = this.threat;
-		if (!isLiveThreat(current)) {
+		if (!PaperThreats.isLiveFor(this.skeleton, current)) {
 			return;
 		}
 		List<Vec3d> candidates = RetreatPlanner.candidateDestinations(
@@ -208,7 +206,7 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 
 	private void fallbackRunAway() {
 		LivingEntity current = this.threat;
-		if (!isLiveThreat(current)) {
+		if (!PaperThreats.isLiveFor(this.skeleton, current)) {
 			return;
 		}
 		Location actor = this.skeleton.getLocation();
@@ -253,14 +251,6 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 			&& config.skeletonSpacingEnabled()
 			&& this.skeleton.isValid()
 			&& !this.skeleton.isDead();
-	}
-
-	private static boolean isLiveThreat(final LivingEntity target) {
-		if (target == null || !target.isValid() || target.isDead()) {
-			return false;
-		}
-		return !(target instanceof Player player)
-			|| (player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR);
 	}
 
 	private static double horizontalDistanceSquared(final Location first, final Location second) {

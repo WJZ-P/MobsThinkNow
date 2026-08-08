@@ -16,7 +16,17 @@ public record PaperSettings(
 	int skeletonSpacingMinimumIntelligence,
 	double skeletonPreferredRange,
 	int skeletonDisengageMaximumTicks,
-	int skeletonDisengageCooldownTicks
+	int skeletonDisengageCooldownTicks,
+	boolean creeperTacticsEnabled,
+	int creeperMinimumIntelligence,
+	boolean creeperFlankingEnabled,
+	double creeperMaximumFuseStartDistance,
+	boolean creeperMovingFuseEnabled,
+	double creeperMaximumFuseMovementSpeed,
+	double creeperBlastConflictRadius,
+	int creeperBlastSeparationTicks,
+	int creeperBlastReservationLeaseTicks,
+	int creeperBlastMaximumChecks
 ) {
 	public static PaperSettings validated(
 		final boolean enabled,
@@ -33,7 +43,17 @@ public record PaperSettings(
 		final int skeletonSpacingMinimumIntelligence,
 		final double skeletonPreferredRange,
 		final int skeletonDisengageMaximumTicks,
-		final int skeletonDisengageCooldownTicks
+		final int skeletonDisengageCooldownTicks,
+		final boolean creeperTacticsEnabled,
+		final int creeperMinimumIntelligence,
+		final boolean creeperFlankingEnabled,
+		final double creeperMaximumFuseStartDistance,
+		final boolean creeperMovingFuseEnabled,
+		final double creeperMaximumFuseMovementSpeed,
+		final double creeperBlastConflictRadius,
+		final int creeperBlastSeparationTicks,
+		final int creeperBlastReservationLeaseTicks,
+		final int creeperBlastMaximumChecks
 	) {
 		return new PaperSettings(
 			enabled,
@@ -50,7 +70,17 @@ public record PaperSettings(
 			Math.clamp(skeletonSpacingMinimumIntelligence, 1, 10),
 			finiteClamp(skeletonPreferredRange, 6.0, 24.0),
 			Math.clamp(skeletonDisengageMaximumTicks, 20, 200),
-			Math.clamp(skeletonDisengageCooldownTicks, 0, 100)
+			Math.clamp(skeletonDisengageCooldownTicks, 0, 100),
+			creeperTacticsEnabled,
+			Math.clamp(creeperMinimumIntelligence, 1, 10),
+			creeperFlankingEnabled,
+			finiteClamp(creeperMaximumFuseStartDistance, 3.0, 5.0),
+			creeperMovingFuseEnabled,
+			finiteClamp(creeperMaximumFuseMovementSpeed, 1.0, 1.5),
+			finiteClamp(creeperBlastConflictRadius, 3.0, 12.0),
+			Math.clamp(creeperBlastSeparationTicks, 5, 80),
+			Math.clamp(creeperBlastReservationLeaseTicks, 10, 100),
+			Math.clamp(creeperBlastMaximumChecks, 4, 64)
 		);
 	}
 

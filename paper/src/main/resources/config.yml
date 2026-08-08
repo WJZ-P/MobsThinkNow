@@ -27,3 +27,19 @@ skeleton:
     # Emergency disengage is distinct from bow-ready kiting: the skeleton lowers its weapon and runs forward.
     maximum-disengage-ticks: 80
     timeout-cooldown-ticks: 20
+
+creeper:
+  tactics:
+    enabled: true
+    minimum-intelligence: 1
+    flanking: true
+    maximum-fuse-start-distance: 4.0
+    moving-fuse: true
+    maximum-fuse-movement-speed: 1.25
+  blast-reservation:
+    # Nearby creepers reserve distinct blast windows instead of entering one clumped fuse race.
+    conflict-radius: 6.0
+    separation-ticks: 24
+    lease-ticks: 40
+    # A saturated 3x3 spatial query is conservatively treated as occupied; work never grows with mob count.
+    maximum-checks: 32

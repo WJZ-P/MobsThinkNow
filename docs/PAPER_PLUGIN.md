@@ -53,6 +53,18 @@ MobsThinkNow/
   约束的小幅水平速度，不传送、不穿墙；
 - 启动阈值与安全阈值具有迟滞区，80 tick 超时后才短暂冷却，避免 Goal 在临界距离逐 tick 抖动。
 
+### 苦力怕战术引信与爆点预约
+
+- 接敌 Goal 根据 IQ 在直追、速度拦截和稳定左右侧翼之间切换；目标正看向苦力怕或举盾时，高 IQ 个体
+  优先侧后切入，寻路失败按“侧翼 → 拦截 → 直追”逐级降级；
+- 点火 Goal 先向空间预约板申请预计爆点和预计爆炸 tick，成功后播放嘶声并继续追踪目标的速度提前量；
+- 玩家真正跑出提交距离时，插件点燃的苦力怕会退火并释放预约。由玩家打火石等外部来源强制点燃的
+  苦力怕只登记强制预约，绝不被插件取消；
+- 冲突个体不会在首爆中心干等，而是去目标后侧的稳定候场点；首爆预约释放或过期后才重新竞争；
+- 预约板按世界与水平网格分桶，每次只扫描中心周围 `3x3` 桶，并受 `maximum-checks` 硬上限约束。
+  达到上限时保守视作已占用，因此不存在“每只苦力怕扫描全服每只苦力怕”的平方退化；
+- 自定义接敌 Goal 会定期检查猫和豹猫并立即让位，保留原版天敌关系。
+
 ## 构建与安装
 
 需要 JDK 25：
@@ -106,6 +118,19 @@ skeleton:
     preferred-range: 10.0
     maximum-disengage-ticks: 80
     timeout-cooldown-ticks: 20
+creeper:
+  tactics:
+    enabled: true
+    minimum-intelligence: 1
+    flanking: true
+    maximum-fuse-start-distance: 4.0
+    moving-fuse: true
+    maximum-fuse-movement-speed: 1.25
+  blast-reservation:
+    conflict-radius: 6.0
+    separation-ticks: 24
+    lease-ticks: 40
+    maximum-checks: 32
 ```
 
 读取时统一夹紧危险值；AI tick 只读取不可变快照，不重复访问 YAML。
@@ -123,5 +148,4 @@ skeleton:
 | 自定义模型、骨骼动作、Mixin 姿势 | 完整客户端增强 | 服务端插件不直接提供；可选资源包降级 |
 | NMS 反射 | 不需要 | 不使用 |
 
-后续按“共享判定 → Paper 公共 API 适配 → Fabric 继续复用”的顺序迁移蜘蛛跳扑错峰、苦力怕爆点预约
-与混编小队黑板。
+后续按“共享判定 → Paper 公共 API 适配 → Fabric 继续复用”的顺序迁移蜘蛛跳扑错峰与混编小队黑板。

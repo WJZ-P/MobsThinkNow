@@ -13,6 +13,18 @@ public final class PaperMetrics {
 	private final AtomicLong skeletonDisengageGoalsRemoved = new AtomicLong();
 	private final AtomicLong skeletonDisengageStarts = new AtomicLong();
 	private final AtomicLong skeletonDisengagePathFailures = new AtomicLong();
+	private final AtomicLong creeperGoalsInstalled = new AtomicLong();
+	private final AtomicLong creeperGoalsRemoved = new AtomicLong();
+	private final AtomicLong creeperFlanks = new AtomicLong();
+	private final AtomicLong creeperIntercepts = new AtomicLong();
+	private final AtomicLong creeperQueueWaits = new AtomicLong();
+	private final AtomicLong creeperFuseStarts = new AtomicLong();
+	private final AtomicLong creeperMovingFusePaths = new AtomicLong();
+	private final AtomicLong creeperFuseAborts = new AtomicLong();
+	private final AtomicLong blastReservationsAcquired = new AtomicLong();
+	private final AtomicLong blastReservationConflicts = new AtomicLong();
+	private final AtomicLong blastReservationSaturations = new AtomicLong();
+	private final AtomicLong blastReservationsReleased = new AtomicLong();
 
 	public void intelligenceAssigned() {
 		this.intelligenceAssignments.incrementAndGet();
@@ -50,6 +62,54 @@ public final class PaperMetrics {
 		this.skeletonDisengagePathFailures.incrementAndGet();
 	}
 
+	public void creeperGoalInstalled() {
+		this.creeperGoalsInstalled.incrementAndGet();
+	}
+
+	public void creeperGoalRemoved() {
+		this.creeperGoalsRemoved.incrementAndGet();
+	}
+
+	public void creeperFlankStarted() {
+		this.creeperFlanks.incrementAndGet();
+	}
+
+	public void creeperInterceptStarted() {
+		this.creeperIntercepts.incrementAndGet();
+	}
+
+	public void creeperQueueWait() {
+		this.creeperQueueWaits.incrementAndGet();
+	}
+
+	public void creeperFuseStarted() {
+		this.creeperFuseStarts.incrementAndGet();
+	}
+
+	public void creeperMovingFusePath() {
+		this.creeperMovingFusePaths.incrementAndGet();
+	}
+
+	public void creeperFuseAborted() {
+		this.creeperFuseAborts.incrementAndGet();
+	}
+
+	public void blastReservationAcquired() {
+		this.blastReservationsAcquired.incrementAndGet();
+	}
+
+	public void blastReservationConflict() {
+		this.blastReservationConflicts.incrementAndGet();
+	}
+
+	public void blastReservationSaturated() {
+		this.blastReservationSaturations.incrementAndGet();
+	}
+
+	public void blastReservationReleased() {
+		this.blastReservationsReleased.incrementAndGet();
+	}
+
 	public Snapshot snapshot() {
 		return new Snapshot(
 			this.intelligenceAssignments.get(),
@@ -60,7 +120,19 @@ public final class PaperMetrics {
 			this.skeletonDisengageGoalsInstalled.get(),
 			this.skeletonDisengageGoalsRemoved.get(),
 			this.skeletonDisengageStarts.get(),
-			this.skeletonDisengagePathFailures.get()
+			this.skeletonDisengagePathFailures.get(),
+			this.creeperGoalsInstalled.get(),
+			this.creeperGoalsRemoved.get(),
+			this.creeperFlanks.get(),
+			this.creeperIntercepts.get(),
+			this.creeperQueueWaits.get(),
+			this.creeperFuseStarts.get(),
+			this.creeperMovingFusePaths.get(),
+			this.creeperFuseAborts.get(),
+			this.blastReservationsAcquired.get(),
+			this.blastReservationConflicts.get(),
+			this.blastReservationSaturations.get(),
+			this.blastReservationsReleased.get()
 		);
 	}
 
@@ -73,7 +145,19 @@ public final class PaperMetrics {
 		long skeletonDisengageGoalsInstalled,
 		long skeletonDisengageGoalsRemoved,
 		long skeletonDisengageStarts,
-		long skeletonDisengagePathFailures
+		long skeletonDisengagePathFailures,
+		long creeperGoalsInstalled,
+		long creeperGoalsRemoved,
+		long creeperFlanks,
+		long creeperIntercepts,
+		long creeperQueueWaits,
+		long creeperFuseStarts,
+		long creeperMovingFusePaths,
+		long creeperFuseAborts,
+		long blastReservationsAcquired,
+		long blastReservationConflicts,
+		long blastReservationSaturations,
+		long blastReservationsReleased
 	) {
 	}
 }

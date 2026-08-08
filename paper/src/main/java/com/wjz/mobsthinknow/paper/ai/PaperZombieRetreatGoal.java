@@ -98,7 +98,8 @@ public final class PaperZombieRetreatGoal implements Goal<Zombie> {
 			return false;
 		}
 		LivingEntity selected = this.resolvePreferredAttacker(fresh, trigger.includesHeavyHit());
-		if (!isLiveThreat(selected) || this.hasReachedSafeDistance(selected, config.retreatSafeDistance())) {
+		if (!PaperThreats.isLiveFor(this.zombie, selected)
+			|| this.hasReachedSafeDistance(selected, config.retreatSafeDistance())) {
 			return false;
 		}
 		this.pendingAttack = fresh;
@@ -110,7 +111,7 @@ public final class PaperZombieRetreatGoal implements Goal<Zombie> {
 	public boolean shouldStayActive() {
 		PaperSettings config = this.settings.get();
 		LivingEntity currentAttacker = this.attacker;
-		if (!enabled(config) || !isLiveThreat(currentAttacker)) {
+		if (!enabled(config) || !PaperThreats.isLiveFor(this.zombie, currentAttacker)) {
 			return false;
 		}
 		long now = Bukkit.getCurrentTick();
@@ -161,7 +162,7 @@ public final class PaperZombieRetreatGoal implements Goal<Zombie> {
 				config.retreatHeavyHitThreshold()
 			);
 			LivingEntity updated = this.resolvePreferredAttacker(fresh, trigger.includesHeavyHit());
-			if (trigger.active() && isLiveThreat(updated)) {
+			if (trigger.active() && PaperThreats.isLiveFor(this.zombie, updated)) {
 				this.attacker = updated;
 				this.nextPathAt = now;
 				this.zombie.getPathfinder().stopPathfinding();
@@ -195,7 +196,7 @@ public final class PaperZombieRetreatGoal implements Goal<Zombie> {
 
 	private void updateEscapePath(final long now) {
 		LivingEntity currentAttacker = this.attacker;
-		if (!isLiveThreat(currentAttacker)) {
+		if (!PaperThreats.isLiveFor(this.zombie, currentAttacker)) {
 			return;
 		}
 		Location actorLocation = this.zombie.getLocation();
@@ -239,14 +240,6 @@ public final class PaperZombieRetreatGoal implements Goal<Zombie> {
 	private boolean hasReachedSafeDistance(final LivingEntity threat, final double safeDistance) {
 		return this.zombie.getWorld() != threat.getWorld()
 			|| this.zombie.getLocation().distanceSquared(threat.getLocation()) >= safeDistance * safeDistance;
-	}
-
-	private boolean isLiveThreat(final LivingEntity threat) {
-		return threat != null
-			&& threat.isValid()
-			&& !threat.isDead()
-			&& threat.getWorld() == this.zombie.getWorld()
-			&& threat != this.zombie;
 	}
 
 	private static LivingEntity livingEntity(final UUID entityId) {

@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.paper.MobsThinkNowPaperPlugin;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperMobLifecycle;
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
+import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,6 +27,7 @@ public final class MtnPaperCommand implements TabExecutor {
 	private final PaperIntelligenceService intelligence;
 	private final PaperMobLifecycle lifecycle;
 	private final PaperDamageMemory damageMemory;
+	private final PaperBlastReservationBoard blastReservations;
 	private final PaperMetrics metrics;
 
 	public MtnPaperCommand(
@@ -33,12 +35,14 @@ public final class MtnPaperCommand implements TabExecutor {
 		final PaperIntelligenceService intelligence,
 		final PaperMobLifecycle lifecycle,
 		final PaperDamageMemory damageMemory,
+		final PaperBlastReservationBoard blastReservations,
 		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
 		this.intelligence = intelligence;
 		this.lifecycle = lifecycle;
 		this.damageMemory = damageMemory;
+		this.blastReservations = blastReservations;
 		this.metrics = metrics;
 	}
 
@@ -96,6 +100,18 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", skeletonGoalsRemoved=" + snapshot.skeletonDisengageGoalsRemoved()
 				+ ", skeletonDisengages=" + snapshot.skeletonDisengageStarts()
 				+ ", skeletonPathFailures=" + snapshot.skeletonDisengagePathFailures()
+				+ ", creeperGoalsInstalled=" + snapshot.creeperGoalsInstalled()
+				+ ", creeperGoalsRemoved=" + snapshot.creeperGoalsRemoved()
+				+ ", creeperFlanks=" + snapshot.creeperFlanks()
+				+ ", creeperIntercepts=" + snapshot.creeperIntercepts()
+				+ ", creeperQueueWaits=" + snapshot.creeperQueueWaits()
+				+ ", creeperFuseStarts=" + snapshot.creeperFuseStarts()
+				+ ", creeperMovingPaths=" + snapshot.creeperMovingFusePaths()
+				+ ", creeperFuseAborts=" + snapshot.creeperFuseAborts()
+				+ ", blastReservations=" + snapshot.blastReservationsAcquired()
+				+ ", blastConflicts=" + snapshot.blastReservationConflicts()
+				+ ", blastSaturations=" + snapshot.blastReservationSaturations()
+				+ ", activeBlastReservations=" + this.blastReservations.activeCount()
 				+ ", pendingDamageMemories=" + this.damageMemory.pendingCount(),
 			NamedTextColor.AQUA
 		));
