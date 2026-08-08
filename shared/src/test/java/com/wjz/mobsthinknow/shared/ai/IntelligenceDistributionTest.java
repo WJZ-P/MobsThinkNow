@@ -25,4 +25,11 @@ class IntelligenceDistributionTest {
 		assertEquals(7, IntelligenceDistribution.clamp(7));
 		assertEquals(10, IntelligenceDistribution.clamp(99));
 	}
+
+	@Test
+	void numericDifficultyIdsClampAtProtocolEdges() {
+		assertEquals(DifficultyTier.PEACEFUL, DifficultyTier.fromNumericId(-10));
+		assertEquals(DifficultyTier.NORMAL, DifficultyTier.fromNumericId(2));
+		assertEquals(DifficultyTier.HARD, DifficultyTier.fromNumericId(99));
+	}
 }
