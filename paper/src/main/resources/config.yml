@@ -74,3 +74,10 @@ spider:
     pounce-stagger-ticks: 10
     pounce-lease-ticks: 20
     maximum-air-ticks: 40
+    # In MOUNTED_BREACH/COMBINED_ARMS squads a spider can carry an assigned creeper.
+    mounted-breach: true
+    maximum-carrier-speed: 1.35
+    # Release the primed payload before detonation so the carrier has time to disengage.
+    payload-release-progress: 0.35
+    assembly-timeout-ticks: 100
+    remount-cooldown-ticks: 100

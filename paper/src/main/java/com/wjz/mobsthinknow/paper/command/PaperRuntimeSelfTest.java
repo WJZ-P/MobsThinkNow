@@ -16,6 +16,8 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.IronGolem;
+import org.bukkit.entity.Creeper;
+import org.bukkit.entity.Spider;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import net.kyori.adventure.text.Component;
@@ -136,7 +138,18 @@ public final class PaperRuntimeSelfTest {
 				.allMatch(directive -> directive.plan() == MixedSquadPlan.COMBINED_ARMS);
 			boolean sharedTarget = mobs.stream().allMatch(mob -> this.squads.sharedTargetFor(mob) == target);
 			boolean allTracked = this.squads.assignedMemberCount() >= CORE_TYPES.size();
-			if (!oneSquad || !combinedArms || !sharedTarget || !allTracked) {
+			Spider spider = mobs.stream()
+				.filter(Spider.class::isInstance)
+				.map(Spider.class::cast)
+				.findFirst()
+				.orElseThrow();
+			Creeper creeper = mobs.stream()
+				.filter(Creeper.class::isInstance)
+				.map(Creeper.class::cast)
+				.findFirst()
+				.orElseThrow();
+			boolean mountedPair = this.squads.assignedTransportPartnerFor(spider) == creeper;
+			if (!oneSquad || !combinedArms || !sharedTarget || !allTracked || !mountedPair) {
 				this.report(
 					sender,
 					false,
@@ -144,6 +157,7 @@ public final class PaperRuntimeSelfTest {
 						+ ", combinedArms=" + combinedArms
 						+ ", sharedTarget=" + sharedTarget
 						+ ", allTracked=" + allTracked
+						+ ", mountedPair=" + mountedPair
 				);
 				return;
 			}

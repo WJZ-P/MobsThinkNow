@@ -40,7 +40,12 @@ class PaperSettingsTest {
 			true,
 			999,
 			0,
-			999
+			999,
+			true,
+			99.0,
+			Double.NaN,
+			999,
+			0
 		);
 
 		assertTrue(settings.enabled());
@@ -66,6 +71,10 @@ class PaperSettingsTest {
 		assertEquals(40, settings.spiderPounceStaggerTicks());
 		assertEquals(5, settings.spiderPounceLeaseTicks());
 		assertEquals(80, settings.spiderPounceMaximumAirTicks());
+		assertEquals(1.6, settings.spiderMaximumCarrierSpeed());
+		assertEquals(0.15, settings.spiderPayloadReleaseProgress());
+		assertEquals(200, settings.spiderAssemblyTimeoutTicks());
+		assertEquals(20, settings.spiderRemountCooldownTicks());
 	}
 
 	@Test
@@ -74,7 +83,8 @@ class PaperSettingsTest {
 			true, true, true, 1, 0.20, 0.30, 100, 5.0, 1.50, 20,
 			true, 1, 10.0, 80, 20,
 			true, 1, true, 4.0, true, 1.25, 6.0, 24, 40, 32,
-			true, 1, true, true, 10, 20, 40
+			true, 1, true, true, 10, 20, 40,
+			true, 1.35, 0.35, 100, 100
 		);
 
 		assertEquals(0.20, settings.retreatHealthThreshold());
@@ -92,5 +102,8 @@ class PaperSettingsTest {
 		assertEquals(10, settings.spiderPounceStaggerTicks());
 		assertEquals(20, settings.spiderPounceLeaseTicks());
 		assertEquals(40, settings.spiderPounceMaximumAirTicks());
+		assertTrue(settings.spiderMountedBreachEnabled());
+		assertEquals(1.35, settings.spiderMaximumCarrierSpeed());
+		assertEquals(0.35, settings.spiderPayloadReleaseProgress());
 	}
 }

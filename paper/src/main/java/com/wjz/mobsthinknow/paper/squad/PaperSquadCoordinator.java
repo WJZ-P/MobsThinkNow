@@ -10,6 +10,7 @@ import com.wjz.mobsthinknow.shared.squad.MixedSquadPlanner;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadRole;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadSpecies;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadState;
+import com.wjz.mobsthinknow.shared.squad.MixedSquadTransportPlanner;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -188,6 +189,15 @@ public final class PaperSquadCoordinator {
 		return leader == null ? null : leader.mob;
 	}
 
+	/** 返回共享配对器给这只蜘蛛分配的苦力怕；查询只访问当前小队快照，不扫描世界实体。 */
+	public Creeper assignedTransportPartnerFor(final Spider spider) {
+		Long squadId = this.squadByMember.get(spider.getUniqueId());
+		Squad squad = squadId == null ? null : this.squads.get(squadId);
+		UUID payloadId = squad == null ? null : squad.transportPairs.get(spider.getUniqueId());
+		MemberRecord payload = payloadId == null ? null : this.members.get(payloadId);
+		return payload != null && payload.mob instanceof Creeper creeper ? creeper : null;
+	}
+
 	public int activeSquadCount() {
 		return this.squads.size();
 	}
@@ -239,7 +249,7 @@ public final class PaperSquadCoordinator {
 		Iterator<Squad> iterator = this.squads.values().iterator();
 		while (iterator.hasNext()) {
 			Squad squad = iterator.next();
-			this.pruneSquadMembers(squad, config);
+			boolean pruned = this.pruneSquadMembers(squad, config);
 			if (squad.memberIds.size() < config.minimumMembers()) {
 				this.releaseSquadMembers(squad);
 				iterator.remove();
@@ -261,11 +271,12 @@ public final class PaperSquadCoordinator {
 			}
 
 			boolean recruited = this.recruitNearby(squad, config);
-			if (recruited) {
+			boolean structureChanged = pruned || leaderChanged || recruited;
+			if (structureChanged) {
 				this.rebuildTactics(squad);
 			}
 			this.propagateTarget(squad, config);
-			this.advanceState(squad, now, config, leaderChanged || recruited);
+			this.advanceState(squad, now, config, structureChanged);
 		}
 	}
 
@@ -379,11 +390,12 @@ public final class PaperSquadCoordinator {
 		return new ScanResult(accepted, checks);
 	}
 
-	private void pruneSquadMembers(final Squad squad, final PaperSquadSettings config) {
+	private boolean pruneSquadMembers(final Squad squad, final PaperSquadSettings config) {
 		MemberRecord leader = this.members.get(squad.leaderId);
 		Location anchor = leader == null ? null : leader.mob.getLocation();
 		double maximumSquared = config.maximumSeparation() * config.maximumSeparation();
 		Iterator<UUID> iterator = squad.memberIds.iterator();
+		boolean changed = false;
 		while (iterator.hasNext()) {
 			UUID memberId = iterator.next();
 			MemberRecord member = this.members.get(memberId);
@@ -394,8 +406,10 @@ public final class PaperSquadCoordinator {
 			if (member == null || tooFar || member.mob.getWorld() != (anchor == null ? member.mob.getWorld() : anchor.getWorld())) {
 				iterator.remove();
 				this.squadByMember.remove(memberId, squad.id);
+				changed = true;
 			}
 		}
+		return changed;
 	}
 
 	private boolean electLeader(final Squad squad, final boolean replacement) {
@@ -421,6 +435,18 @@ public final class PaperSquadCoordinator {
 		int leaderIntelligence = leader == null ? 1 : this.intelligence.get(leader.mob);
 		squad.plan = MixedSquadPlanner.choosePlan(composition, leaderIntelligence);
 		squad.roles = MixedSquadPlanner.assignRoles(snapshots, squad.leaderId, squad.plan);
+		List<MixedSquadTransportPlanner.Member<UUID>> transportMembers = new ArrayList<>(snapshots.size());
+		for (MixedSquadPlanner.Member<UUID> member : snapshots) {
+			transportMembers.add(new MixedSquadTransportPlanner.Member<>(
+				member.id(),
+				member.species(),
+				squad.roles.getOrDefault(member.id(), MixedSquadRole.FRONTLINE),
+				member.intelligence(),
+				member.stableOrder(),
+				true
+			));
+		}
+		squad.transportPairs = MixedSquadTransportPlanner.pairCreeperCarriers(squad.plan, transportMembers);
 	}
 
 	private List<MixedSquadPlanner.Member<UUID>> snapshots(final Squad squad) {
@@ -800,6 +826,7 @@ public final class PaperSquadCoordinator {
 		private long stateEnteredAt;
 		private MixedSquadPlan plan = MixedSquadPlan.SWARM;
 		private Map<UUID, MixedSquadRole> roles = Map.of();
+		private Map<UUID, UUID> transportPairs = Map.of();
 
 		private Squad(final long id, final LivingEntity target, final long now) {
 			this.id = id;

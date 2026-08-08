@@ -60,6 +60,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		PaperSettings config = this.settings.get();
 		return enabled(config)
 			&& this.intelligence.get(this.creeper) >= config.creeperMinimumIntelligence()
+			&& !this.creeper.isInsideVehicle()
 			&& !this.creeper.isIgnited()
 			&& PaperThreats.isLiveFor(this.creeper, this.creeper.getTarget())
 			&& !this.hasNearbyCat();
@@ -69,6 +70,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 	public boolean shouldStayActive() {
 		PaperSettings config = this.settings.get();
 		return enabled(config)
+			&& !this.creeper.isInsideVehicle()
 			&& !this.creeper.isIgnited()
 			&& PaperThreats.isLiveFor(this.creeper, this.creeper.getTarget())
 			&& !this.hasNearbyCat();

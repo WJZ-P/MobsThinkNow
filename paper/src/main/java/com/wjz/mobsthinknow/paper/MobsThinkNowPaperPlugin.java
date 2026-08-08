@@ -152,7 +152,12 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getBoolean("spider.tactics.hit-and-run", true),
 			this.getConfig().getInt("spider.tactics.pounce-stagger-ticks", 10),
 			this.getConfig().getInt("spider.tactics.pounce-lease-ticks", 20),
-			this.getConfig().getInt("spider.tactics.maximum-air-ticks", 40)
+			this.getConfig().getInt("spider.tactics.maximum-air-ticks", 40),
+			this.getConfig().getBoolean("spider.tactics.mounted-breach", true),
+			this.getConfig().getDouble("spider.tactics.maximum-carrier-speed", 1.35),
+			this.getConfig().getDouble("spider.tactics.payload-release-progress", 0.35),
+			this.getConfig().getInt("spider.tactics.assembly-timeout-ticks", 100),
+			this.getConfig().getInt("spider.tactics.remount-cooldown-ticks", 100)
 		);
 	}
 

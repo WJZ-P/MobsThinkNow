@@ -79,8 +79,20 @@ MobsThinkNow/
 - IQ 至少 6 的蜘蛛发现目标正观察自己或玩家正在举盾时，从稳定侧后接近；IQ 至少 5 的个体命中后
   短暂退到侧后方，再进入下一轮攻击；
 - 启用该模块时插件通过公开 `MobGoals` API 精确保存并移除原版 `LEAP_AT` 与 `SPIDER_ATTACK` Goal，
-  安装自己的两个 Goal。配置关闭、插件卸载或实体离开世界前会移除自定义 Goal 并恢复保存对象，避免
+  安装自己的战斗 Goal。配置关闭、插件卸载或实体离开世界前会移除自定义 Goal 并恢复保存对象，避免
   破坏其他插件的 GoalSelector 状态。
+
+### 蜘蛛—苦力怕机动爆破
+
+- `MixedSquadTransportPlanner` 在共享层为 `MOUNTED_BREACH`/`COMBINED_ARMS` 队伍做稳定的一对一
+  `蜘蛛 → 苦力怕` 配对；显式载具和爆破职责优先，蜘蛛恰好当选首领时仍可作为后备载具。配对只遍历
+  最多 20 名小队快照，不重新扫描世界；
+- 进入 `ENGAGING` 后，载具蜘蛛沿 Paper `Pathfinder` 与指定苦力怕会合。接近后苦力怕先播放声效、
+  粒子并完成至少 3 tick 的可见跳跃，再通过公开 passenger API 骑到蛛背，不会瞬间吸附；
+- 投送速度由双方较高 IQ、难度和每只蜘蛛固定的 `88%～100%` 速度分位共同决定，默认上限 `1.35`，
+  不会叠加普通跳扑。苦力怕作为乘客时停止自己的接敌寻路，但仍独立参加爆点预约和引信判断；
+- 引信达到默认 `35%` 后，蜘蛛把载荷朝目标小幅抛出，并用固定五个背向候选撤离 30 tick。装配超时、
+  目标消失、配对变化或被其他载具占用都会安全卸载并进入冷却，避免永久骑乘和逐 tick 重试。
 
 ### 四物种混编小队
 
@@ -208,6 +220,11 @@ spider:
     pounce-stagger-ticks: 10
     pounce-lease-ticks: 20
     maximum-air-ticks: 40
+    mounted-breach: true
+    maximum-carrier-speed: 1.35
+    payload-release-progress: 0.35
+    assembly-timeout-ticks: 100
+    remount-cooldown-ticks: 100
 ```
 
 读取时统一夹紧危险值；AI tick 只读取不可变快照，不重复访问 YAML。

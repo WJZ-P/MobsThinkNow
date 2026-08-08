@@ -33,7 +33,12 @@ public record PaperSettings(
 	boolean spiderHitAndRunEnabled,
 	int spiderPounceStaggerTicks,
 	int spiderPounceLeaseTicks,
-	int spiderPounceMaximumAirTicks
+	int spiderPounceMaximumAirTicks,
+	boolean spiderMountedBreachEnabled,
+	double spiderMaximumCarrierSpeed,
+	double spiderPayloadReleaseProgress,
+	int spiderAssemblyTimeoutTicks,
+	int spiderRemountCooldownTicks
 ) {
 	public static PaperSettings validated(
 		final boolean enabled,
@@ -67,7 +72,12 @@ public record PaperSettings(
 		final boolean spiderHitAndRunEnabled,
 		final int spiderPounceStaggerTicks,
 		final int spiderPounceLeaseTicks,
-		final int spiderPounceMaximumAirTicks
+		final int spiderPounceMaximumAirTicks,
+		final boolean spiderMountedBreachEnabled,
+		final double spiderMaximumCarrierSpeed,
+		final double spiderPayloadReleaseProgress,
+		final int spiderAssemblyTimeoutTicks,
+		final int spiderRemountCooldownTicks
 	) {
 		return new PaperSettings(
 			enabled,
@@ -101,7 +111,12 @@ public record PaperSettings(
 			spiderHitAndRunEnabled,
 			Math.clamp(spiderPounceStaggerTicks, 2, 40),
 			Math.clamp(spiderPounceLeaseTicks, 5, 40),
-			Math.clamp(spiderPounceMaximumAirTicks, 20, 80)
+			Math.clamp(spiderPounceMaximumAirTicks, 20, 80),
+			spiderMountedBreachEnabled,
+			finiteClamp(spiderMaximumCarrierSpeed, 1.0, 1.6),
+			finiteClamp(spiderPayloadReleaseProgress, 0.15, 0.75),
+			Math.clamp(spiderAssemblyTimeoutTicks, 20, 200),
+			Math.clamp(spiderRemountCooldownTicks, 20, 400)
 		);
 	}
 

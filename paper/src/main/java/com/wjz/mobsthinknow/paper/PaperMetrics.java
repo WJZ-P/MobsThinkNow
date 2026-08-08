@@ -35,6 +35,12 @@ public final class PaperMetrics {
 	private final AtomicLong spiderPounceReservationsAcquired = new AtomicLong();
 	private final AtomicLong spiderPounceReservationConflicts = new AtomicLong();
 	private final AtomicLong spiderPounceReservationsReleased = new AtomicLong();
+	private final AtomicLong mountedBreachAssemblies = new AtomicLong();
+	private final AtomicLong mountedBreachBoardingLeaps = new AtomicLong();
+	private final AtomicLong mountedBreachMounts = new AtomicLong();
+	private final AtomicLong mountedBreachPayloadReleases = new AtomicLong();
+	private final AtomicLong mountedBreachPathFailures = new AtomicLong();
+	private final AtomicLong mountedBreachAborts = new AtomicLong();
 
 	public void intelligenceAssigned() {
 		this.intelligenceAssignments.incrementAndGet();
@@ -160,6 +166,30 @@ public final class PaperMetrics {
 		this.spiderPounceReservationsReleased.incrementAndGet();
 	}
 
+	public void mountedBreachAssemblyStarted() {
+		this.mountedBreachAssemblies.incrementAndGet();
+	}
+
+	public void mountedBreachBoardingLeap() {
+		this.mountedBreachBoardingLeaps.incrementAndGet();
+	}
+
+	public void mountedBreachMounted() {
+		this.mountedBreachMounts.incrementAndGet();
+	}
+
+	public void mountedBreachPayloadReleased() {
+		this.mountedBreachPayloadReleases.incrementAndGet();
+	}
+
+	public void mountedBreachPathFailed() {
+		this.mountedBreachPathFailures.incrementAndGet();
+	}
+
+	public void mountedBreachAborted() {
+		this.mountedBreachAborts.incrementAndGet();
+	}
+
 	public Snapshot snapshot() {
 		return new Snapshot(
 			this.intelligenceAssignments.get(),
@@ -192,7 +222,13 @@ public final class PaperMetrics {
 			this.spiderUnsafeLandingsRejected.get(),
 			this.spiderPounceReservationsAcquired.get(),
 			this.spiderPounceReservationConflicts.get(),
-			this.spiderPounceReservationsReleased.get()
+			this.spiderPounceReservationsReleased.get(),
+			this.mountedBreachAssemblies.get(),
+			this.mountedBreachBoardingLeaps.get(),
+			this.mountedBreachMounts.get(),
+			this.mountedBreachPayloadReleases.get(),
+			this.mountedBreachPathFailures.get(),
+			this.mountedBreachAborts.get()
 		);
 	}
 
@@ -227,7 +263,13 @@ public final class PaperMetrics {
 		long spiderUnsafeLandingsRejected,
 		long spiderPounceReservationsAcquired,
 		long spiderPounceReservationConflicts,
-		long spiderPounceReservationsReleased
+		long spiderPounceReservationsReleased,
+		long mountedBreachAssemblies,
+		long mountedBreachBoardingLeaps,
+		long mountedBreachMounts,
+		long mountedBreachPayloadReleases,
+		long mountedBreachPathFailures,
+		long mountedBreachAborts
 	) {
 	}
 }

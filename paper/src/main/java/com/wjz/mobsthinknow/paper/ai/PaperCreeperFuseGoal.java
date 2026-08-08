@@ -200,7 +200,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		}
 
 		this.creeper.lookAt(current, 40.0F, 35.0F);
-		if (!config.creeperMovingFuseEnabled()) {
+		if (this.creeper.isInsideVehicle() || !config.creeperMovingFuseEnabled()) {
 			this.creeper.getPathfinder().stopPathfinding();
 			return;
 		}

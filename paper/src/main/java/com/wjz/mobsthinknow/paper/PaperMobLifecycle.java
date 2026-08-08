@@ -10,6 +10,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperBlastReservationBoard;
 import com.wjz.mobsthinknow.paper.ai.PaperCreeperApproachGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperCreeperFuseGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperMountedBreachGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonDisengageGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
@@ -51,6 +52,7 @@ public final class PaperMobLifecycle implements Listener {
 	private static final int RETREAT_GOAL_PRIORITY = 1;
 	private static final int CREEPER_FUSE_GOAL_PRIORITY = 1;
 	private static final int CREEPER_APPROACH_GOAL_PRIORITY = 3;
+	private static final int SPIDER_MOUNTED_BREACH_GOAL_PRIORITY = 1;
 	private static final int SPIDER_POUNCE_GOAL_PRIORITY = 2;
 	private static final int SPIDER_COMBAT_GOAL_PRIORITY = 4;
 	private static final int SQUAD_ORDER_GOAL_PRIORITY = 2;
@@ -59,6 +61,7 @@ public final class PaperMobLifecycle implements Listener {
 	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
 	private final GoalKey<Creeper> creeperFuseGoalKey;
 	private final GoalKey<Creeper> creeperApproachGoalKey;
+	private final GoalKey<Spider> spiderMountedBreachGoalKey;
 	private final GoalKey<Spider> spiderPounceGoalKey;
 	private final GoalKey<Spider> spiderCombatGoalKey;
 	private final GoalKey<Mob> squadOrderGoalKey;
@@ -90,6 +93,10 @@ public final class PaperMobLifecycle implements Listener {
 		);
 		this.creeperFuseGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_fuse"));
 		this.creeperApproachGoalKey = GoalKey.of(Creeper.class, new NamespacedKey(plugin, "creeper_tactical_approach"));
+		this.spiderMountedBreachGoalKey = GoalKey.of(
+			Spider.class,
+			new NamespacedKey(plugin, "spider_mounted_breach")
+		);
 		this.spiderPounceGoalKey = GoalKey.of(Spider.class, new NamespacedKey(plugin, "spider_predictive_pounce"));
 		this.spiderCombatGoalKey = GoalKey.of(Spider.class, new NamespacedKey(plugin, "spider_tactical_combat"));
 		this.squadOrderGoalKey = GoalKey.of(Mob.class, new NamespacedKey(plugin, "mixed_squad_orders"));
@@ -364,6 +371,21 @@ public final class PaperMobLifecycle implements Listener {
 		boolean shouldHaveGoals = config.enabled() && config.spiderTacticsEnabled();
 		if (shouldHaveGoals) {
 			this.captureAndRemoveOriginalSpiderGoals(spider);
+			if (!Bukkit.getMobGoals().hasGoal(spider, this.spiderMountedBreachGoalKey)) {
+				Bukkit.getMobGoals().addGoal(
+					spider,
+					SPIDER_MOUNTED_BREACH_GOAL_PRIORITY,
+					new PaperMountedBreachGoal(
+						spider,
+						this.spiderMountedBreachGoalKey,
+						this.settings,
+						this.intelligence,
+						this.squadCoordinator,
+						this.metrics
+					)
+				);
+				this.metrics.spiderGoalInstalled();
+			}
 			if (!Bukkit.getMobGoals().hasGoal(spider, this.spiderPounceGoalKey)) {
 				Bukkit.getMobGoals().addGoal(
 					spider,
@@ -420,6 +442,10 @@ public final class PaperMobLifecycle implements Listener {
 	}
 
 	private void removeCustomSpiderGoals(final Spider spider) {
+		if (Bukkit.getMobGoals().hasGoal(spider, this.spiderMountedBreachGoalKey)) {
+			Bukkit.getMobGoals().removeGoal(spider, this.spiderMountedBreachGoalKey);
+			this.metrics.spiderGoalRemoved();
+		}
 		if (Bukkit.getMobGoals().hasGoal(spider, this.spiderPounceGoalKey)) {
 			Bukkit.getMobGoals().removeGoal(spider, this.spiderPounceGoalKey);
 			this.metrics.spiderGoalRemoved();
