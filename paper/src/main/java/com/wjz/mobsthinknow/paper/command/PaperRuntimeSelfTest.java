@@ -40,8 +40,8 @@ public final class PaperRuntimeSelfTest {
 	);
 	private static final int STRUCTURE_VALIDATION_DELAY_TICKS = 25;
 	private static final int COMBAT_VALIDATION_DELAY_TICKS = 120;
-	private static final int AXE_PROBE_SEARCH_RADIUS = 24;
-	private static final int AXE_PROBE_TARGET_OFFSET = 3;
+	private static final int AXE_PROBE_SEARCH_RADIUS = 32;
+	private static final int[] AXE_PROBE_TARGET_OFFSETS = {2, 3};
 	private static final int[][] CARDINAL_DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
 	private final Plugin plugin;
@@ -346,22 +346,24 @@ public final class PaperRuntimeSelfTest {
 					int zombieZ = originZ + dz;
 					int feetY = world.getHighestBlockYAt(zombieX, zombieZ) + 1;
 					for (int[] direction : CARDINAL_DIRECTIONS) {
-						int targetX = zombieX + direction[0] * AXE_PROBE_TARGET_OFFSET;
-						int targetZ = zombieZ + direction[1] * AXE_PROBE_TARGET_OFFSET;
-						if (world.getHighestBlockYAt(targetX, targetZ) + 1 != feetY
-							|| !isClearStandingColumn(world, zombieX, feetY, zombieZ)
-							|| !isClearStandingColumn(world, targetX, feetY, targetZ)) {
-							continue;
+						for (int targetOffset : AXE_PROBE_TARGET_OFFSETS) {
+							int targetX = zombieX + direction[0] * targetOffset;
+							int targetZ = zombieZ + direction[1] * targetOffset;
+							if (world.getHighestBlockYAt(targetX, targetZ) + 1 != feetY
+								|| !isClearStandingColumn(world, zombieX, feetY, zombieZ)
+								|| !isClearStandingColumn(world, targetX, feetY, targetZ)) {
+								continue;
+							}
+							Location zombie = new Location(world, zombieX + 0.5, feetY, zombieZ + 0.5);
+							Location target = new Location(world, targetX + 0.5, feetY, targetZ + 0.5);
+							if (!world.getWorldBorder().isInside(zombie)
+								|| !world.getWorldBorder().isInside(target)
+								|| !world.getNearbyEntities(zombie, 1.0, 1.5, 1.0).isEmpty()
+								|| !world.getNearbyEntities(target, 1.0, 2.0, 1.0).isEmpty()) {
+								continue;
+							}
+							return new AxeProbePlacement(zombie, target);
 						}
-						Location zombie = new Location(world, zombieX + 0.5, feetY, zombieZ + 0.5);
-						Location target = new Location(world, targetX + 0.5, feetY, targetZ + 0.5);
-						if (!world.getWorldBorder().isInside(zombie)
-							|| !world.getWorldBorder().isInside(target)
-							|| !world.getNearbyEntities(zombie, 1.0, 1.5, 1.0).isEmpty()
-							|| !world.getNearbyEntities(target, 1.0, 2.0, 1.0).isEmpty()) {
-							continue;
-						}
-						return new AxeProbePlacement(zombie, target);
 					}
 				}
 			}

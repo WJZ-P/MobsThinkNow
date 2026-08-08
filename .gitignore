@@ -10,3 +10,5 @@ out/
 *.iws
 logs/
 *.log
+__pycache__/
+*.pyc

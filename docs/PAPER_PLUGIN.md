@@ -161,6 +161,20 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 
 根目录执行 `./gradlew.bat build` 会同时验证 shared、Paper 和 Fabric，防止只通过某一个平台的构建。
 
+真实 Paper 端到端冒烟使用：
+
+```powershell
+./gradlew.bat paperSmokeTest
+```
+
+任务先构建当前插件，再调用 `tools/paper_smoke_test.py`。运行器固定 Paper `26.1.2 build 74` 及其
+SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/paper-smoke/` 复用服务端运行库，但每次
+重建专属超平坦世界、清除插件配置、选择空闲的 `127.0.0.1` 端口。它等待 `Done` 后才发送
+`mtnpaper selftest`，要求结构与行为 PASS，再发送 `status`、`stop` 并检查 Java 退出码。启动、自测和停服
+都有独立超时，异常路径也会先请求正常停服再强制兜底；完整控制台记录保存在
+`build/paper-smoke/paper-smoke.log`。可设置 `PYTHON` 指定 Python 3 可执行文件，也可直接运行脚本并用
+`--offline`、`--paper-jar`、`--java`、`--keep-world` 调整本地验证环境。
+
 ## 命令
 
 | 命令 | 权限 | 作用 |
@@ -184,7 +198,7 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 和一个关闭 AI、无敌的铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后先要求
 五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后再运行 120 tick，要求
 两名射手至少实际释放一发协调箭，并要求苦力怕真实跳上蜘蛛。另有一只 IQ 10 斧手与关闭 AI 但仍可
-攻击的铁傀儡，在有界搜索所得的同高、三格间距、四格净空自然通道中独立验证真实攻击和跳劈；该探针
+攻击的铁傀儡，在有界搜索所得的同高、2～3 格间距、四格净空自然通道中独立验证真实攻击和跳劈；该探针
 不放置或修改方块，也不会因混编阵位碰撞产生假阴性。
 测试苦力怕的爆炸半径临时设为 0、引信
 延长到 200 tick，因此可以观察载客行为而不破坏测试世界。无论成功、失败、重载还是插件关闭，测试实体
@@ -312,4 +326,5 @@ spider:
    `creepersMounted` 均大于零；
 5. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
-隔离服务端位于 Gradle 已忽略的 `build/paper-runtime/`，Paper 本体、世界和日志不会进入发布 JAR 或 Git。
+可复现隔离服务端位于 Gradle 已忽略的 `build/paper-smoke/`，Paper 本体、世界和日志不会进入发布 JAR
+或 Git。

@@ -50,6 +50,8 @@ GoalSelector 行为，而不是每 tick 强制传送实体：
 - `/mtnpaper status|inspect|reload|setiq|spawn|spawnall|assault|selftest` 提供运行诊断、批量生成和真实
   联合兵种冒烟入口；`selftest` 会在临时保活区块生成 IQ 10 的僵尸、双骷髅、苦力怕与蜘蛛，先验证
   同队和 `COMBINED_ARMS`，再等待真实 Goal 完成斧手跳劈、错峰射击与蜘蛛载客，最后自动清理；
+- `./gradlew.bat paperSmokeTest` 会构建插件、下载并校验固定 SHA-256 的 Paper `26.1.2 build 74`，在随机
+  本地端口与全新超平坦世界启动真实服务器，执行上述 `selftest`，只在行为通过且停服退出码为 0 时成功；
 - 客户端无需 Fabric、资源前置或协议 Mod。完整安装、能力差异和配置见
   [`docs/PAPER_PLUGIN.md`](docs/PAPER_PLUGIN.md)。
 
@@ -741,6 +743,8 @@ IQ 10 苦力怕的投送兵；例如 `/mtn spawn spider_ambusher 6` 或
 ./gradlew.bat clean build
 # 只想单独重跑真实服务端测试时：
 ./gradlew.bat runGameTest
+# 构建 Paper 插件并运行固定服务端版本的端到端行为冒烟：
+./gradlew.bat paperSmokeTest
 ```
 
 `build` 会运行 Fabric Loader JUnit、启动真实 Minecraft 服务端执行注册的 GameTest，并生成发布包；

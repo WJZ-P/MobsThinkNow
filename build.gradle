@@ -119,6 +119,27 @@ tasks.named("build") {
 	dependsOn(":shared:build", ":paper:build")
 }
 
+tasks.register("paperSmokeTest", Exec) {
+	group = "verification"
+	description = "Build the plugin and verify it in pinned Paper 26.1.2 build 74."
+	dependsOn(":paper:jar")
+	workingDir = rootDir
+	def paperJar = project(":paper").tasks.named("jar", Jar).flatMap { it.archiveFile }
+	inputs.file(paperJar)
+	doFirst {
+		def defaultPython = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")
+			? "python"
+			: "python3"
+		def python = System.getenv("PYTHON") ?: defaultPython
+		commandLine(
+			python,
+			file("tools/paper_smoke_test.py").absolutePath,
+			"--plugin",
+			paperJar.get().asFile.absolutePath
+		)
+	}
+}
+
 publishing {
 	publications {
 		create("mavenJava", MavenPublication) {
