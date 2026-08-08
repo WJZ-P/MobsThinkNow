@@ -1,6 +1,8 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.shared.ai.CrossbowLoadoutPlanner;
+import com.wjz.mobsthinknow.shared.ai.DifficultyTier;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.List;
 import net.minecraft.core.component.DataComponents;
@@ -15,7 +17,6 @@ import net.minecraft.world.item.component.Fireworks;
 
 /** 普通骷髅自然生成时的弩手与爆炸烟花弩手负载生成器。 */
 public final class SkeletonCrossbowLoadout {
-	private static final int FIREWORK_MINIMUM_INTELLIGENCE = 7;
 	private static final float VANILLA_EQUIPMENT_DROP_CHANCE = 0.085F;
 
 	private SkeletonCrossbowLoadout() {
@@ -36,51 +37,30 @@ public final class SkeletonCrossbowLoadout {
 
 		int intelligence = SkeletonIntelligence.get(skeleton);
 		RandomSource random = skeleton.getRandom();
-		if (random.nextDouble() >= effectiveCrossbowChance(
+		DifficultyTier difficultyTier = DifficultyTier.fromNumericId(difficulty.getId());
+		if (!CrossbowLoadoutPlanner.succeeds(CrossbowLoadoutPlanner.effectiveCrossbowChance(
 			config.skeletonCrossbowChance,
-			difficulty.getId(),
+			difficultyTier,
 			intelligence
-		)) {
+		), random.nextDouble())) {
 			return;
 		}
 
 		skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.CROSSBOW));
 		skeleton.setDropChance(EquipmentSlot.MAINHAND, VANILLA_EQUIPMENT_DROP_CHANCE);
-		if (intelligence >= FIREWORK_MINIMUM_INTELLIGENCE
-			&& random.nextDouble() < effectiveFireworkChance(
+		if (CrossbowLoadoutPlanner.succeeds(CrossbowLoadoutPlanner.effectiveFireworkChance(
 				config.skeletonFireworkCrossbowChance,
-				difficulty.getId(),
+				difficultyTier,
 				intelligence
-			)) {
-			ItemStack rockets = explosiveRockets(rocketCount(random, difficulty.getId(), intelligence));
+			), random.nextDouble())) {
+			ItemStack rockets = explosiveRockets(CrossbowLoadoutPlanner.rocketCount(
+				difficultyTier,
+				intelligence,
+				random.nextDouble()
+			));
 			skeleton.setItemSlot(EquipmentSlot.OFFHAND, rockets);
 			skeleton.setDropChance(EquipmentSlot.OFFHAND, VANILLA_EQUIPMENT_DROP_CHANCE);
 		}
-	}
-
-	static double effectiveCrossbowChance(final double baseChance, final int difficultyId, final int intelligence) {
-		double difficultyFactor = switch (Math.clamp(difficultyId, 0, 3)) {
-			case 0 -> 0.0;
-			case 1 -> 0.65;
-			case 2 -> 1.0;
-			default -> 1.35;
-		};
-		double intelligenceFactor = 0.75 + SkeletonIntelligence.clamp(intelligence) * 0.05;
-		return Math.clamp(baseChance * difficultyFactor * intelligenceFactor, 0.0, 1.0);
-	}
-
-	static double effectiveFireworkChance(final double baseChance, final int difficultyId, final int intelligence) {
-		int clamped = SkeletonIntelligence.clamp(intelligence);
-		if (clamped < FIREWORK_MINIMUM_INTELLIGENCE || difficultyId <= 0) {
-			return 0.0;
-		}
-		double mastery = (clamped - FIREWORK_MINIMUM_INTELLIGENCE + 1) / 4.0;
-		double difficultyFactor = switch (Math.clamp(difficultyId, 1, 3)) {
-			case 1 -> 0.70;
-			case 2 -> 1.0;
-			default -> 1.25;
-		};
-		return Math.clamp(baseChance * mastery * difficultyFactor, 0.0, 1.0);
 	}
 
 	/** 命令样本和自然生成共用的真实爆炸烟花堆。 */
@@ -97,8 +77,4 @@ public final class SkeletonCrossbowLoadout {
 		return rockets;
 	}
 
-	private static int rocketCount(final RandomSource random, final int difficultyId, final int intelligence) {
-		int baseline = 2 + Math.max(0, difficultyId) + SkeletonIntelligence.clamp(intelligence) / 3;
-		return Math.clamp(baseline + random.nextInt(3), 3, 9);
-	}
 }
