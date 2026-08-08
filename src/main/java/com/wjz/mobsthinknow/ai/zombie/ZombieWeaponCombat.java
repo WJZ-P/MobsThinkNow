@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie;
 import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.zombie.squad.WeaponClass;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.shared.ai.MeleeWeaponPlanner;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.resources.Identifier;
@@ -37,9 +38,6 @@ import net.minecraft.world.phys.Vec3;
  */
 final class ZombieWeaponCombat {
 	private static final double PLAYER_BASE_ATTACK_SPEED = 4.0;
-	private static final int DEFAULT_ATTACK_COOLDOWN_TICKS = 20;
-	private static final int MINIMUM_ATTACK_COOLDOWN_TICKS = 5;
-	private static final int MAXIMUM_ATTACK_COOLDOWN_TICKS = 60;
 	private static final double SPACING_RADIUS = 2.8;
 	private static final double SWORD_FEINT_MAXIMUM_DISTANCE_SQUARED = 4.2 * 4.2;
 	private static final int SWORD_FEINT_COMMIT_TICK = 6;
@@ -491,9 +489,13 @@ final class ZombieWeaponCombat {
 	}
 
 	private boolean canStartLeap(final LivingEntity target) {
-		double distanceSquared = horizontalDistanceSquared(this.zombie.position(), target.position());
-		if (distanceSquared < AXE_LEAP_MINIMUM_DISTANCE_SQUARED
-			|| distanceSquared > AXE_LEAP_MAXIMUM_DISTANCE_SQUARED) {
+		if (!MeleeWeaponPlanner.isAxeLaunchBand(
+			toShared(this.zombie.position()),
+			toShared(target.position()),
+			Math.sqrt(AXE_LEAP_MINIMUM_DISTANCE_SQUARED),
+			Math.sqrt(AXE_LEAP_MAXIMUM_DISTANCE_SQUARED),
+			AXE_LEAP_MAXIMUM_VERTICAL_DIFFERENCE
+		)) {
 			return false;
 		}
 
@@ -514,13 +516,14 @@ final class ZombieWeaponCombat {
 		this.zombie.getNavigation().moveTo(target, 1.15);
 		this.zombie.getJumpControl().jump();
 
-		Vec3 direction = horizontalUnit(target.position().subtract(this.zombie.position()));
 		Vec3 movement = this.zombie.getDeltaMovement();
-		this.zombie.setDeltaMovement(
-			direction.x * AXE_LEAP_HORIZONTAL_SPEED,
+		com.wjz.mobsthinknow.shared.math.Vec3d velocity = MeleeWeaponPlanner.axeLeapVelocity(
+			toShared(this.zombie.position()),
+			toShared(target.position()),
 			movement.y,
-			direction.z * AXE_LEAP_HORIZONTAL_SPEED
+			AXE_LEAP_HORIZONTAL_SPEED
 		);
+		this.zombie.setDeltaMovement(velocity.x(), velocity.y(), velocity.z());
 		this.axeLeapStartedAt = now;
 		ZombieBodyLanguage.startPersistent(this.zombie, ZombieBodyAction.AXE_LEAP);
 	}
@@ -532,11 +535,15 @@ final class ZombieWeaponCombat {
 			return;
 		}
 
-		Vec3 direction = horizontalUnit(target.position().subtract(this.zombie.position()));
 		Vec3 movement = this.zombie.getDeltaMovement();
-		double x = movement.x * 0.8 + direction.x * AXE_LEAP_HORIZONTAL_SPEED * 0.2;
-		double z = movement.z * 0.8 + direction.z * AXE_LEAP_HORIZONTAL_SPEED * 0.2;
-		this.zombie.setDeltaMovement(x, movement.y, z);
+		com.wjz.mobsthinknow.shared.math.Vec3d guided = MeleeWeaponPlanner.guideAxeLeap(
+			toShared(movement),
+			toShared(this.zombie.position()),
+			toShared(target.position()),
+			AXE_LEAP_HORIZONTAL_SPEED,
+			0.20
+		);
+		this.zombie.setDeltaMovement(guided.x(), guided.y(), guided.z());
 	}
 
 	/** 命中后立即后撤并带少量侧移，随后再由寻路接成圆弧，避免短 CD 武器仍黏在碰撞箱上。 */
@@ -602,11 +609,7 @@ final class ZombieWeaponCombat {
 	}
 
 	static int attackCooldownTicksFromSpeed(final double attackSpeed, final boolean hasAttackSpeedModifier) {
-		if (!hasAttackSpeedModifier || !Double.isFinite(attackSpeed) || attackSpeed <= 0.0) {
-			return DEFAULT_ATTACK_COOLDOWN_TICKS;
-		}
-		int cooldown = (int)Math.ceil(20.0 / attackSpeed);
-		return Math.max(MINIMUM_ATTACK_COOLDOWN_TICKS, Math.min(MAXIMUM_ATTACK_COOLDOWN_TICKS, cooldown));
+		return MeleeWeaponPlanner.attackCooldownTicks(attackSpeed, hasAttackSpeedModifier);
 	}
 
 	static Vec3 spacingDestination(
@@ -615,23 +618,17 @@ final class ZombieWeaponCombat {
 		final double radius,
 		final boolean clockwise
 	) {
-		Vec3 radial = horizontalUnit(zombiePosition.subtract(targetPosition));
-		double angle = clockwise ? Math.PI / 4.0 : -Math.PI / 4.0;
-		double cosine = Math.cos(angle);
-		double sine = Math.sin(angle);
-		double rotatedX = radial.x * cosine - radial.z * sine;
-		double rotatedZ = radial.x * sine + radial.z * cosine;
-		return new Vec3(
-			targetPosition.x + rotatedX * radius,
-			targetPosition.y,
-			targetPosition.z + rotatedZ * radius
+		com.wjz.mobsthinknow.shared.math.Vec3d result = MeleeWeaponPlanner.spacingDestination(
+			toShared(zombiePosition),
+			toShared(targetPosition),
+			radius,
+			clockwise
 		);
+		return new Vec3(result.x(), result.y(), result.z());
 	}
 
 	static double horizontalDistanceSquared(final Vec3 first, final Vec3 second) {
-		double x = first.x - second.x;
-		double z = first.z - second.z;
-		return x * x + z * z;
+		return MeleeWeaponPlanner.horizontalDistanceSquared(toShared(first), toShared(second));
 	}
 
 	static boolean shouldStartSwordFeint(
@@ -661,5 +658,9 @@ final class ZombieWeaponCombat {
 			return new Vec3(1.0, 0.0, 0.0);
 		}
 		return horizontal.normalize();
+	}
+
+	private static com.wjz.mobsthinknow.shared.math.Vec3d toShared(final Vec3 vector) {
+		return new com.wjz.mobsthinknow.shared.math.Vec3d(vector.x, vector.y, vector.z);
 	}
 }
