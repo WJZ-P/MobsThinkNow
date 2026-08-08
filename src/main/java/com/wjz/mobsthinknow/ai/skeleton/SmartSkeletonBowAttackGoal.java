@@ -8,6 +8,8 @@ import com.wjz.mobsthinknow.ai.zombie.squad.SquadDirective;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner;
+import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner.ReactionProfile;
 import java.util.EnumSet;
 import java.util.List;
 import net.minecraft.core.BlockPos;
@@ -32,9 +34,6 @@ import org.jspecify.annotations.Nullable;
 public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<AbstractSkeleton> {
 	private static final int BOW_DRAW_TICKS = 20;
 	private static final int LOST_SIGHT_CANCEL_TICKS = 15;
-	private static final int PROJECTILE_SCAN_INTERVAL_TICKS = 3;
-	private static final int MINIMUM_DODGE_TICKS = 7;
-	private static final int MAXIMUM_DODGE_TICKS = 10;
 	private static final double COVER_PATH_SPEED_MODIFIER = 1.10;
 	private static final double COVER_RETURN_SPEED_MODIFIER = 1.15;
 	private static final double COVER_POSITION_REACHED_DISTANCE_SQUARED = 0.49;
@@ -810,8 +809,9 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			return;
 		}
 
-		this.projectileScanCooldown = PROJECTILE_SCAN_INTERVAL_TICKS - 1;
-		var threat = SkeletonProjectileEvasion.nearestIncomingArrow(this.skeleton);
+		ReactionProfile reaction = ProjectileEvasionPlanner.reactionProfile(SkeletonIntelligence.get(this.skeleton));
+		this.projectileScanCooldown = reaction.scanIntervalTicks() - 1;
+		var threat = SkeletonProjectileEvasion.nearestIncomingArrow(this.skeleton, reaction);
 		if (threat.isEmpty()) {
 			return;
 		}
@@ -822,8 +822,7 @@ public final class SmartSkeletonBowAttackGoal extends RangedBowAttackGoal<Abstra
 			threat.orElseThrow(),
 			randomDirection()
 		);
-		this.dodgeTicks = MINIMUM_DODGE_TICKS
-			+ this.skeleton.getRandom().nextInt(MAXIMUM_DODGE_TICKS - MINIMUM_DODGE_TICKS + 1);
+		this.dodgeTicks = ProjectileEvasionPlanner.dodgeTicks(reaction, this.skeleton.getRandom().nextDouble());
 		SmartSkeletonMetrics.projectileDodgeStarted();
 	}
 

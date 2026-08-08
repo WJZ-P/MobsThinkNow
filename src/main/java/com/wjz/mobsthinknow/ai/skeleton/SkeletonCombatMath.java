@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
+import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner;
 import com.wjz.mobsthinknow.shared.ai.RangedSpacingPlanner;
 
 /**
@@ -151,16 +152,15 @@ public final class SkeletonCombatMath {
 		final double velocityZ,
 		final double horizonTicks
 	) {
-		double speedSquared = velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ;
-		if (!Double.isFinite(speedSquared) || speedSquared < 1.0E-4 || !Double.isFinite(horizonTicks) || horizonTicks <= 0.0) {
-			return Double.POSITIVE_INFINITY;
-		}
-
-		double time = (relativeX * velocityX + relativeY * velocityY + relativeZ * velocityZ) / speedSquared;
-		if (!Double.isFinite(time) || time < 0.0 || time > horizonTicks) {
-			return Double.POSITIVE_INFINITY;
-		}
-		return time;
+		return ProjectileEvasionPlanner.closestApproachTicks(
+			relativeX,
+			relativeY,
+			relativeZ,
+			velocityX,
+			velocityY,
+			velocityZ,
+			horizonTicks
+		);
 	}
 
 	public static boolean isIncomingProjectile(
@@ -173,23 +173,16 @@ public final class SkeletonCombatMath {
 		final double horizonTicks,
 		final double safetyRadius
 	) {
-		double time = closestApproachTime(
+		return ProjectileEvasionPlanner.isIncoming(
 			relativeX,
 			relativeY,
 			relativeZ,
 			velocityX,
 			velocityY,
 			velocityZ,
-			horizonTicks
+			horizonTicks,
+			safetyRadius
 		);
-		if (!Double.isFinite(time) || !Double.isFinite(safetyRadius) || safetyRadius <= 0.0) {
-			return false;
-		}
-
-		double missX = relativeX - velocityX * time;
-		double missY = relativeY - velocityY * time;
-		double missZ = relativeZ - velocityZ * time;
-		return missX * missX + missY * missY + missZ * missZ <= safetyRadius * safetyRadius;
 	}
 
 	/**
@@ -208,38 +201,17 @@ public final class SkeletonCombatMath {
 		final float combatYaw,
 		final int fallbackDirection
 	) {
-		int fallback = fallbackDirection < 0 ? -1 : 1;
-		if (!Double.isFinite(skeletonX)
-			|| !Double.isFinite(skeletonZ)
-			|| !Double.isFinite(projectileX)
-			|| !Double.isFinite(projectileZ)
-			|| !Double.isFinite(velocityX)
-			|| !Double.isFinite(velocityZ)
-			|| !Double.isFinite(closestApproachTicks)
-			|| closestApproachTicks < 0.0
-			|| !Float.isFinite(combatYaw)) {
-			return fallback;
-		}
-
-		double predictedX = projectileX + velocityX * closestApproachTicks;
-		double predictedZ = projectileZ + velocityZ * closestApproachTicks;
-		if (!Double.isFinite(predictedX) || !Double.isFinite(predictedZ)) {
-			return fallback;
-		}
-
-		// Minecraft yaw 为 0 时面向 +Z，此时身体右侧是 +X。
-		double yaw = combatYaw * Math.PI / 180.0;
-		double rightX = Math.cos(yaw);
-		double rightZ = Math.sin(yaw);
-		double missX = predictedX - skeletonX;
-		double missZ = predictedZ - skeletonZ;
-		double signedMissOnRightAxis = missX * rightX + missZ * rightZ;
-		if (Math.abs(signedMissOnRightAxis) < 1.0E-6) {
-			return fallback;
-		}
-
-		// 来箭偏在右侧便向左闪，偏在左侧便向右闪。
-		return signedMissOnRightAxis > 0.0 ? -1 : 1;
+		return ProjectileEvasionPlanner.saferSide(
+			skeletonX,
+			skeletonZ,
+			projectileX,
+			projectileZ,
+			velocityX,
+			velocityZ,
+			closestApproachTicks,
+			combatYaw,
+			fallbackDirection
+		);
 	}
 
 	/**

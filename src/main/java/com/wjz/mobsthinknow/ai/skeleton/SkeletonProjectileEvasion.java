@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.skeleton;
 
+import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner;
+import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner.ReactionProfile;
 import java.util.Comparator;
 import java.util.Optional;
 import net.minecraft.world.entity.LivingEntity;
@@ -13,13 +15,14 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class SkeletonProjectileEvasion {
 	public static final double SCAN_RADIUS = 7.0;
-	public static final double PREDICTION_HORIZON_TICKS = 8.0;
-	public static final double SAFETY_RADIUS = 1.15;
 
 	private SkeletonProjectileEvasion() {
 	}
 
-	public static Optional<Threat> nearestIncomingArrow(final AbstractSkeleton skeleton) {
+	public static Optional<Threat> nearestIncomingArrow(
+		final AbstractSkeleton skeleton,
+		final ReactionProfile reaction
+	) {
 		Vec3 center = skeleton.getBoundingBox().getCenter();
 		return skeleton.level()
 			.getEntitiesOfClass(
@@ -28,33 +31,37 @@ public final class SkeletonProjectileEvasion {
 				arrow -> arrow.isAlive() && arrow.getOwner() != skeleton
 			)
 			.stream()
-			.map(arrow -> classify(center, arrow))
+			.map(arrow -> classify(center, arrow, reaction))
 			.flatMap(Optional::stream)
 			.min(Comparator.comparingDouble(Threat::ticksUntilClosestApproach));
 	}
 
-	private static Optional<Threat> classify(final Vec3 skeletonCenter, final AbstractArrow arrow) {
+	private static Optional<Threat> classify(
+		final Vec3 skeletonCenter,
+		final AbstractArrow arrow,
+		final ReactionProfile reaction
+	) {
 		Vec3 relative = skeletonCenter.subtract(arrow.position());
 		Vec3 velocity = arrow.getDeltaMovement();
-		double time = SkeletonCombatMath.closestApproachTime(
+		double time = ProjectileEvasionPlanner.closestApproachTicks(
 			relative.x,
 			relative.y,
 			relative.z,
 			velocity.x,
 			velocity.y,
 			velocity.z,
-			PREDICTION_HORIZON_TICKS
+			reaction.predictionHorizonTicks()
 		);
 		if (!Double.isFinite(time)
-			|| !SkeletonCombatMath.isIncomingProjectile(
+			|| !ProjectileEvasionPlanner.isIncoming(
 				relative.x,
 				relative.y,
 				relative.z,
 				velocity.x,
 				velocity.y,
 				velocity.z,
-				PREDICTION_HORIZON_TICKS,
-				SAFETY_RADIUS
+				reaction.predictionHorizonTicks(),
+				reaction.safetyRadius()
 			)) {
 			return Optional.empty();
 		}
@@ -76,7 +83,7 @@ public final class SkeletonProjectileEvasion {
 		float combatYaw = (float)(Math.toDegrees(Math.atan2(targetZ, targetX)) - 90.0);
 		Vec3 center = skeleton.getBoundingBox().getCenter();
 		Vec3 velocity = threat.arrow().getDeltaMovement();
-		return SkeletonCombatMath.saferProjectileDodgeDirection(
+		return ProjectileEvasionPlanner.saferSide(
 			center.x,
 			center.z,
 			threat.arrow().getX(),
