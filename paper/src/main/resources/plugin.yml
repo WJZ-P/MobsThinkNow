@@ -8,9 +8,9 @@ load: POSTWORLD
 commands:
   mtnpaper:
     description: Inspect and administer Mobs Think Now Paper.
-    usage: /mtnpaper <status|inspect|reload|setiq 1-10>
+    usage: /mtnpaper <status|inspect|reload|setiq|spawn|spawnall|assault|selftest>
     aliases: [mtnp]
 permissions:
   mobsthinknow.admin:
-    description: Allows reloading settings and changing mob intelligence.
+    description: Allows reload, IQ changes, test spawning, assault batches, and runtime self-tests.
     default: op

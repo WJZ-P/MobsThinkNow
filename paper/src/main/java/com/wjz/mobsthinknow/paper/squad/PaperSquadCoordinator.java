@@ -130,6 +130,20 @@ public final class PaperSquadCoordinator {
 		return directive != null && directive.isHoldingForOrders();
 	}
 
+	/** 记录通过目标事件或明确测试入口得到的可观察目标；不覆盖更长久的实体存档。 */
+	public void observeTarget(final Mob mob, final LivingEntity target) {
+		if (!PaperThreats.isLiveFor(mob, target)) {
+			return;
+		}
+		this.track(mob);
+		MemberRecord member = this.members.get(mob.getUniqueId());
+		if (member != null) {
+			member.rememberedTarget = target;
+			member.rememberedTargetUntil = (long)Bukkit.getCurrentTick() + this.settings.get().targetMemoryTicks();
+			member.nextTargetPropagationAt = 0L;
+		}
+	}
+
 	public PaperSquadDirective directiveFor(final Mob mob) {
 		Long squadId = this.squadByMember.get(mob.getUniqueId());
 		Squad squad = squadId == null ? null : this.squads.get(squadId);
@@ -260,8 +274,8 @@ public final class PaperSquadCoordinator {
 			if (this.squadByMember.containsKey(seed.mob.getUniqueId())) {
 				continue;
 			}
-			LivingEntity target = seed.mob.getTarget();
-			if (!PaperThreats.isLiveFor(seed.mob, target)) {
+			LivingEntity target = this.targetFor(seed, now);
+			if (target == null) {
 				continue;
 			}
 			ScanResult nearby = this.collectNearby(seed, target, config, true);
@@ -328,6 +342,7 @@ public final class PaperSquadCoordinator {
 			return new ScanResult(accepted, 0);
 		}
 		double radiusSquared = config.formationRadius() * config.formationRadius();
+		long now = Bukkit.getCurrentTick();
 		int checks = 0;
 		outer:
 		for (int dz = -1; dz <= 1; dz++) {
@@ -349,8 +364,8 @@ public final class PaperSquadCoordinator {
 						|| candidate.mob.getLocation().distanceSquared(seed.mob.getLocation()) > radiusSquared) {
 						continue;
 					}
-					LivingEntity ownTarget = candidate.mob.getTarget();
-					if (PaperThreats.isLiveFor(candidate.mob, ownTarget) && ownTarget != sharedTarget) {
+					LivingEntity ownTarget = this.targetFor(candidate, now);
+					if (ownTarget != null && ownTarget != sharedTarget) {
 						continue;
 					}
 					accepted.add(candidate);
@@ -442,8 +457,8 @@ public final class PaperSquadCoordinator {
 		}
 		for (UUID memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
-			LivingEntity candidate = member == null ? null : member.mob.getTarget();
-			if (member != null && PaperThreats.isLiveFor(member.mob, candidate)
+			LivingEntity candidate = member == null ? null : this.targetFor(member, now);
+			if (member != null && candidate != null
 				&& !(candidate instanceof Mob mob && this.areSquadmates(member.mob, mob))) {
 				squad.target = candidate;
 				squad.targetId = candidate.getUniqueId();
@@ -469,10 +484,30 @@ public final class PaperSquadCoordinator {
 		return false;
 	}
 
+	private LivingEntity targetFor(final MemberRecord member, final long now) {
+		LivingEntity current = member.mob.getTarget();
+		if (PaperThreats.isLiveFor(member.mob, current)
+			&& !(current instanceof Mob mob && this.areSquadmates(member.mob, mob))) {
+			member.rememberedTarget = current;
+			member.rememberedTargetUntil = now + this.settings.get().targetMemoryTicks();
+			return current;
+		}
+		LivingEntity remembered = member.rememberedTarget;
+		if (member.rememberedTargetUntil >= now
+			&& PaperThreats.isLiveFor(member.mob, remembered)
+			&& !(remembered instanceof Mob mob && this.areSquadmates(member.mob, mob))) {
+			return remembered;
+		}
+		member.rememberedTarget = null;
+		member.rememberedTargetUntil = 0L;
+		return null;
+	}
+
 	private void propagateTarget(final Squad squad, final PaperSquadSettings config) {
 		if (!config.shareTargets() || squad.target == null) {
 			return;
 		}
+		long now = Bukkit.getCurrentTick();
 		for (UUID memberId : squad.memberIds) {
 			MemberRecord member = this.members.get(memberId);
 			if (member == null || !PaperThreats.isLiveFor(member.mob, squad.target)) {
@@ -481,7 +516,11 @@ public final class PaperSquadCoordinator {
 			LivingEntity current = member.mob.getTarget();
 			if (!PaperThreats.isLiveFor(member.mob, current)
 				|| (current instanceof Mob mob && this.areSquadmates(member.mob, mob))) {
+				if (now < member.nextTargetPropagationAt) {
+					continue;
+				}
 				member.mob.setTarget(squad.target);
+				member.nextTargetPropagationAt = now + 20L;
 				this.metrics.sharedTarget();
 			}
 		}
@@ -738,6 +777,9 @@ public final class PaperSquadCoordinator {
 		private Mob mob;
 		private final int stableOrder;
 		private CellKey cell;
+		private LivingEntity rememberedTarget;
+		private long rememberedTargetUntil;
+		private long nextTargetPropagationAt;
 
 		private MemberRecord(final Mob mob, final int stableOrder) {
 			this.mob = mob;

@@ -6,6 +6,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.command.MtnPaperCommand;
+import com.wjz.mobsthinknow.paper.command.PaperRuntimeSelfTest;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadSettings;
 import java.util.Objects;
@@ -23,6 +24,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private PaperPounceCoordinator pounceCoordinator;
 	private PaperSquadSettings squadSettings;
 	private PaperSquadCoordinator squadCoordinator;
+	private PaperRuntimeSelfTest runtimeSelfTest;
 	private PaperMobLifecycle mobLifecycle;
 
 	@Override
@@ -40,6 +42,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this::squadSettings,
 			this.intelligence
 		);
+		this.runtimeSelfTest = new PaperRuntimeSelfTest(this, this.intelligence, this.squadCoordinator);
 		this.mobLifecycle = new PaperMobLifecycle(
 			this,
 			this::settings,
@@ -60,6 +63,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.blastReservations,
 			this.pounceCoordinator,
 			this.squadCoordinator,
+			this.runtimeSelfTest,
 			this.metrics
 		);
 		PluginCommand command = Objects.requireNonNull(
@@ -77,6 +81,9 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 
 	@Override
 	public void onDisable() {
+		if (this.runtimeSelfTest != null) {
+			this.runtimeSelfTest.close();
+		}
 		if (this.mobLifecycle != null) {
 			this.mobLifecycle.removeGoalsFromLoadedEntities();
 		}
@@ -101,6 +108,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	}
 
 	public void reloadPluginSettings() {
+		this.runtimeSelfTest.close();
 		this.reloadConfig();
 		this.settings = this.readSettings();
 		this.squadSettings = this.readSquadSettings();

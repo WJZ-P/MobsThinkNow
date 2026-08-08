@@ -14,18 +14,32 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 
 /** 首批插件诊断与测试命令；所有改写命令均受 mobsthinknow.admin 权限保护。 */
 public final class MtnPaperCommand implements TabExecutor {
 	private static final String ADMIN_PERMISSION = "mobsthinknow.admin";
+	private static final Map<String, EntityType> SPAWN_TYPES = Map.ofEntries(
+		Map.entry("zombie", EntityType.ZOMBIE),
+		Map.entry("husk", EntityType.HUSK),
+		Map.entry("drowned", EntityType.DROWNED),
+		Map.entry("zombie_villager", EntityType.ZOMBIE_VILLAGER),
+		Map.entry("skeleton", EntityType.SKELETON),
+		Map.entry("stray", EntityType.STRAY),
+		Map.entry("bogged", EntityType.BOGGED),
+		Map.entry("wither_skeleton", EntityType.WITHER_SKELETON),
+		Map.entry("creeper", EntityType.CREEPER),
+		Map.entry("spider", EntityType.SPIDER)
+	);
 
 	private final MobsThinkNowPaperPlugin plugin;
 	private final PaperIntelligenceService intelligence;
@@ -35,6 +49,8 @@ public final class MtnPaperCommand implements TabExecutor {
 	private final PaperPounceCoordinator pounceCoordinator;
 	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperMetrics metrics;
+	private final PaperTestSpawner testSpawner;
+	private final PaperRuntimeSelfTest runtimeSelfTest;
 
 	public MtnPaperCommand(
 		final MobsThinkNowPaperPlugin plugin,
@@ -44,6 +60,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
 		final PaperSquadCoordinator squadCoordinator,
+		final PaperRuntimeSelfTest runtimeSelfTest,
 		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
@@ -54,6 +71,8 @@ public final class MtnPaperCommand implements TabExecutor {
 		this.pounceCoordinator = pounceCoordinator;
 		this.squadCoordinator = squadCoordinator;
 		this.metrics = metrics;
+		this.testSpawner = new PaperTestSpawner(intelligence);
+		this.runtimeSelfTest = runtimeSelfTest;
 	}
 
 	@Override
@@ -69,6 +88,10 @@ public final class MtnPaperCommand implements TabExecutor {
 			case "reload" -> this.reload(sender);
 			case "inspect" -> this.inspect(sender);
 			case "setiq" -> this.setIntelligence(sender, args);
+			case "spawn" -> this.spawn(sender, args);
+			case "spawnall" -> this.spawnAll(sender);
+			case "assault" -> this.spawnAssault(sender, args, 1);
+			case "selftest" -> this.selfTest(sender);
 			default -> this.usage(sender);
 		};
 	}
@@ -82,7 +105,7 @@ public final class MtnPaperCommand implements TabExecutor {
 	) {
 		if (args.length == 1) {
 			String prefix = args[0].toLowerCase(Locale.ROOT);
-			return List.of("status", "inspect", "reload", "setiq").stream()
+			return List.of("status", "inspect", "reload", "setiq", "spawn", "spawnall", "assault", "selftest").stream()
 				.filter(value -> value.startsWith(prefix))
 				.toList();
 		}
@@ -92,6 +115,23 @@ public final class MtnPaperCommand implements TabExecutor {
 				values.add(Integer.toString(value));
 			}
 			return values.stream().filter(value -> value.startsWith(args[1])).toList();
+		}
+		if (args.length == 2 && args[0].equalsIgnoreCase("spawn")) {
+			String prefix = args[1].toLowerCase(Locale.ROOT);
+			return java.util.stream.Stream.concat(SPAWN_TYPES.keySet().stream(), java.util.stream.Stream.of("assault"))
+				.sorted()
+				.filter(value -> value.startsWith(prefix))
+				.toList();
+		}
+		if (args.length == 3 && args[0].equalsIgnoreCase("spawn")) {
+			return List.of("1", "4", "8", "16", "20").stream()
+				.filter(value -> value.startsWith(args[2]))
+				.toList();
+		}
+		if (args.length == 2 && args[0].equalsIgnoreCase("assault")) {
+			return List.of("1", "2", "4", "8").stream()
+				.filter(value -> value.startsWith(args[1]))
+				.toList();
 		}
 		return List.of();
 	}
@@ -208,6 +248,120 @@ public final class MtnPaperCommand implements TabExecutor {
 		return true;
 	}
 
+	private boolean spawn(final CommandSender sender, final String[] args) {
+		if (!this.requireAdmin(sender)) {
+			return true;
+		}
+		if (!(sender instanceof Player player) || args.length < 2) {
+			return this.usage(sender);
+		}
+		String typeName = args[1].toLowerCase(Locale.ROOT);
+		if (typeName.equals("assault")) {
+			return this.spawnAssault(sender, args, 2);
+		}
+		EntityType type = SPAWN_TYPES.get(typeName);
+		if (type == null) {
+			sender.sendMessage(Component.text("Unknown Paper AI type: " + typeName, NamedTextColor.RED));
+			return true;
+		}
+		Integer count = parseCount(
+			sender,
+			args,
+			2,
+			1,
+			PaperTestSpawner.MAXIMUM_SINGLE_TYPE_COUNT,
+			"count"
+		);
+		if (count == null) {
+			return true;
+		}
+		return this.reportSpawn(sender, this.testSpawner.spawnType(player, type, count));
+	}
+
+	private boolean selfTest(final CommandSender sender) {
+		if (!this.requireAdmin(sender)) {
+			return true;
+		}
+		this.runtimeSelfTest.start(sender);
+		return true;
+	}
+
+	private boolean spawnAll(final CommandSender sender) {
+		if (!this.requireAdmin(sender)) {
+			return true;
+		}
+		if (!(sender instanceof Player player)) {
+			sender.sendMessage(Component.text("This command needs an in-world player source.", NamedTextColor.RED));
+			return true;
+		}
+		return this.reportSpawn(sender, this.testSpawner.spawnAll(player));
+	}
+
+	private boolean spawnAssault(final CommandSender sender, final String[] args, final int countIndex) {
+		if (!this.requireAdmin(sender)) {
+			return true;
+		}
+		if (!(sender instanceof Player player)) {
+			sender.sendMessage(Component.text("This command needs an in-world player source.", NamedTextColor.RED));
+			return true;
+		}
+		Integer groups = parseCount(
+			sender,
+			args,
+			countIndex,
+			1,
+			PaperTestSpawner.MAXIMUM_ASSAULT_GROUPS,
+			"assault groups"
+		);
+		if (groups == null) {
+			return true;
+		}
+		return this.reportSpawn(sender, this.testSpawner.spawnAssault(player, groups));
+	}
+
+	private boolean reportSpawn(final CommandSender sender, final PaperTestSpawner.Result result) {
+		if (result.rolledBack()) {
+			sender.sendMessage(Component.text(
+				"Spawn batch rolled back: requested=" + result.requested() + ", reason=" + result.detail(),
+				NamedTextColor.RED
+			));
+		} else {
+			sender.sendMessage(Component.text(
+				"Spawned " + result.spawned() + " intelligent mob(s).",
+				NamedTextColor.GREEN
+			));
+		}
+		return true;
+	}
+
+	private static Integer parseCount(
+		final CommandSender sender,
+		final String[] args,
+		final int index,
+		final int minimum,
+		final int maximum,
+		final String label
+	) {
+		if (args.length <= index) {
+			return minimum;
+		}
+		int count;
+		try {
+			count = Integer.parseInt(args[index]);
+		} catch (NumberFormatException exception) {
+			sender.sendMessage(Component.text(label + " must be an integer.", NamedTextColor.RED));
+			return null;
+		}
+		if (count < minimum || count > maximum) {
+			sender.sendMessage(Component.text(
+				label + " must be from " + minimum + " to " + maximum + ".",
+				NamedTextColor.RED
+			));
+			return null;
+		}
+		return count;
+	}
+
 	private Mob nearestSupportedMob(final CommandSender sender) {
 		if (!(sender instanceof Player player)) {
 			return null;
@@ -230,7 +384,7 @@ public final class MtnPaperCommand implements TabExecutor {
 
 	private boolean usage(final CommandSender sender) {
 		sender.sendMessage(Component.text(
-			"Usage: /mtnpaper <status|inspect|reload|setiq 1-10>",
+			"Usage: /mtnpaper <status|inspect|reload|setiq 1-10|spawn <type|assault> [count]|spawnall|assault [groups]|selftest>",
 			NamedTextColor.YELLOW
 		));
 		return true;

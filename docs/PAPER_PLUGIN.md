@@ -130,6 +130,20 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 | `/mtnpaper inspect` | 所有人 | 查看 12 格内最近怪物的 UUID、IQ、目标、小队阶段、方案和职责 |
 | `/mtnpaper reload` | `mobsthinknow.admin` | 重载、校验配置并刷新已加载实体 |
 | `/mtnpaper setiq <1-10>` | `mobsthinknow.admin` | 修改附近受支持怪物的持久 IQ |
+| `/mtnpaper spawn <type> [1-100]` | `mobsthinknow.admin` | 在玩家前方事务式批量生成指定 Paper 智能怪物 |
+| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种 |
+| `/mtnpaper assault [1-8]` | `mobsthinknow.admin` | 每组生成 IQ 10 僵尸、骷髅、苦力怕、蜘蛛以测试联合兵种 |
+| `/mtnpaper selftest` | `mobsthinknow.admin` | 控制台可用；真实 tick 验证四兵种同队、目标记忆和联合兵种后自动清理 |
+
+`spawn` 类型为：`zombie`、`husk`、`drowned`、`zombie_villager`、`skeleton`、`stray`、`bogged`、
+`wither_skeleton`、`creeper`、`spider`，另可用 `spawn assault [组数]`。生成器先为整批实体规划有承重、
+两格净空、无液体/火焰/仙人掌等危险的互不重叠落点；任意实体生成失败会移除本批已经生成的实体，
+不会留下半套测试阵容。
+
+`selftest` 不要求在线玩家：它会临时保活测试区块，生成四种 IQ 10 核心兵种与一个关闭 AI、无敌的
+铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后要求四者取得同一个小队 ID、
+全部拿到指令且方案为 `COMBINED_ARMS`。无论成功、失败、重载还是插件关闭，测试实体和临时区块票都会
+清理。日志以 `[MTN SELFTEST PASS]` 或 `[MTN SELFTEST FAIL]` 输出机器可识别结果。
 
 ## 配置
 
@@ -213,3 +227,15 @@ spider:
 
 后续按“共享判定 → Paper 公共 API 适配 → Fabric 继续复用”的顺序迁移混编小队黑板、职业降级表现与
 服务端批量测试指令。
+
+## 已执行的真实 Paper 验证
+
+开发回归除 JUnit 和 Fabric GameTest 外，还在隔离目录启动官方 Paper `26.1.2` build `74`：
+
+1. 校验下载 JAR 的 SHA-256；
+2. 等待服务端输出 `Done (...)` 后才发送控制台命令，避免启动前空世界命令源；
+3. 确认插件列表和 `/mtnpaper status`；
+4. 执行 `/mtnpaper selftest`，确认真实结果为 `state=BRIEFING, plan=COMBINED_ARMS`；
+5. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
+
+隔离服务端位于 Gradle 已忽略的 `build/paper-runtime/`，Paper 本体、世界和日志不会进入发布 JAR 或 Git。

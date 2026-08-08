@@ -16,6 +16,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderCombatGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperSpiderPounceGoal;
 import com.wjz.mobsthinknow.paper.ai.PaperZombieRetreatGoal;
+import com.wjz.mobsthinknow.paper.ai.PaperThreats;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadOrderGoal;
 import java.util.function.Supplier;
@@ -131,14 +132,16 @@ public final class PaperMobLifecycle implements Listener {
 
 	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
 	public void onFriendlySquadTarget(final EntityTargetLivingEntityEvent event) {
-		if (!(event.getEntity() instanceof Mob actor)
-			|| !(event.getTarget() instanceof Mob target)
-			|| !this.squadCoordinator.enabled()
-			|| !this.squadCoordinator.areSquadmates(actor, target)) {
+		if (!(event.getEntity() instanceof Mob actor) || !this.squadCoordinator.enabled()) {
 			return;
 		}
-		event.setCancelled(true);
-		this.squadCoordinator.metrics().friendlyTargetPrevented();
+		LivingEntity target = event.getTarget();
+		if (target instanceof Mob targetMob && this.squadCoordinator.areSquadmates(actor, targetMob)) {
+			event.setCancelled(true);
+			this.squadCoordinator.metrics().friendlyTargetPrevented();
+		} else if (PaperThreats.isLiveFor(actor, target)) {
+			this.squadCoordinator.observeTarget(actor, target);
+		}
 	}
 
 	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

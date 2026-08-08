@@ -37,7 +37,9 @@ GoalSelector 行为，而不是每 tick 强制传送实体：
   规划器冻结；空间查询只访问 `3×3` 桶且最多检查 64 个原始候选；
 - 小队会议使用真实 `MobGoals` 导航，目标突然贴近时立即跳过仪式进入交战；成员不会把队友设为目标，
   普通近战/弹射物误伤会被拦截，但苦力怕爆炸仍保留原版友军风险与反制窗口；
-- `/mtnpaper status|inspect|reload|setiq` 提供运行诊断和测试入口；
+- `/mtnpaper status|inspect|reload|setiq|spawn|spawnall|assault|selftest` 提供运行诊断、批量生成和真实
+  四兵种冒烟入口；`selftest` 会在临时保活区块生成 IQ 10 四兵种与合法目标，验证同队和
+  `COMBINED_ARMS` 后自动清理；
 - 客户端无需 Fabric、资源前置或协议 Mod。完整安装、能力差异和配置见
   [`docs/PAPER_PLUGIN.md`](docs/PAPER_PLUGIN.md)。
 
