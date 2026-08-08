@@ -112,9 +112,10 @@ public final class SmartSpiderPounceGoal extends LeapAtTargetGoal {
 		);
 		this.spider.getNavigation().stop();
 		this.spider.setDeltaMovement(velocity);
-		this.nextPounceTick = now
-			+ Math.max(18, 36 - intelligence)
-			+ this.spider.getRandom().nextInt(9);
+		this.nextPounceTick = now + SpiderCombatMath.pounceCooldownTicks(
+			intelligence,
+			this.spider.getRandom().nextDouble()
+		);
 		SmartSpiderMetrics.pounceStarted();
 	}
 

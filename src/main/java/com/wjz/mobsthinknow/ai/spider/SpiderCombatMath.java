@@ -1,22 +1,17 @@
 package com.wjz.mobsthinknow.ai.spider;
 
-import net.minecraft.util.Mth;
+import com.wjz.mobsthinknow.shared.ai.DifficultyTier;
+import com.wjz.mobsthinknow.shared.ai.SpiderTacticalPlanner;
+import com.wjz.mobsthinknow.shared.math.Vec3d;
 import net.minecraft.world.phys.Vec3;
 
-/** 与实体生命周期解耦的蜘蛛绕侧、预判跳扑和运输冲锋数学。 */
+/** Fabric 的 Vec3 边界适配；蜘蛛战术标量与向量数学由 shared 和 Paper 共用。 */
 public final class SpiderCombatMath {
-	private static final double EPSILON = 1.0E-7;
-	private static final double BASE_CARRIER_SPEED = 1.10;
-	private static final double MINIMUM_RANDOM_CARRIER_FACTOR = 0.88;
-	private static final double MAXIMUM_RANDOM_CARRIER_FACTOR = 1.0;
-
 	private SpiderCombatMath() {
 	}
 
 	public static boolean isTargetWatching(final Vec3 targetLook, final Vec3 targetToSpider) {
-		Vec3 look = horizontalUnit(targetLook, new Vec3(0.0, 0.0, 1.0));
-		Vec3 towardSpider = horizontalUnit(targetToSpider, Vec3.ZERO);
-		return towardSpider.lengthSqr() > EPSILON && look.dot(towardSpider) >= 0.72;
+		return SpiderTacticalPlanner.isTargetWatching(toShared(targetLook), toShared(targetToSpider));
 	}
 
 	public static ApproachMode chooseApproach(
@@ -27,14 +22,14 @@ public final class SpiderCombatMath {
 		final int repositionTicks,
 		final int stableSide
 	) {
-		int side = stableSide < 0 ? -1 : 1;
-		if (repositionTicks > 0 && intelligence >= 5) {
-			return side < 0 ? ApproachMode.REPOSITION_LEFT : ApproachMode.REPOSITION_RIGHT;
-		}
-		if (intelligence >= 6 && visible && (watching || blocking)) {
-			return side < 0 ? ApproachMode.FLANK_LEFT : ApproachMode.FLANK_RIGHT;
-		}
-		return intelligence >= 4 && visible ? ApproachMode.INTERCEPT : ApproachMode.DIRECT;
+		return fromShared(SpiderTacticalPlanner.chooseApproach(
+			intelligence,
+			watching,
+			blocking,
+			visible,
+			repositionTicks,
+			stableSide
+		));
 	}
 
 	public static Vec3 approachDestination(
@@ -44,16 +39,13 @@ public final class SpiderCombatMath {
 		final Vec3 targetLook,
 		final int intelligence
 	) {
-		Vec3 forward = horizontalUnit(targetLook, new Vec3(0.0, 0.0, 1.0));
-		Vec3 right = new Vec3(-forward.z, 0.0, forward.x);
-		return switch (mode) {
-			case DIRECT -> targetPosition;
-			case INTERCEPT -> targetPosition.add(clampHorizontal(targetVelocity, 0.38).scale(3.0 + intelligence * 0.45));
-			case FLANK_LEFT -> targetPosition.subtract(forward.scale(2.1)).subtract(right.scale(2.35));
-			case FLANK_RIGHT -> targetPosition.subtract(forward.scale(2.1)).add(right.scale(2.35));
-			case REPOSITION_LEFT -> targetPosition.subtract(forward.scale(3.35)).subtract(right.scale(3.0));
-			case REPOSITION_RIGHT -> targetPosition.subtract(forward.scale(3.35)).add(right.scale(3.0));
-		};
+		return toMinecraft(SpiderTacticalPlanner.approachDestination(
+			toShared(mode),
+			toShared(targetPosition),
+			toShared(targetVelocity),
+			toShared(targetLook),
+			intelligence
+		));
 	}
 
 	public static boolean canPredictivePounce(
@@ -62,11 +54,7 @@ public final class SpiderCombatMath {
 		final boolean onGround,
 		final double distanceSquared
 	) {
-		return intelligence >= 4
-			&& visible
-			&& onGround
-			&& distanceSquared >= 6.25
-			&& distanceSquared <= 49.0;
+		return SpiderTacticalPlanner.canPredictivePounce(intelligence, visible, onGround, distanceSquared);
 	}
 
 	public static Vec3 pounceVelocity(
@@ -77,28 +65,30 @@ public final class SpiderCombatMath {
 		final int intelligence,
 		final int difficultyId
 	) {
-		Vec3 predictedTarget = targetPosition.add(clampHorizontal(targetVelocity, 0.38).scale(2.5 + intelligence * 0.35));
-		Vec3 horizontal = horizontalUnit(predictedTarget.subtract(spiderPosition), Vec3.ZERO);
-		double horizontalSpeed = Mth.clamp(0.40 + intelligence * 0.014 + difficultyId * 0.012, 0.44, 0.60);
-		double verticalSpeed = Mth.clamp(0.38 + intelligence * 0.007, 0.40, 0.46);
-		Vec3 blendedHorizontal = clampHorizontal(horizontal.scale(horizontalSpeed).add(
-			currentMovement.x * 0.12,
-			0.0,
-			currentMovement.z * 0.12
-		), 0.60);
-		return new Vec3(blendedHorizontal.x, verticalSpeed, blendedHorizontal.z);
+		return toMinecraft(SpiderTacticalPlanner.pounceVelocity(
+			toShared(spiderPosition),
+			toShared(currentMovement),
+			toShared(targetPosition),
+			toShared(targetVelocity),
+			intelligence,
+			DifficultyTier.fromNumericId(difficultyId)
+		));
+	}
+
+	public static int pounceCooldownTicks(final int intelligence, final double unitSample) {
+		return SpiderTacticalPlanner.pounceCooldownTicks(intelligence, unitSample);
 	}
 
 	public static double approachSpeed(final int intelligence, final int difficultyId) {
-		return Mth.clamp(0.98 + intelligence * 0.017 + difficultyId * 0.025, 1.0, 1.25);
+		return SpiderTacticalPlanner.approachSpeed(intelligence, DifficultyTier.fromNumericId(difficultyId));
 	}
 
 	public static int repathTicks(final int intelligence) {
-		return Math.max(3, 10 - intelligence / 2);
+		return SpiderTacticalPlanner.repathTicks(intelligence);
 	}
 
 	public static int repositionTicks(final int intelligence) {
-		return Mth.clamp(8 + intelligence, 10, 18);
+		return SpiderTacticalPlanner.repositionTicks(intelligence);
 	}
 
 	public static Vec3 carrierDestination(
@@ -106,9 +96,11 @@ public final class SpiderCombatMath {
 		final Vec3 targetVelocity,
 		final int combinedIntelligence
 	) {
-		return targetPosition.add(
-			clampHorizontal(targetVelocity, 0.42).scale(3.0 + SpiderIntelligence.clamp(combinedIntelligence) * 0.45)
-		);
+		return toMinecraft(SpiderTacticalPlanner.carrierDestination(
+			toShared(targetPosition),
+			toShared(targetVelocity),
+			combinedIntelligence
+		));
 	}
 
 	public static double carrierSpeed(
@@ -116,46 +108,52 @@ public final class SpiderCombatMath {
 		final int combinedIntelligence,
 		final int difficultyId
 	) {
-		double progress = Mth.clamp((combinedIntelligence - 1) / 9.0 * 0.75 + difficultyId / 3.0 * 0.25, 0.0, 1.0);
-		double base = Math.min(BASE_CARRIER_SPEED, configuredMaximum);
-		return Mth.lerp(progress, base, configuredMaximum);
+		return SpiderTacticalPlanner.carrierSpeed(
+			configuredMaximum,
+			combinedIntelligence,
+			DifficultyTier.fromNumericId(difficultyId)
+		);
 	}
 
-	/** 每次新组合把配置上限随机压到 88%～100%，既保留个体差异，也避免所有精英组合顶格冲刺。 */
 	public static double randomizedCarrierMaximum(final double configuredMaximum, final double randomSample) {
-		double factor = Mth.lerp(
-			Mth.clamp(randomSample, 0.0, 1.0),
-			MINIMUM_RANDOM_CARRIER_FACTOR,
-			MAXIMUM_RANDOM_CARRIER_FACTOR
-		);
-		return Math.min(configuredMaximum, Math.max(BASE_CARRIER_SPEED, configuredMaximum * factor));
+		return SpiderTacticalPlanner.randomizedCarrierMaximum(configuredMaximum, randomSample);
 	}
 
-	/** 苦力怕会合最后一步的真实抛物线起跳；水平速度按间距缩放，竖直速度固定以稳定演出。 */
 	public static Vec3 boardingLeapVelocity(final Vec3 creeperPosition, final Vec3 spiderPosition) {
-		Vec3 horizontalOffset = new Vec3(
-			spiderPosition.x - creeperPosition.x,
-			0.0,
-			spiderPosition.z - creeperPosition.z
-		);
-		double distance = horizontalOffset.length();
-		Vec3 direction = distance > EPSILON ? horizontalOffset.scale(1.0 / distance) : Vec3.ZERO;
-		double horizontalSpeed = Mth.clamp(distance * 0.13, 0.20, 0.34);
-		return new Vec3(direction.x * horizontalSpeed, 0.38, direction.z * horizontalSpeed);
+		return toMinecraft(SpiderTacticalPlanner.boardingLeapVelocity(
+			toShared(creeperPosition),
+			toShared(spiderPosition)
+		));
 	}
 
-	private static Vec3 clampHorizontal(final Vec3 vector, final double maximumLength) {
-		Vec3 horizontal = new Vec3(vector.x, 0.0, vector.z);
-		double lengthSquared = horizontal.lengthSqr();
-		if (lengthSquared <= maximumLength * maximumLength) {
-			return horizontal;
-		}
-		return horizontal.normalize().scale(maximumLength);
+	private static Vec3d toShared(final Vec3 vector) {
+		return new Vec3d(vector.x, vector.y, vector.z);
 	}
 
-	private static Vec3 horizontalUnit(final Vec3 vector, final Vec3 fallback) {
-		Vec3 horizontal = new Vec3(vector.x, 0.0, vector.z);
-		return horizontal.lengthSqr() > EPSILON ? horizontal.normalize() : fallback;
+	private static Vec3 toMinecraft(final Vec3d vector) {
+		return new Vec3(vector.x(), vector.y(), vector.z());
+	}
+
+	private static ApproachMode fromShared(final SpiderTacticalPlanner.ApproachMode mode) {
+		return switch (mode) {
+			case DIRECT -> ApproachMode.DIRECT;
+			case INTERCEPT -> ApproachMode.INTERCEPT;
+			case FLANK_LEFT -> ApproachMode.FLANK_LEFT;
+			case FLANK_RIGHT -> ApproachMode.FLANK_RIGHT;
+			case REPOSITION_LEFT -> ApproachMode.REPOSITION_LEFT;
+			case REPOSITION_RIGHT -> ApproachMode.REPOSITION_RIGHT;
+		};
+	}
+
+	private static SpiderTacticalPlanner.ApproachMode toShared(final ApproachMode mode) {
+		return switch (mode) {
+			case DIRECT -> SpiderTacticalPlanner.ApproachMode.DIRECT;
+			case INTERCEPT -> SpiderTacticalPlanner.ApproachMode.INTERCEPT;
+			case FLANK_LEFT -> SpiderTacticalPlanner.ApproachMode.FLANK_LEFT;
+			case FLANK_RIGHT -> SpiderTacticalPlanner.ApproachMode.FLANK_RIGHT;
+			case REPOSITION_LEFT -> SpiderTacticalPlanner.ApproachMode.REPOSITION_LEFT;
+			case REPOSITION_RIGHT -> SpiderTacticalPlanner.ApproachMode.REPOSITION_RIGHT;
+		};
 	}
 
 	public enum ApproachMode {
@@ -174,5 +172,4 @@ public final class SpiderCombatMath {
 			return this == REPOSITION_LEFT || this == REPOSITION_RIGHT;
 		}
 	}
-
 }
