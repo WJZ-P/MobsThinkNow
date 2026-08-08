@@ -5,12 +5,15 @@ import com.destroystokyo.paper.event.entity.EntityAddToWorldEvent;
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperSkeletonDisengageGoal;
+import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperZombieRetreatGoal;
 import java.util.function.Supplier;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.AbstractSkeleton;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Projectile;
@@ -27,8 +30,10 @@ public final class PaperMobLifecycle implements Listener {
 	private static final int RETREAT_GOAL_PRIORITY = 1;
 
 	private final GoalKey<Zombie> retreatGoalKey;
+	private final GoalKey<AbstractSkeleton> skeletonDisengageGoalKey;
 	private final Supplier<PaperSettings> settings;
 	private final PaperIntelligenceService intelligence;
+	private final PaperSkeletonProfile skeletonProfile;
 	private final PaperDamageMemory damageMemory;
 	private final PaperMetrics metrics;
 
@@ -36,12 +41,18 @@ public final class PaperMobLifecycle implements Listener {
 		final Plugin plugin,
 		final Supplier<PaperSettings> settings,
 		final PaperIntelligenceService intelligence,
+		final PaperSkeletonProfile skeletonProfile,
 		final PaperDamageMemory damageMemory,
 		final PaperMetrics metrics
 	) {
 		this.retreatGoalKey = GoalKey.of(Zombie.class, new NamespacedKey(plugin, "zombie_reactive_retreat"));
+		this.skeletonDisengageGoalKey = GoalKey.of(
+			AbstractSkeleton.class,
+			new NamespacedKey(plugin, "skeleton_emergency_disengage")
+		);
 		this.settings = settings;
 		this.intelligence = intelligence;
+		this.skeletonProfile = skeletonProfile;
 		this.damageMemory = damageMemory;
 		this.metrics = metrics;
 	}
@@ -83,10 +94,16 @@ public final class PaperMobLifecycle implements Listener {
 
 	public void removeGoalsFromLoadedEntities() {
 		for (World world : Bukkit.getWorlds()) {
-			for (Zombie zombie : world.getEntitiesByClass(Zombie.class)) {
-				if (Bukkit.getMobGoals().hasGoal(zombie, this.retreatGoalKey)) {
+			for (Entity entity : world.getEntities()) {
+				if (entity instanceof Zombie zombie
+					&& Bukkit.getMobGoals().hasGoal(zombie, this.retreatGoalKey)) {
 					Bukkit.getMobGoals().removeGoal(zombie, this.retreatGoalKey);
 					this.metrics.retreatGoalRemoved();
+				}
+				if (entity instanceof AbstractSkeleton skeleton
+					&& Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonDisengageGoalKey)) {
+					Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonDisengageGoalKey);
+					this.metrics.skeletonDisengageGoalRemoved();
 				}
 			}
 		}
@@ -109,9 +126,15 @@ public final class PaperMobLifecycle implements Listener {
 			return;
 		}
 		this.intelligence.ensure(mob);
-		if (!(mob instanceof Zombie zombie)) {
-			return;
+		if (mob instanceof Zombie zombie) {
+			this.synchronizeZombieGoal(zombie);
 		}
+		if (mob instanceof AbstractSkeleton skeleton) {
+			this.synchronizeSkeletonGoal(skeleton);
+		}
+	}
+
+	private void synchronizeZombieGoal(final Zombie zombie) {
 		PaperSettings config = this.settings.get();
 		boolean shouldHaveGoal = config.enabled() && config.zombieRetreatEnabled();
 		boolean hasGoal = Bukkit.getMobGoals().hasGoal(zombie, this.retreatGoalKey);
@@ -133,6 +156,30 @@ public final class PaperMobLifecycle implements Listener {
 			Bukkit.getMobGoals().removeGoal(zombie, this.retreatGoalKey);
 			this.damageMemory.discard(zombie);
 			this.metrics.retreatGoalRemoved();
+		}
+	}
+
+	private void synchronizeSkeletonGoal(final AbstractSkeleton skeleton) {
+		PaperSettings config = this.settings.get();
+		boolean shouldHaveGoal = config.enabled() && config.skeletonSpacingEnabled();
+		boolean hasGoal = Bukkit.getMobGoals().hasGoal(skeleton, this.skeletonDisengageGoalKey);
+		if (shouldHaveGoal && !hasGoal) {
+			Bukkit.getMobGoals().addGoal(
+				skeleton,
+				RETREAT_GOAL_PRIORITY,
+				new PaperSkeletonDisengageGoal(
+					skeleton,
+					this.skeletonDisengageGoalKey,
+					this.settings,
+					this.intelligence,
+					this.skeletonProfile,
+					this.metrics
+				)
+			);
+			this.metrics.skeletonDisengageGoalInstalled();
+		} else if (!shouldHaveGoal && hasGoal) {
+			Bukkit.getMobGoals().removeGoal(skeleton, this.skeletonDisengageGoalKey);
+			this.metrics.skeletonDisengageGoalRemoved();
 		}
 	}
 

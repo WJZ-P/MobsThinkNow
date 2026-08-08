@@ -2,13 +2,11 @@ package com.wjz.mobsthinknow.paper.ai;
 
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
-import com.wjz.mobsthinknow.shared.ai.DifficultyTier;
 import com.wjz.mobsthinknow.shared.ai.IntelligenceDistribution;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Difficulty;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.AbstractSkeleton;
 import org.bukkit.entity.Creeper;
@@ -57,7 +55,7 @@ public final class PaperIntelligenceService {
 		int intelligence;
 		if (stored == null) {
 			intelligence = IntelligenceDistribution.roll(
-				mapDifficulty(mob.getWorld().getDifficulty()),
+				PaperDifficultyAdapter.fromBukkit(mob.getWorld().getDifficulty()),
 				ThreadLocalRandom.current().nextDouble()
 			);
 			data.set(this.intelligenceKey, PersistentDataType.INTEGER, intelligence);
@@ -119,12 +117,4 @@ public final class PaperIntelligenceService {
 		return NamedTextColor.GRAY;
 	}
 
-	private static DifficultyTier mapDifficulty(final Difficulty difficulty) {
-		return switch (difficulty) {
-			case PEACEFUL -> DifficultyTier.PEACEFUL;
-			case EASY -> DifficultyTier.EASY;
-			case NORMAL -> DifficultyTier.NORMAL;
-			case HARD -> DifficultyTier.HARD;
-		};
-	}
 }

@@ -11,7 +11,12 @@ public record PaperSettings(
 	int retreatMaximumTicks,
 	double retreatSafeDistance,
 	double retreatSpeed,
-	int damageMemoryTicks
+	int damageMemoryTicks,
+	boolean skeletonSpacingEnabled,
+	int skeletonSpacingMinimumIntelligence,
+	double skeletonPreferredRange,
+	int skeletonDisengageMaximumTicks,
+	int skeletonDisengageCooldownTicks
 ) {
 	public static PaperSettings validated(
 		final boolean enabled,
@@ -23,7 +28,12 @@ public record PaperSettings(
 		final int retreatMaximumTicks,
 		final double retreatSafeDistance,
 		final double retreatSpeed,
-		final int damageMemoryTicks
+		final int damageMemoryTicks,
+		final boolean skeletonSpacingEnabled,
+		final int skeletonSpacingMinimumIntelligence,
+		final double skeletonPreferredRange,
+		final int skeletonDisengageMaximumTicks,
+		final int skeletonDisengageCooldownTicks
 	) {
 		return new PaperSettings(
 			enabled,
@@ -35,7 +45,12 @@ public record PaperSettings(
 			Math.clamp(retreatMaximumTicks, 20, 200),
 			finiteClamp(retreatSafeDistance, 2.0, 16.0),
 			finiteClamp(retreatSpeed, 1.0, 2.0),
-			Math.clamp(damageMemoryTicks, 2, 40)
+			Math.clamp(damageMemoryTicks, 2, 40),
+			skeletonSpacingEnabled,
+			Math.clamp(skeletonSpacingMinimumIntelligence, 1, 10),
+			finiteClamp(skeletonPreferredRange, 6.0, 24.0),
+			Math.clamp(skeletonDisengageMaximumTicks, 20, 200),
+			Math.clamp(skeletonDisengageCooldownTicks, 0, 100)
 		);
 	}
 

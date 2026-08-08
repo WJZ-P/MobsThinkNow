@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.paper;
 
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
+import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.command.MtnPaperCommand;
 import java.util.Objects;
 import org.bukkit.command.PluginCommand;
@@ -13,6 +14,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private final PaperDamageMemory damageMemory = new PaperDamageMemory();
 	private PaperSettings settings;
 	private PaperIntelligenceService intelligence;
+	private PaperSkeletonProfile skeletonProfile;
 	private PaperMobLifecycle mobLifecycle;
 
 	@Override
@@ -20,10 +22,12 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.saveDefaultConfig();
 		this.settings = this.readSettings();
 		this.intelligence = new PaperIntelligenceService(this, this::settings, this.metrics);
+		this.skeletonProfile = new PaperSkeletonProfile(this);
 		this.mobLifecycle = new PaperMobLifecycle(
 			this,
 			this::settings,
 			this.intelligence,
+			this.skeletonProfile,
 			this.damageMemory,
 			this.metrics
 		);
@@ -77,7 +81,12 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getInt("zombie.retreat.maximum-ticks", 100),
 			this.getConfig().getDouble("zombie.retreat.safe-distance", 5.0),
 			this.getConfig().getDouble("zombie.retreat.speed", 1.50),
-			this.getConfig().getInt("zombie.retreat.damage-memory-ticks", 20)
+			this.getConfig().getInt("zombie.retreat.damage-memory-ticks", 20),
+			this.getConfig().getBoolean("skeleton.spacing.enabled", true),
+			this.getConfig().getInt("skeleton.spacing.minimum-intelligence", 1),
+			this.getConfig().getDouble("skeleton.spacing.preferred-range", 10.0),
+			this.getConfig().getInt("skeleton.spacing.maximum-disengage-ticks", 80),
+			this.getConfig().getInt("skeleton.spacing.timeout-cooldown-ticks", 20)
 		);
 	}
 }

@@ -17,3 +17,13 @@ zombie:
     speed: 1.50
     # Damage observations are consumed once and never survive a config reload.
     damage-memory-ticks: 20
+
+skeleton:
+  spacing:
+    enabled: true
+    minimum-intelligence: 1
+    # IQ adjusts this base range from 85% to 115%.
+    preferred-range: 10.0
+    # Emergency disengage is distinct from bow-ready kiting: the skeleton lowers its weapon and runs forward.
+    maximum-disengage-ticks: 80
+    timeout-cooldown-ticks: 20

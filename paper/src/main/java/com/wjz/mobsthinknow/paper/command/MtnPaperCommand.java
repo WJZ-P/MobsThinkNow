@@ -92,6 +92,10 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", retreatGoalsRemoved=" + snapshot.retreatGoalsRemoved()
 				+ ", retreats=" + snapshot.retreatStarts()
 				+ ", retreatPathFailures=" + snapshot.retreatPathFailures()
+				+ ", skeletonGoalsInstalled=" + snapshot.skeletonDisengageGoalsInstalled()
+				+ ", skeletonGoalsRemoved=" + snapshot.skeletonDisengageGoalsRemoved()
+				+ ", skeletonDisengages=" + snapshot.skeletonDisengageStarts()
+				+ ", skeletonPathFailures=" + snapshot.skeletonDisengagePathFailures()
 				+ ", pendingDamageMemories=" + this.damageMemory.pendingCount(),
 			NamedTextColor.AQUA
 		));

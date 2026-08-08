@@ -41,6 +41,18 @@ MobsThinkNow/
   “每只怪物扫描每只怪物”的平方复杂度；
 - 结束时明确停止逃跑路径并恢复攻击状态，40 tick 内不会因同一低血状态反复起停。
 
+### 骷髅紧急脱离
+
+- 受支持的整个 `AbstractSkeleton` 家族共用同一 Goal，敌人可以是玩家、铁傀儡或其他当前仇恨目标；
+- `RangedSpacingPlanner` 与 Fabric 共用距离分带：普通持弓拉扯继续面对目标，进入紧急阈值后则明确取消
+  蓄力、放下弓并面对逃生路径正向奔跑，两种姿态不会混为一谈；
+- IQ 越高，识别近身危险越早、安全释放距离越远、路径刷新越敏捷；
+- 每只骷髅首次需要脱离时按世界难度抽取一个 PDC 速度因子。相同随机分位满足简单 < 普通 < 困难，
+  但任何个体都不超过 Fabric 原速度曲线的最大值；
+- 路径节点被抬到眼睛高度再控制头和身体朝向，避免逃跑时低头盯地；找不到完整路径时只施加受碰撞
+  约束的小幅水平速度，不传送、不穿墙；
+- 启动阈值与安全阈值具有迟滞区，80 tick 超时后才短暂冷却，避免 Goal 在临界距离逐 tick 抖动。
+
 ## 构建与安装
 
 需要 JDK 25：
@@ -64,7 +76,7 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 
 | 命令 | 权限 | 作用 |
 |---|---|---|
-| `/mtnpaper status` | 所有人 | 查看已加载受支持怪物、Goal、撤退和寻路失败计数 |
+| `/mtnpaper status` | 所有人 | 查看已加载受支持怪物、僵尸/骷髅 Goal、撤退和寻路失败计数 |
 | `/mtnpaper inspect` | 所有人 | 查看 12 格内最近受支持怪物的 UUID、IQ 和目标 |
 | `/mtnpaper reload` | `mobsthinknow.admin` | 重载、校验配置并刷新已加载实体 |
 | `/mtnpaper setiq <1-10>` | `mobsthinknow.admin` | 修改附近受支持怪物的持久 IQ |
@@ -87,6 +99,13 @@ zombie:
     safe-distance: 5.0
     speed: 1.50
     damage-memory-ticks: 20
+skeleton:
+  spacing:
+    enabled: true
+    minimum-intelligence: 1
+    preferred-range: 10.0
+    maximum-disengage-ticks: 80
+    timeout-cooldown-ticks: 20
 ```
 
 读取时统一夹紧危险值；AI tick 只读取不可变快照，不重复访问 YAML。
@@ -104,5 +123,5 @@ zombie:
 | 自定义模型、骨骼动作、Mixin 姿势 | 完整客户端增强 | 服务端插件不直接提供；可选资源包降级 |
 | NMS 反射 | 不需要 | 不使用 |
 
-后续按“共享判定 → Paper 公共 API 适配 → Fabric 继续复用”的顺序迁移蜘蛛跳扑错峰、骷髅拉扯、
-苦力怕爆点预约与混编小队黑板。
+后续按“共享判定 → Paper 公共 API 适配 → Fabric 继续复用”的顺序迁移蜘蛛跳扑错峰、苦力怕爆点预约
+与混编小队黑板。

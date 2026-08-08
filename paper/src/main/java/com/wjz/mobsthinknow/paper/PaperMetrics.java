@@ -9,6 +9,10 @@ public final class PaperMetrics {
 	private final AtomicLong retreatGoalsRemoved = new AtomicLong();
 	private final AtomicLong retreatStarts = new AtomicLong();
 	private final AtomicLong retreatPathFailures = new AtomicLong();
+	private final AtomicLong skeletonDisengageGoalsInstalled = new AtomicLong();
+	private final AtomicLong skeletonDisengageGoalsRemoved = new AtomicLong();
+	private final AtomicLong skeletonDisengageStarts = new AtomicLong();
+	private final AtomicLong skeletonDisengagePathFailures = new AtomicLong();
 
 	public void intelligenceAssigned() {
 		this.intelligenceAssignments.incrementAndGet();
@@ -30,13 +34,33 @@ public final class PaperMetrics {
 		this.retreatPathFailures.incrementAndGet();
 	}
 
+	public void skeletonDisengageGoalInstalled() {
+		this.skeletonDisengageGoalsInstalled.incrementAndGet();
+	}
+
+	public void skeletonDisengageGoalRemoved() {
+		this.skeletonDisengageGoalsRemoved.incrementAndGet();
+	}
+
+	public void skeletonDisengageStarted() {
+		this.skeletonDisengageStarts.incrementAndGet();
+	}
+
+	public void skeletonDisengagePathFailed() {
+		this.skeletonDisengagePathFailures.incrementAndGet();
+	}
+
 	public Snapshot snapshot() {
 		return new Snapshot(
 			this.intelligenceAssignments.get(),
 			this.retreatGoalsInstalled.get(),
 			this.retreatGoalsRemoved.get(),
 			this.retreatStarts.get(),
-			this.retreatPathFailures.get()
+			this.retreatPathFailures.get(),
+			this.skeletonDisengageGoalsInstalled.get(),
+			this.skeletonDisengageGoalsRemoved.get(),
+			this.skeletonDisengageStarts.get(),
+			this.skeletonDisengagePathFailures.get()
 		);
 	}
 
@@ -45,7 +69,11 @@ public final class PaperMetrics {
 		long retreatGoalsInstalled,
 		long retreatGoalsRemoved,
 		long retreatStarts,
-		long retreatPathFailures
+		long retreatPathFailures,
+		long skeletonDisengageGoalsInstalled,
+		long skeletonDisengageGoalsRemoved,
+		long skeletonDisengageStarts,
+		long skeletonDisengagePathFailures
 	) {
 	}
 }
