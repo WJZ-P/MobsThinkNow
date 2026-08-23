@@ -796,6 +796,8 @@ IQ 10 苦力怕的投送兵；例如 `/mtn spawn spider_ambusher 6` 或
 ./gradlew.bat runGameTest
 # 构建 Paper 插件并运行固定服务端版本的端到端行为冒烟：
 ./gradlew.bat paperSmokeTest
+# 同一隔离服务端录制 JFR profile（仍使用 Gradle 解析的 JDK 25）：
+./gradlew.bat paperSmokeTest "-PpaperSmokeJfrOutput=.gradle/stress-logs/paper-smoke.jfr"
 ```
 
 Wrapper 的 Gradle 9.5.1 分发包同时固定官方 SHA-256，下载损坏或被替换会在执行构建脚本前失败。
@@ -810,6 +812,8 @@ Fabric Loom 也固定为已发布的 `1.17.19`，不再由 `1.17-SNAPSHOT` 随�
 中的旧 Java；因此以 Java 17 启动 wrapper 也不会在真实服务端阶段重新掉回 Java 17。服务端就绪后会执行
 损坏语法、重复键、关闭和重新开启四轮真实 `/mtnpaper reload`，逐次核验快照与调度器，再启动端到端战斗自测并干净关服。
 传入 `-PpaperSmokeSelftestRuns=N`（`1～100`）可在同一个 Paper 进程连续运行 N 轮自测；每轮之间都会要求已加载实体、弹体、蛛网、爆点/跳扑预约、伤害/盾牌邮箱与活跃小队全部归零，用于长时间累积泄漏回归。
+传入 `-PpaperSmokeJfrOutput=PATH` 时，运行器会在 Paper JVM 启动参数中加入 profile 录制并在干净停服后
+验证 JFR 文件非空；这避免依赖终端 `JAVA_HOME`、`JDK_JAVA_OPTIONS` 或手工寻找服务端 PID。
 
 `build` 会运行 Fabric Loader JUnit、启动真实 Minecraft 服务端执行注册的 GameTest，并生成发布包；
 `runGameTest` 可用于单独重跑服务端用例。Fabric 与 Paper 的 `check` 还会打开最终二进制与源码 JAR，确认共享规划器和

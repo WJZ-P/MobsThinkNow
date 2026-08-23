@@ -64,6 +64,11 @@ def parse_args() -> argparse.Namespace:
         help="Use this local Paper JAR instead of downloading the pinned object.",
     )
     parser.add_argument("--java", type=Path, help="Java executable; otherwise JAVA_HOME/PATH is used.")
+    parser.add_argument(
+        "--jfr-output",
+        type=Path,
+        help="Record the Paper process with JFR profile settings and verify the resulting file.",
+    )
     parser.add_argument("--offline", action="store_true", help="Fail instead of downloading a missing Paper JAR.")
     parser.add_argument("--keep-world", action="store_true", help="Reuse the previous isolated smoke-test world.")
     parser.add_argument("--startup-timeout", type=int, default=180)
@@ -257,6 +262,7 @@ def run_server(
     startup_timeout: int,
     selftest_timeout: int,
     selftest_runs: int,
+    jfr_output: Path | None,
 ) -> None:
     if startup_timeout < 30 or selftest_timeout < 30:
         raise SmokeFailure("startup and self-test timeouts must each be at least 30 seconds")
@@ -272,10 +278,12 @@ def run_server(
         f"-Djna.tmpdir={temporary}",
         "-Xms512M",
         "-Xmx1G",
-        "-jar",
-        "paper.jar",
-        "--nogui",
     ]
+    if jfr_output is not None:
+        command.append(
+            f"-XX:StartFlightRecording=filename={jfr_output},settings=profile,dumponexit=true"
+        )
+    command.extend(("-jar", "paper.jar", "--nogui"))
     process = subprocess.Popen(
         command,
         cwd=runtime,
@@ -504,6 +512,10 @@ def run_server(
             f"selftests={selftests_passed}/{selftest_runs}, selftestPassed={passed}; "
             f"transcript: {transcript_path}"
         )
+    if jfr_output is not None:
+        if not jfr_output.is_file() or jfr_output.stat().st_size == 0:
+            raise SmokeFailure(f"JFR recording was not created: {jfr_output}")
+        print(f"[paper-smoke] JFR={jfr_output} bytes={jfr_output.stat().st_size}")
     print(f"[paper-smoke] PASS transcript={transcript_path}")
 
 
@@ -517,6 +529,12 @@ def main() -> int:
         if args.selftest_runs < 1 or args.selftest_runs > 100:
             raise SmokeFailure("self-test runs must be between 1 and 100")
         java = resolve_java(args.java)
+        jfr_output = args.jfr_output.resolve() if args.jfr_output is not None else None
+        if jfr_output is not None:
+            if "," in str(jfr_output):
+                raise SmokeFailure("JFR output path must not contain a comma")
+            jfr_output.parent.mkdir(parents=True, exist_ok=True)
+            jfr_output.unlink(missing_ok=True)
         paper = provision_paper(args, runtime)
         transcript = prepare_runtime(args, runtime, paper)
         print(f"[paper-smoke] Paper={PAPER_VERSION}-{PAPER_BUILD} sha256={PAPER_SHA256}")
@@ -528,6 +546,7 @@ def main() -> int:
             args.startup_timeout,
             args.selftest_timeout,
             args.selftest_runs,
+            jfr_output,
         )
         return 0
     except (SmokeFailure, OSError, urllib.error.URLError) as error:

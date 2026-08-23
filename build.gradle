@@ -283,6 +283,8 @@ def paperSmokeJava = javaToolchains.launcherFor {
 }
 def paperSmokeScript = file("tools/paper_smoke_test.py")
 def paperSmokeSelftestRuns = providers.gradleProperty("paperSmokeSelftestRuns").orElse("1")
+def paperSmokeJfrOutput = providers.gradleProperty("paperSmokeJfrOutput").orElse("")
+def paperSmokeRootDirectory = rootDir.absolutePath
 
 tasks.register("paperSmokeTest", Exec) {
 	group = "verification"
@@ -293,12 +295,13 @@ tasks.register("paperSmokeTest", Exec) {
 	inputs.file(paperJar)
 	inputs.property("javaLauncher", paperSmokeJava.map { it.metadata.installationPath.asFile.absolutePath })
 	inputs.property("selftestRuns", paperSmokeSelftestRuns)
+	inputs.property("jfrOutput", paperSmokeJfrOutput)
 	doFirst {
 		def defaultPython = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")
 			? "python"
 			: "python3"
 		def python = System.getenv("PYTHON") ?: defaultPython
-		commandLine(
+		def arguments = [
 			python,
 			paperSmokeScript.absolutePath,
 			"--plugin",
@@ -307,7 +310,14 @@ tasks.register("paperSmokeTest", Exec) {
 			paperSmokeJava.get().executablePath.asFile.absolutePath,
 			"--selftest-runs",
 			paperSmokeSelftestRuns.get()
-		)
+		]
+		if (!paperSmokeJfrOutput.get().isBlank()) {
+			arguments.addAll([
+				"--jfr-output",
+				new File(paperSmokeRootDirectory, paperSmokeJfrOutput.get()).absolutePath
+			])
+		}
+		commandLine(arguments)
 	}
 }
 

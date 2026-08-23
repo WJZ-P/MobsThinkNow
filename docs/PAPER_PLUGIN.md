@@ -290,6 +290,8 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 
 ```powershell
 ./gradlew.bat paperSmokeTest
+# 可选：直接录制并验证 Paper JVM 的 JFR profile
+./gradlew.bat paperSmokeTest "-PpaperSmokeJfrOutput=.gradle/stress-logs/paper-smoke.jfr"
 ```
 
 任务先构建当前插件，再调用 `tools/paper_smoke_test.py`。运行器固定 Paper `26.1.2 build 74` 及其
@@ -299,7 +301,8 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `.gradle
 PASS，最后发送 `status`、`stop` 并检查 Java 退出码。启动、禁用、热重载恢复、自测和停服
 都有独立超时，异常路径也会先请求正常停服再强制兜底；完整控制台记录保存在
 `.gradle/paper-smoke/paper-smoke.log`。可设置 `PYTHON` 指定 Python 3 可执行文件，也可直接运行脚本并用
-`--offline`、`--paper-jar`、`--java`、`--keep-world` 调整本地验证环境。
+`--offline`、`--paper-jar`、`--java`、`--keep-world`、`--jfr-output` 调整本地验证环境。JFR 模式直接把
+profile 参数交给同一个已校验的 Paper JDK 25 进程，停服后还会验证录制文件存在且非空；
 
 需要同进程耐久回归时可运行 `./gradlew.bat paperSmokeTest -PpaperSmokeSelftestRuns=N`（`N=1～100`）。
 每轮自测 PASS 后，运行器会在最多 20 次服务端命令 tick 内轮询 `status`，确认实体、投射物、烟花弹、佯爆记忆、爆点/跳扑预约、蛛网、
