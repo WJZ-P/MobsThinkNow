@@ -281,3 +281,40 @@ tasks.register("verifyDefaultConfigCoverage") {
 tasks.named("check") {
 	dependsOn(tasks.named("verifyDefaultConfigCoverage"))
 }
+
+def paperHotPathSources = fileTree("src/main/java") { include("**/*.java") }
+tasks.register("verifyHotPathGeometry") {
+	group = "verification"
+	description = "Reject Bukkit Location allocations used only for entity distance checks."
+	inputs.files(paperHotPathSources)
+	doLast {
+		def violations = [] as Set
+		def forbidden = [
+			~/(?s)getLocation\(\)\s*\.\s*distanceSquared\s*\(/,
+			~/(?s)distanceSquared\s*\([^;]*?getLocation\(\)/
+		]
+		paperHotPathSources.files.sort().each { source ->
+			def text = source.getText("UTF-8")
+			forbidden.each { pattern ->
+				def matcher = text =~ pattern
+				while (matcher.find()) {
+					def start = matcher.start()
+					def lineNumber = text.substring(0, start).count("\n") + 1
+					def lineStart = text.lastIndexOf("\n", start) + 1
+					def lineEnd = text.indexOf("\n", start)
+					def snippet = text.substring(lineStart, lineEnd < 0 ? text.length() : lineEnd).trim()
+					violations.add("${source.name}:${lineNumber}: ${snippet}")
+				}
+			}
+		}
+		if (!violations.isEmpty()) {
+			throw new GradleException(
+				"Paper hot-path distance checks must use PaperEntityMath:\n" + violations.join("\n")
+			)
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyHotPathGeometry"))
+}

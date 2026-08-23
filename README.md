@@ -819,7 +819,8 @@ Fabric Loom 也固定为已发布的 `1.17.19`，不再由 `1.17-SNAPSHOT` 随�
 `build` 会运行 Fabric Loader JUnit、启动真实 Minecraft 服务端执行注册的 GameTest，并生成发布包；
 `runGameTest` 可用于单独重跑服务端用例。Fabric 与 Paper 的 `check` 还会打开最终二进制与源码 JAR，确认共享规划器和
 空间索引全集确实已打入成品，并验证 Fabric/Paper 入口、元数据、许可证和平台 API 隔离；Maven POM 与
-Gradle Module Metadata 也不得再把已内嵌的 `shared` 暴露成外部依赖；Paper 的全部配置读取路径还会
+Gradle Module Metadata 也不得再把已内嵌的 `shared` 暴露成外部依赖；Paper 的热路径门禁还会拒绝重新用
+`getLocation().distanceSquared(...)` 做纯实体范围比较。Paper 的全部配置读取路径还会
 与 YAML 叶节点逐一对应，并检查重复键、代码字面 fallback、文档配置块与 YAML 默认值是否一致。根检查还会拒绝失效的仓库内 Markdown 链接。Fabric 检查同时解析中英语言 JSON，拒绝重复键、双语键漂移、空翻译和源码中
 缺失定义的静态翻译引用，并逐一比对 143 个配置字段与图形页保存消费者。这样可避免开发类路径通过但玩家
 安装后 `ClassNotFoundException`。可发布 JAR 位于：

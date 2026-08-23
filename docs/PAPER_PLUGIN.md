@@ -274,6 +274,8 @@ Gradle 9.5.1 wrapper 还固定官方分发 SHA-256；构建工具本身先通过
 类路径、没有进入可分发 JAR，构建会立刻失败。
 Paper 检查还会逐一比对全部插件源码读取路径与默认 YAML 叶节点，任一重复、缺失、闲置、缩进到错误
 父节点，或代码字面 fallback 与 YAML 默认值不一致的字段都会失败；这也覆盖盾反击配置曾被误缩进到 `counter` 下的问题。
+`verifyHotPathGeometry` 同时扫描 Paper 源码并拒绝把 `getLocation()` 重新用于纯距离平方比较，确保范围
+门控持续复用无分配的 `PaperEntityMath`。
 
 产物：
 
