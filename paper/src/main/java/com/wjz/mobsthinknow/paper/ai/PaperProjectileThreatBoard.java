@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperProjectileEvasionSettings;
 import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner;
 import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner.ReactionProfile;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -38,7 +39,7 @@ public final class PaperProjectileThreatBoard {
 	private final Supplier<PaperProjectileEvasionSettings> settings;
 	private final PaperMetrics metrics;
 	private final LinkedHashMap<UUID, TrackedArrow> tracked = new LinkedHashMap<>();
-	private final Map<UUID, Map<CellKey, LinkedHashSet<UUID>>> cellsByWorld = new HashMap<>();
+	private final Map<UUID, Long2ObjectOpenHashMap<LinkedHashSet<UUID>>> cellsByWorld = new HashMap<>();
 	private Plugin plugin;
 	private BukkitTask task;
 
@@ -113,8 +114,12 @@ public final class PaperProjectileThreatBoard {
 		this.metrics.projectileThreatQuery();
 
 		Vector center = skeleton.getBoundingBox().getCenter();
-		CellKey centerCell = CellKey.at(center);
-		Map<CellKey, LinkedHashSet<UUID>> worldCells = this.cellsByWorld.get(skeleton.getWorld().getUID());
+		int centerCellX = cell(center.getX());
+		int centerCellY = cell(center.getY());
+		int centerCellZ = cell(center.getZ());
+		Long2ObjectOpenHashMap<LinkedHashSet<UUID>> worldCells = this.cellsByWorld.get(
+			skeleton.getWorld().getUID()
+		);
 		if (worldCells == null) {
 			return Optional.empty();
 		}
@@ -126,7 +131,9 @@ public final class PaperProjectileThreatBoard {
 		for (int dy = -1; dy <= 1; dy++) {
 			for (int dz = -1; dz <= 1; dz++) {
 				for (int dx = -1; dx <= 1; dx++) {
-					LinkedHashSet<UUID> bucket = worldCells.get(centerCell.offset(dx, dy, dz));
+					LinkedHashSet<UUID> bucket = worldCells.get(
+						packedCell(centerCellX + dx, centerCellY + dy, centerCellZ + dz)
+					);
 					if (bucket == null) {
 						continue;
 					}
@@ -223,7 +230,7 @@ public final class PaperProjectileThreatBoard {
 			this.metrics.projectileTrackingCapacityRejected();
 			return;
 		}
-		CellKey cell = CellKey.at(arrow.getX(), arrow.getY(), arrow.getZ());
+		long cell = packedCell(arrow.getX(), arrow.getY(), arrow.getZ());
 		TrackedArrow entry = new TrackedArrow(arrow, arrow.getWorld().getUID(), cell);
 		this.tracked.put(arrow.getUniqueId(), entry);
 		this.bucket(entry.worldId(), cell).add(arrow.getUniqueId());
@@ -247,8 +254,8 @@ public final class PaperProjectileThreatBoard {
 				continue;
 			}
 			UUID worldId = arrow.getWorld().getUID();
-			CellKey nextCell = CellKey.at(arrow.getX(), arrow.getY(), arrow.getZ());
-			if (worldId.equals(entry.worldId()) && nextCell.equals(entry.cell())) {
+			long nextCell = packedCell(arrow.getX(), arrow.getY(), arrow.getZ());
+			if (worldId.equals(entry.worldId()) && nextCell == entry.cell()) {
 				continue;
 			}
 			this.removeFromBucket(mapEntry.getKey(), entry.worldId(), entry.cell());
@@ -264,14 +271,21 @@ public final class PaperProjectileThreatBoard {
 		}
 	}
 
-	private LinkedHashSet<UUID> bucket(final UUID worldId, final CellKey cell) {
-		return this.cellsByWorld
-			.computeIfAbsent(worldId, ignored -> new HashMap<>())
-			.computeIfAbsent(cell, ignored -> new LinkedHashSet<>());
+	private LinkedHashSet<UUID> bucket(final UUID worldId, final long cell) {
+		Long2ObjectOpenHashMap<LinkedHashSet<UUID>> worldCells = this.cellsByWorld.computeIfAbsent(
+			worldId,
+			ignored -> new Long2ObjectOpenHashMap<>()
+		);
+		LinkedHashSet<UUID> bucket = worldCells.get(cell);
+		if (bucket == null) {
+			bucket = new LinkedHashSet<>();
+			worldCells.put(cell, bucket);
+		}
+		return bucket;
 	}
 
-	private void removeFromBucket(final UUID id, final UUID worldId, final CellKey cell) {
-		Map<CellKey, LinkedHashSet<UUID>> worldCells = this.cellsByWorld.get(worldId);
+	private void removeFromBucket(final UUID id, final UUID worldId, final long cell) {
+		Long2ObjectOpenHashMap<LinkedHashSet<UUID>> worldCells = this.cellsByWorld.get(worldId);
 		if (worldCells == null) {
 			return;
 		}
@@ -293,25 +307,21 @@ public final class PaperProjectileThreatBoard {
 		return this.globallyEnabled.getAsBoolean() && this.settings.get().enabled();
 	}
 
-	private record TrackedArrow(AbstractArrow arrow, UUID worldId, CellKey cell) {
+	private record TrackedArrow(AbstractArrow arrow, UUID worldId, long cell) {
 	}
 
-	private record CellKey(int x, int y, int z) {
-		static CellKey at(final Vector point) {
-			return at(point.getX(), point.getY(), point.getZ());
-		}
+	private static long packedCell(final double x, final double y, final double z) {
+		return packedCell(cell(x), cell(y), cell(z));
+	}
 
-		static CellKey at(final double x, final double y, final double z) {
-			return new CellKey(cell(x), cell(y), cell(z));
-		}
+	static long packedCell(final int x, final int y, final int z) {
+		return ((long)x & 0x3FF_FFFFL) << 38
+			| ((long)z & 0x3FF_FFFFL) << 12
+			| ((long)y & 0xFFFL);
+	}
 
-		CellKey offset(final int dx, final int dy, final int dz) {
-			return new CellKey(this.x + dx, this.y + dy, this.z + dz);
-		}
-
-		private static int cell(final double coordinate) {
-			return (int)Math.floor(coordinate / CELL_SIZE);
-		}
+	private static int cell(final double coordinate) {
+		return (int)Math.floor(coordinate / CELL_SIZE);
 	}
 
 	public record Threat(AbstractArrow projectile, double closestApproachTicks) {
