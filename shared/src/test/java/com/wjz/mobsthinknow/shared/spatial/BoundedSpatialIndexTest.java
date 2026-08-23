@@ -6,7 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 class BoundedSpatialIndexTest {
@@ -171,6 +174,68 @@ class BoundedSpatialIndexTest {
 		assertThrows(NullPointerException.class, () -> new BoundedSpatialIndex.ScanResult<>(null, 0));
 	}
 
+	@Test
+	void primitiveCellTableMatchesBruteForceAcrossRehashesMovesAndTombstones() {
+		Random random = new Random(0x4D544E5F53504143L);
+		BoundedSpatialIndex<Integer, MutableCandidate> index = newMutableIndex(10.0);
+		List<MutableCandidate> candidates = new ArrayList<>();
+		Map<MutableCandidate, Boolean> registered = new IdentityHashMap<>();
+		for (int id = 0; id < 240; id++) {
+			MutableCandidate candidate = new MutableCandidate(
+				id,
+				random.nextInt(4),
+				random.nextDouble(-800.0, 800.0),
+				random.nextDouble(-800.0, 800.0)
+			);
+			candidates.add(candidate);
+			index.add(candidate);
+			registered.put(candidate, Boolean.TRUE);
+		}
+
+		for (int step = 0; step < 600; step++) {
+			MutableCandidate changed = candidates.get(random.nextInt(candidates.size()));
+			switch (random.nextInt(4)) {
+				case 0, 1 -> {
+					changed.group = random.nextInt(4);
+					changed.x = random.nextDouble(-800.0, 800.0);
+					changed.z = random.nextDouble(-800.0, 800.0);
+					index.upsert(changed);
+					registered.put(changed, Boolean.TRUE);
+				}
+				case 2 -> {
+					boolean expected = registered.remove(changed) != null;
+					assertEquals(expected, index.remove(changed));
+				}
+				default -> {
+					if (!registered.containsKey(changed)) {
+						index.add(changed);
+						registered.put(changed, Boolean.TRUE);
+					}
+				}
+			}
+
+			MutableCandidate seed = candidates.get(random.nextInt(candidates.size()));
+			List<MutableCandidate> actual = index.collectNearby(
+				seed,
+				ignored -> true,
+				BoundedSpatialIndexTest::distanceSquared,
+				100.0,
+				1_000,
+				1_000
+			).candidates();
+			List<MutableCandidate> expected = new ArrayList<>();
+			expected.add(seed);
+			for (MutableCandidate candidate : registered.keySet()) {
+				if (candidate != seed && candidate.group == seed.group
+					&& distanceSquared(seed, candidate) <= 100.0) {
+					expected.add(candidate);
+				}
+			}
+			assertSameIdentities(expected, actual);
+			assertEquals(registered.size(), index.size());
+		}
+	}
+
 	private static BoundedSpatialIndex<Integer, Candidate> newIndex(final double cellSize) {
 		return new BoundedSpatialIndex<>(cellSize, Candidate::group, Candidate::x, Candidate::z);
 	}
@@ -208,6 +273,13 @@ class BoundedSpatialIndexTest {
 		double dx = first.x - second.x;
 		double dz = first.z - second.z;
 		return dx * dx + dz * dz;
+	}
+
+	private static <T> void assertSameIdentities(final List<T> expected, final List<T> actual) {
+		assertEquals(expected.size(), actual.size());
+		for (T candidate : expected) {
+			assertTrue(actual.stream().anyMatch(actualCandidate -> actualCandidate == candidate));
+		}
 	}
 
 	private record Candidate(int id, int group, double x, double z, boolean available) {

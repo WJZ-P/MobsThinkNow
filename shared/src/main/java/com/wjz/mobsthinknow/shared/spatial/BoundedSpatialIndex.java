@@ -28,7 +28,7 @@ public final class BoundedSpatialIndex<G, T> {
 	private final Function<T, G> groupId;
 	private final ToDoubleFunction<T> xCoordinate;
 	private final ToDoubleFunction<T> zCoordinate;
-	private final Map<G, Map<CellKey, LinkedHashMap<IdentityKey<T>, T>>> groups = new HashMap<>();
+	private final Map<G, LongBucketMap<LinkedHashMap<IdentityKey<T>, T>>> groups = new HashMap<>();
 	private final IdentityHashMap<T, Membership<G, T>> memberships = new IdentityHashMap<>();
 
 	public BoundedSpatialIndex(
@@ -59,9 +59,9 @@ public final class BoundedSpatialIndex<G, T> {
 	public boolean upsert(final T candidate) {
 		Objects.requireNonNull(candidate, "candidate");
 		G group = Objects.requireNonNull(this.groupId.apply(candidate), "candidate group");
-		CellKey cell = this.cellFor(candidate);
+		long cell = this.cellFor(candidate);
 		Membership<G, T> current = this.memberships.get(candidate);
-		if (current != null && current.group().equals(group) && current.cell().equals(cell)) {
+		if (current != null && current.group().equals(group) && current.cell() == cell) {
 			return false;
 		}
 		if (current != null) {
@@ -69,10 +69,16 @@ public final class BoundedSpatialIndex<G, T> {
 		}
 
 		IdentityKey<T> identity = current == null ? new IdentityKey<>(candidate) : current.identity();
-		this.groups
-			.computeIfAbsent(group, ignored -> new HashMap<>())
-			.computeIfAbsent(cell, ignored -> new LinkedHashMap<>())
-			.put(identity, candidate);
+		LongBucketMap<LinkedHashMap<IdentityKey<T>, T>> cells = this.groups.computeIfAbsent(
+			group,
+			ignored -> new LongBucketMap<>()
+		);
+		LinkedHashMap<IdentityKey<T>, T> bucket = cells.get(cell);
+		if (bucket == null) {
+			bucket = new LinkedHashMap<>();
+			cells.put(cell, bucket);
+		}
+		bucket.put(identity, candidate);
 		this.memberships.put(candidate, new Membership<>(group, cell, identity));
 		return true;
 	}
@@ -143,17 +149,19 @@ public final class BoundedSpatialIndex<G, T> {
 		}
 
 		G group = Objects.requireNonNull(this.groupId.apply(seed), "seed group");
-		Map<CellKey, LinkedHashMap<IdentityKey<T>, T>> cells = this.groups.get(group);
+		LongBucketMap<LinkedHashMap<IdentityKey<T>, T>> cells = this.groups.get(group);
 		if (cells == null) {
 			return new ScanResult<>(List.copyOf(accepted), 0);
 		}
 
-		CellKey center = this.cellFor(seed);
+		long center = this.cellFor(seed);
+		int centerX = unpackX(center);
+		int centerZ = unpackZ(center);
 		int rawChecks = 0;
 		outer:
 		for (int dz = -1; dz <= 1; dz++) {
 			for (int dx = -1; dx <= 1; dx++) {
-				Map<IdentityKey<T>, T> bucket = cells.get(new CellKey(center.x() + dx, center.z() + dz));
+				Map<IdentityKey<T>, T> bucket = cells.get(packCell(centerX + dx, centerZ + dz));
 				if (bucket == null) {
 					continue;
 				}
@@ -185,17 +193,17 @@ public final class BoundedSpatialIndex<G, T> {
 		}
 	}
 
-	private CellKey cellFor(final T candidate) {
+	private long cellFor(final T candidate) {
 		double x = this.xCoordinate.applyAsDouble(candidate);
 		double z = this.zCoordinate.applyAsDouble(candidate);
 		if (!Double.isFinite(x) || !Double.isFinite(z)) {
 			throw new IllegalArgumentException("candidate coordinates must be finite");
 		}
-		return new CellKey((int)Math.floor(x / this.cellSize), (int)Math.floor(z / this.cellSize));
+		return packCell((int)Math.floor(x / this.cellSize), (int)Math.floor(z / this.cellSize));
 	}
 
 	private void removeMembership(final Membership<G, T> membership) {
-		Map<CellKey, LinkedHashMap<IdentityKey<T>, T>> cells = this.groups.get(membership.group());
+		LongBucketMap<LinkedHashMap<IdentityKey<T>, T>> cells = this.groups.get(membership.group());
 		if (cells == null) {
 			return;
 		}
@@ -209,6 +217,18 @@ public final class BoundedSpatialIndex<G, T> {
 		if (cells.isEmpty()) {
 			this.groups.remove(membership.group());
 		}
+	}
+
+	private static long packCell(final int x, final int z) {
+		return ((long)x << Integer.SIZE) ^ (z & 0xFFFFFFFFL);
+	}
+
+	private static int unpackX(final long cell) {
+		return (int)(cell >> Integer.SIZE);
+	}
+
+	private static int unpackZ(final long cell) {
+		return (int)cell;
 	}
 
 	@FunctionalInterface
@@ -225,10 +245,127 @@ public final class BoundedSpatialIndex<G, T> {
 		}
 	}
 
-	private record CellKey(int x, int z) {
+	private record Membership<G, T>(G group, long cell, IdentityKey<T> identity) {
 	}
 
-	private record Membership<G, T>(G group, CellKey cell, IdentityKey<T> identity) {
+	/** 共享模块不引入平台集合依赖；这个小型开放寻址表让九桶查询保持 primitive long 查找。 */
+	private static final class LongBucketMap<V> {
+		private static final int INITIAL_CAPACITY = 16;
+		private static final int LOAD_NUMERATOR = 3;
+		private static final int LOAD_DENOMINATOR = 5;
+		private static final byte OCCUPIED = 1;
+		private static final byte DELETED = 2;
+
+		private long[] keys = new long[INITIAL_CAPACITY];
+		private Object[] values = new Object[INITIAL_CAPACITY];
+		private byte[] states = new byte[INITIAL_CAPACITY];
+		private int size;
+		private int deleted;
+
+		private V get(final long key) {
+			int mask = this.keys.length - 1;
+			int slot = mix(key) & mask;
+			while (this.states[slot] != 0) {
+				if (this.states[slot] == OCCUPIED && this.keys[slot] == key) {
+					return this.valueAt(slot);
+				}
+				slot = slot + 1 & mask;
+			}
+			return null;
+		}
+
+		private void put(final long key, final V value) {
+			Objects.requireNonNull(value, "value");
+			if ((this.size + this.deleted + 1) * LOAD_DENOMINATOR
+				>= this.keys.length * LOAD_NUMERATOR) {
+				this.rehash(this.keys.length << 1);
+			}
+			this.insert(key, value);
+		}
+
+		private V remove(final long key) {
+			int mask = this.keys.length - 1;
+			int slot = mix(key) & mask;
+			while (this.states[slot] != 0) {
+				if (this.states[slot] == OCCUPIED && this.keys[slot] == key) {
+					V removed = this.valueAt(slot);
+					this.values[slot] = null;
+					this.states[slot] = DELETED;
+					this.size--;
+					this.deleted++;
+					if (this.size > 0 && this.deleted > this.size) {
+						this.rehash(this.keys.length);
+					}
+					return removed;
+				}
+				slot = slot + 1 & mask;
+			}
+			return null;
+		}
+
+		private boolean isEmpty() {
+			return this.size == 0;
+		}
+
+		private void insert(final long key, final V value) {
+			int mask = this.keys.length - 1;
+			int slot = mix(key) & mask;
+			int firstDeleted = -1;
+			while (this.states[slot] != 0) {
+				if (this.states[slot] == OCCUPIED && this.keys[slot] == key) {
+					this.values[slot] = value;
+					return;
+				}
+				if (firstDeleted < 0 && this.states[slot] == DELETED) {
+					firstDeleted = slot;
+				}
+				slot = slot + 1 & mask;
+			}
+			if (firstDeleted >= 0) {
+				slot = firstDeleted;
+				this.deleted--;
+			}
+			this.keys[slot] = key;
+			this.values[slot] = value;
+			this.states[slot] = OCCUPIED;
+			this.size++;
+		}
+
+		private void rehash(final int capacity) {
+			long[] previousKeys = this.keys;
+			Object[] previousValues = this.values;
+			byte[] previousStates = this.states;
+			this.keys = new long[capacity];
+			this.values = new Object[capacity];
+			this.states = new byte[capacity];
+			this.size = 0;
+			this.deleted = 0;
+			for (int index = 0; index < previousKeys.length; index++) {
+				if (previousStates[index] == OCCUPIED) {
+					this.insert(previousKeys[index], valueAt(previousValues, index));
+				}
+			}
+		}
+
+		@SuppressWarnings("unchecked")
+		private V valueAt(final int slot) {
+			return (V)this.values[slot];
+		}
+
+		@SuppressWarnings("unchecked")
+		private static <V> V valueAt(final Object[] values, final int slot) {
+			return (V)values[slot];
+		}
+
+		private static int mix(final long key) {
+			long value = key;
+			value ^= value >>> 33;
+			value *= 0xFF51AFD7ED558CCDL;
+			value ^= value >>> 33;
+			value *= 0xC4CEB9FE1A85EC53L;
+			value ^= value >>> 33;
+			return (int)(value ^ value >>> Integer.SIZE);
+		}
 	}
 
 	private static final class IdentityKey<T> {
