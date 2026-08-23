@@ -3,7 +3,6 @@ package com.wjz.mobsthinknow.shared.spatial;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,7 +27,7 @@ public final class BoundedSpatialIndex<G, T> {
 	private final Function<T, G> groupId;
 	private final ToDoubleFunction<T> xCoordinate;
 	private final ToDoubleFunction<T> zCoordinate;
-	private final Map<G, LongBucketMap<LinkedHashMap<IdentityKey<T>, T>>> groups = new HashMap<>();
+	private final Map<G, LongBucketMap<IdentityBucket<T>>> groups = new HashMap<>();
 	private final IdentityHashMap<T, Membership<G, T>> memberships = new IdentityHashMap<>();
 
 	public BoundedSpatialIndex(
@@ -68,18 +67,18 @@ public final class BoundedSpatialIndex<G, T> {
 			this.removeMembership(current);
 		}
 
-		IdentityKey<T> identity = current == null ? new IdentityKey<>(candidate) : current.identity();
-		LongBucketMap<LinkedHashMap<IdentityKey<T>, T>> cells = this.groups.computeIfAbsent(
+		BucketNode<T> node = current == null ? new BucketNode<>(candidate) : current.node();
+		LongBucketMap<IdentityBucket<T>> cells = this.groups.computeIfAbsent(
 			group,
 			ignored -> new LongBucketMap<>()
 		);
-		LinkedHashMap<IdentityKey<T>, T> bucket = cells.get(cell);
+		IdentityBucket<T> bucket = cells.get(cell);
 		if (bucket == null) {
-			bucket = new LinkedHashMap<>();
+			bucket = new IdentityBucket<>();
 			cells.put(cell, bucket);
 		}
-		bucket.put(identity, candidate);
-		this.memberships.put(candidate, new Membership<>(group, cell, identity));
+		bucket.add(node);
+		this.memberships.put(candidate, new Membership<>(group, cell, node));
 		return true;
 	}
 
@@ -149,7 +148,7 @@ public final class BoundedSpatialIndex<G, T> {
 		}
 
 		G group = Objects.requireNonNull(this.groupId.apply(seed), "seed group");
-		LongBucketMap<LinkedHashMap<IdentityKey<T>, T>> cells = this.groups.get(group);
+		LongBucketMap<IdentityBucket<T>> cells = this.groups.get(group);
 		if (cells == null) {
 			return new ScanResult<>(List.copyOf(accepted), 0);
 		}
@@ -161,11 +160,12 @@ public final class BoundedSpatialIndex<G, T> {
 		outer:
 		for (int dz = -1; dz <= 1; dz++) {
 			for (int dx = -1; dx <= 1; dx++) {
-				Map<IdentityKey<T>, T> bucket = cells.get(packCell(centerX + dx, centerZ + dz));
+				IdentityBucket<T> bucket = cells.get(packCell(centerX + dx, centerZ + dz));
 				if (bucket == null) {
 					continue;
 				}
-				for (T candidate : bucket.values()) {
+				for (BucketNode<T> node = bucket.first(); node != null; node = node.next()) {
+					T candidate = node.candidate();
 					if (rawChecks >= rawScanLimit) {
 						break outer;
 					}
@@ -203,13 +203,13 @@ public final class BoundedSpatialIndex<G, T> {
 	}
 
 	private void removeMembership(final Membership<G, T> membership) {
-		LongBucketMap<LinkedHashMap<IdentityKey<T>, T>> cells = this.groups.get(membership.group());
+		LongBucketMap<IdentityBucket<T>> cells = this.groups.get(membership.group());
 		if (cells == null) {
 			return;
 		}
-		Map<IdentityKey<T>, T> bucket = cells.get(membership.cell());
+		IdentityBucket<T> bucket = cells.get(membership.cell());
 		if (bucket != null) {
-			bucket.remove(membership.identity());
+			bucket.remove(membership.node());
 			if (bucket.isEmpty()) {
 				cells.remove(membership.cell());
 			}
@@ -245,7 +245,68 @@ public final class BoundedSpatialIndex<G, T> {
 		}
 	}
 
-	private record Membership<G, T>(G group, long cell, IdentityKey<T> identity) {
+	private record Membership<G, T>(G group, long cell, BucketNode<T> node) {
+	}
+
+	/** 成员身份已由外层 memberships 保证；链表节点让热查询无需 Iterator 对象。 */
+	private static final class IdentityBucket<T> {
+		private BucketNode<T> first;
+		private BucketNode<T> last;
+		private int size;
+
+		private void add(final BucketNode<T> node) {
+			node.previous = this.last;
+			node.next = null;
+			if (this.last == null) {
+				this.first = node;
+			} else {
+				this.last.next = node;
+			}
+			this.last = node;
+			this.size++;
+		}
+
+		private void remove(final BucketNode<T> node) {
+			if (node.previous == null) {
+				this.first = node.next;
+			} else {
+				node.previous.next = node.next;
+			}
+			if (node.next == null) {
+				this.last = node.previous;
+			} else {
+				node.next.previous = node.previous;
+			}
+			node.previous = null;
+			node.next = null;
+			this.size--;
+		}
+
+		private BucketNode<T> first() {
+			return this.first;
+		}
+
+		private boolean isEmpty() {
+			return this.size == 0;
+		}
+	}
+
+	private static final class BucketNode<T> {
+		private final T candidate;
+		private BucketNode<T> previous;
+		private BucketNode<T> next;
+
+		private BucketNode(final T candidate) {
+			this.candidate = candidate;
+		}
+
+		private T candidate() {
+			return this.candidate;
+		}
+
+		private BucketNode<T> next() {
+			return this.next;
+		}
 	}
 
 	/** 共享模块不引入平台集合依赖；这个小型开放寻址表让九桶查询保持 primitive long 查找。 */
@@ -368,23 +429,4 @@ public final class BoundedSpatialIndex<G, T> {
 		}
 	}
 
-	private static final class IdentityKey<T> {
-		private final T candidate;
-		private final int hash;
-
-		private IdentityKey(final T candidate) {
-			this.candidate = candidate;
-			this.hash = System.identityHashCode(candidate);
-		}
-
-		@Override
-		public boolean equals(final Object other) {
-			return this == other || (other instanceof IdentityKey<?> key && this.candidate == key.candidate);
-		}
-
-		@Override
-		public int hashCode() {
-			return this.hash;
-		}
-	}
 }

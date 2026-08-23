@@ -236,6 +236,23 @@ class BoundedSpatialIndexTest {
 		}
 	}
 
+	@Test
+	void linkedIdentityBucketPreservesInsertionOrderAfterRemovalAndReentry() {
+		BoundedSpatialIndex<Integer, MutableCandidate> index = newMutableIndex(10.0);
+		MutableCandidate seed = new MutableCandidate(1, 4, 0.0, 0.0);
+		MutableCandidate first = new MutableCandidate(2, 4, 1.0, 0.0);
+		MutableCandidate moving = new MutableCandidate(3, 4, 2.0, 0.0);
+		MutableCandidate last = new MutableCandidate(4, 4, 3.0, 0.0);
+		for (MutableCandidate candidate : List.of(seed, first, moving, last)) {
+			index.add(candidate);
+		}
+
+		assertEquals(List.of(seed, first, moving, last), collect(index, seed));
+		assertTrue(index.remove(moving));
+		index.add(moving);
+		assertEquals(List.of(seed, first, last, moving), collect(index, seed));
+	}
+
 	private static BoundedSpatialIndex<Integer, Candidate> newIndex(final double cellSize) {
 		return new BoundedSpatialIndex<>(cellSize, Candidate::group, Candidate::x, Candidate::z);
 	}
