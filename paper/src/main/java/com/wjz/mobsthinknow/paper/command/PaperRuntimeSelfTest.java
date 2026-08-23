@@ -63,6 +63,7 @@ public final class PaperRuntimeSelfTest {
 	private static final int COMBAT_PROBE_SEARCH_RADIUS = 32;
 	private static final int WEB_TRAP_FALLBACK_DELAY_TICKS = 160;
 	private static final int MAXIMUM_FIREWORK_SETTLE_CHECKS = 60;
+	private static final int MAXIMUM_COVER_SETTLE_CHECKS = 60;
 	private static final int[] COMBAT_PROBE_TARGET_OFFSETS = {2, 3};
 	private static final int[] FIREWORK_PROBE_TARGET_OFFSETS = {12, 10, 8};
 	private static final int[][] CARDINAL_DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
@@ -131,6 +132,7 @@ public final class PaperRuntimeSelfTest {
 	private boolean creeperFeintCooledAtCompletion;
 	private boolean creeperFeintMemoryReleased;
 	private int fireworkSettleChecks;
+	private int coverSettleChecks;
 
 	public PaperRuntimeSelfTest(
 		final Plugin plugin,
@@ -400,6 +402,17 @@ public final class PaperRuntimeSelfTest {
 			PaperMetrics.CoverSnapshot cover = this.metrics.coverSnapshot();
 			long coverPeekShots = cover.peekShots() - this.coverPeekShotBaseline;
 			long coverReturns = cover.returnsCompleted() - this.coverReturnBaseline;
+			if (coverPeekShots > 0L && coverReturns <= 0L
+				&& this.coverSettleChecks < MAXIMUM_COVER_SETTLE_CHECKS) {
+				this.coverSettleChecks++;
+				this.validationTask = Bukkit.getScheduler().runTaskLater(
+					this.plugin,
+					() -> this.validateCombat(sender, mobs, baseline),
+					1L
+				);
+				deferred = true;
+				return;
+			}
 			PaperMetrics.WebTrapSnapshot webs = this.metrics.webTrapSnapshot();
 			long webTrapsPlaced = webs.placed() - this.webTrapPlacedBaseline;
 			long webTrapsRestored = webs.restored() - this.webTrapRestoredBaseline;
@@ -487,6 +500,7 @@ public final class PaperRuntimeSelfTest {
 						+ ", projectileEvasionProbe=" + this.projectileEvasionProbeSnapshot()
 						+ ", coverPeekShots=" + coverPeekShots
 						+ ", coverReturns=" + coverReturns
+						+ ", coverSettleChecks=" + this.coverSettleChecks
 						+ ", coverSearches=" + cover.searches()
 						+ ", coverPlans=" + cover.plansFound()
 						+ ", coverCycles=" + cover.cyclesStarted()
@@ -545,6 +559,7 @@ public final class PaperRuntimeSelfTest {
 					+ ", projectileEvasionProbeDodged=" + this.projectileEvasionProbeDodged
 					+ ", coverPeekShots=" + coverPeekShots
 					+ ", coverReturns=" + coverReturns
+					+ ", coverSettleChecks=" + this.coverSettleChecks
 					+ ", coverProbeMoved=" + this.coverProbeMaximumDisplacement
 					+ ", webTrapsPlaced=" + webTrapsPlaced
 					+ ", webTrapsRestored=" + webTrapsRestored
@@ -604,6 +619,7 @@ public final class PaperRuntimeSelfTest {
 		this.creeperFeintCooledAtCompletion = false;
 		this.creeperFeintMemoryReleased = false;
 		this.fireworkSettleChecks = 0;
+		this.coverSettleChecks = 0;
 		this.projectileEvasionProbe = null;
 		this.projectileEvasionTarget = null;
 		this.projectileEvasionStart = null;
