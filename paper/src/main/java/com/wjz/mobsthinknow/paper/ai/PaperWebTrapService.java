@@ -5,6 +5,7 @@ import com.wjz.mobsthinknow.paper.PaperWebTrapSettings;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,6 +63,7 @@ public final class PaperWebTrapService implements Listener {
 	private final BlockData cobweb = Material.COBWEB.createBlockData();
 	private final Map<BlockKey, Trap> active = new HashMap<>();
 	private final Map<UUID, Integer> activeByWorld = new HashMap<>();
+	private final Map<UUID, LinkedHashSet<BlockKey>> activeByOwner = new HashMap<>();
 	private final PriorityQueue<Expiry> expiries = new PriorityQueue<>();
 	private Plugin plugin;
 	private BukkitTask task;
@@ -141,6 +143,7 @@ public final class PaperWebTrapService implements Listener {
 		Trap trap = new Trap(owner.getUniqueId(), previous, expiresAt);
 		this.active.put(key, trap);
 		this.activeByWorld.merge(key.worldId(), 1, Integer::sum);
+		this.activeByOwner.computeIfAbsent(trap.ownerId(), ignored -> new LinkedHashSet<>()).add(key);
 		this.expiries.add(new Expiry(key, expiresAt));
 		this.compactExpiriesIfNeeded();
 		this.playPlacementFeedback(block, web);
@@ -155,20 +158,21 @@ public final class PaperWebTrapService implements Listener {
 	}
 
 	public Optional<Location> ownedTrap(final UUID ownerId) {
-		for (Map.Entry<BlockKey, Trap> entry : new ArrayList<>(this.active.entrySet())) {
-			if (!entry.getValue().ownerId().equals(ownerId)) {
+		LinkedHashSet<BlockKey> owned = this.activeByOwner.get(ownerId);
+		if (owned == null) {
+			return Optional.empty();
+		}
+		for (BlockKey key : List.copyOf(owned)) {
+			World world = Bukkit.getWorld(key.worldId());
+			if (world == null || !key.isChunkLoaded(world)) {
 				continue;
 			}
-			World world = Bukkit.getWorld(entry.getKey().worldId());
-			if (world == null || !entry.getKey().isChunkLoaded(world)) {
-				continue;
-			}
-			Block block = world.getBlockAt(entry.getKey().x(), entry.getKey().y(), entry.getKey().z());
+			Block block = world.getBlockAt(key.x(), key.y(), key.z());
 			if (block.getType() != Material.COBWEB) {
-				this.discardStaleEntry(entry.getKey());
+				this.discardStaleEntry(key);
 				continue;
 			}
-			return Optional.of(entry.getKey().location(world));
+			return Optional.of(key.location(world));
 		}
 		return Optional.empty();
 	}
@@ -187,13 +191,22 @@ public final class PaperWebTrapService implements Listener {
 
 	/** Restore every trap owned by one spider without touching unrelated encounters. */
 	public int releaseOwner(final UUID ownerId, final boolean feedback) {
+		LinkedHashSet<BlockKey> owned = this.activeByOwner.get(ownerId);
+		if (owned == null) {
+			return 0;
+		}
 		int released = 0;
-		for (Map.Entry<BlockKey, Trap> entry : new ArrayList<>(this.active.entrySet())) {
-			if (entry.getValue().ownerId().equals(ownerId) && this.remove(entry.getKey(), true, feedback)) {
+		for (BlockKey key : List.copyOf(owned)) {
+			if (this.remove(key, true, feedback)) {
 				released++;
 			}
 		}
 		return released;
+	}
+
+	public int activeOwnerCount() {
+		this.auditLoadedOwnership();
+		return this.activeByOwner.size();
 	}
 
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -438,6 +451,7 @@ public final class PaperWebTrapService implements Listener {
 		}
 		this.active.clear();
 		this.activeByWorld.clear();
+		this.activeByOwner.clear();
 		this.expiries.clear();
 		this.cleanupBudgetTick = Long.MIN_VALUE;
 		this.expiriesCheckedThisTick = 0;
@@ -486,6 +500,10 @@ public final class PaperWebTrapService implements Listener {
 			return false;
 		}
 		this.activeByWorld.computeIfPresent(key.worldId(), (ignored, count) -> count <= 1 ? null : count - 1);
+		this.activeByOwner.computeIfPresent(trap.ownerId(), (ignored, keys) -> {
+			keys.remove(key);
+			return keys.isEmpty() ? null : keys;
+		});
 		this.compactExpiriesIfNeeded();
 		if (!restore) {
 			return true;

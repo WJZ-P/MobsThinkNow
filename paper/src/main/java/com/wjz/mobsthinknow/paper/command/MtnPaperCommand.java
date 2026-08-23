@@ -278,6 +278,7 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", webTrapOwnershipLosses=" + webs.ownershipLosses()
 				+ ", blastContainmentWebs=" + webs.blastContainmentWebs()
 				+ ", activeWebTraps=" + this.webTraps.activeCount()
+				+ ", activeWebTrapOwners=" + this.webTraps.activeOwnerCount()
 				+ ", mountedAssemblies=" + snapshot.mountedBreachAssemblies()
 				+ ", boardingLeaps=" + snapshot.mountedBreachBoardingLeaps()
 				+ ", creepersMounted=" + snapshot.mountedBreachMounts()

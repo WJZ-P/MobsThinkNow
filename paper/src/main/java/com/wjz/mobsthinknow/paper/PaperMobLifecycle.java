@@ -227,6 +227,7 @@ public final class PaperMobLifecycle implements Listener {
 				this.removeCustomSpiderGoals(spider);
 				this.restoreOriginalSpiderGoals(spider);
 			}
+			this.webTraps.releaseOwner(spider.getUniqueId(), false);
 			this.pounceCoordinator.release(spider, false);
 		}
 		if (event.getEntity() instanceof Mob mob) {

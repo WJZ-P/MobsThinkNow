@@ -431,6 +431,7 @@ def run_server(
                     "activeBlastReservations=0",
                     "activePounceReservations=0",
                     "activeWebTraps=0",
+                    "activeWebTrapOwners=0",
                     "activeSquads=0",
                     "squadMembers=0",
                     "pendingDamageMemories=0",
