@@ -425,6 +425,44 @@ tasks.named("check") {
 	dependsOn(tasks.named("verifyLocalizationResources"))
 }
 
+def fabricConfigModelSource = file("src/main/java/com/wjz/mobsthinknow/config/MobsThinkNowConfig.java")
+def fabricConfigScreenSource = file("src/main/java/com/wjz/mobsthinknow/client/MobsThinkNowConfigScreen.java")
+tasks.register("verifyClientConfigCoverage") {
+	group = "verification"
+	description = "Verify every mutable Fabric configuration field is saved exactly once by the transactional client screen."
+	inputs.files(fabricConfigModelSource, fabricConfigScreenSource)
+	doLast {
+		def model = fabricConfigModelSource.getText("UTF-8")
+		def screen = fabricConfigScreenSource.getText("UTF-8")
+		def fields = (model =~ /(?m)^\s*public\s+(?:boolean|int|double)\s+([a-z][A-Za-z0-9_]*)\s*=/)
+			.collect { it[1] }
+		def assignments = (screen =~ /updated\.([a-z][A-Za-z0-9_]*)\s*=/).collect { it[1] }
+		def duplicateFields = fields.groupBy { it }.findAll { ignored, values -> values.size() > 1 }.keySet()
+		def duplicateAssignments = assignments.groupBy { it }.findAll { ignored, values -> values.size() > 1 }.keySet()
+		def fieldSet = fields as Set
+		def assignmentSet = assignments as Set
+		def missing = (fieldSet - assignmentSet).sort()
+		def unknown = (assignmentSet - fieldSet).sort()
+		def replacementCalls = (screen =~ /ConfigManager\.replace\(/).count
+		if (!duplicateFields.isEmpty()
+			|| !duplicateAssignments.isEmpty()
+			|| !missing.isEmpty()
+			|| !unknown.isEmpty()
+			|| screen.contains("ConfigManager.update(")
+			|| replacementCalls != 1) {
+			throw new GradleException(
+				"Client config coverage mismatch: duplicateFields=${duplicateFields.sort()}, "
+					+ "duplicateAssignments=${duplicateAssignments.sort()}, missing=${missing}, unknown=${unknown}, "
+					+ "replacementCalls=${replacementCalls}"
+			)
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyClientConfigCoverage"))
+}
+
 def documentationFiles = fileTree(rootDir) {
 	include("**/*.md")
 	exclude("**/build/**", ".gradle/**", ".git/**")

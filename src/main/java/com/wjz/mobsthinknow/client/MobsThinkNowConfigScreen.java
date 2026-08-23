@@ -1120,6 +1120,267 @@ public final class MobsThinkNowConfigScreen {
 			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.specialEquipmentDropChance = value / 1000.0))
 			.build());
 
+		ConfigCategory advancedCategory = builder.getOrCreateCategory(
+			Component.translatable("mobsthinknow.config.category.advanced")
+		);
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.retreat_health_threshold"),
+			(int)Math.round(config.retreatHealthThreshold * 100.0),
+			5,
+			50
+		)
+			.setDefaultValue(20)
+			.setTooltip(Component.translatable("mobsthinknow.config.retreat_health_threshold.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.retreatHealthThreshold = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.squad_speed_bonus"),
+			(int)Math.round(config.squadSpeedBonus * 100.0),
+			0,
+			50
+		)
+			.setDefaultValue(10)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_speed_bonus.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.squadSpeedBonus = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.armed_chance_easy"),
+			(int)Math.round(config.armedChanceEasy * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue(10)
+			.setTooltip(Component.translatable("mobsthinknow.config.armed_chance_easy.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.armedChanceEasy = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.armed_chance_normal"),
+			(int)Math.round(config.armedChanceNormal * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue(30)
+			.setTooltip(Component.translatable("mobsthinknow.config.armed_chance_normal.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.armedChanceNormal = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.armed_chance_hard"),
+			(int)Math.round(config.armedChanceHard * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue(85)
+			.setTooltip(Component.translatable("mobsthinknow.config.armed_chance_hard.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.armedChanceHard = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.armed_shield_chance"),
+			(int)Math.round(config.armedShieldChance * 100.0),
+			0,
+			100
+		)
+			.setDefaultValue(25)
+			.setTooltip(Component.translatable("mobsthinknow.config.armed_shield_chance.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.armedShieldChance = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.armed_shield_break_seconds"),
+			(int)Math.round(config.armedShieldBreakSeconds * 10.0),
+			0,
+			100
+		)
+			.setDefaultValue(30)
+			.setTextGetter(MobsThinkNowConfigScreen::decimalTenths)
+			.setTooltip(Component.translatable("mobsthinknow.config.armed_shield_break_seconds.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.armedShieldBreakSeconds = value / 10.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.armed_flank_speed_bonus"),
+			(int)Math.round(config.armedFlankSpeedBonus * 100.0),
+			0,
+			35
+		)
+			.setDefaultValue(12)
+			.setTooltip(Component.translatable("mobsthinknow.config.armed_flank_speed_bonus.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.armedFlankSpeedBonus = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.decision_interval_ticks"),
+			config.decisionIntervalTicks,
+			4,
+			40
+		)
+			.setDefaultValue(8)
+			.setTooltip(Component.translatable("mobsthinknow.config.decision_interval_ticks.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.decisionIntervalTicks = value))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.target_memory_ticks"),
+			config.targetMemoryTicks,
+			20,
+			200
+		)
+			.setDefaultValue(60)
+			.setTooltip(Component.translatable("mobsthinknow.config.target_memory_ticks.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.targetMemoryTicks = value))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.coordination_radius"),
+			(int)Math.round(config.coordinationRadius * 10.0),
+			40,
+			240
+		)
+			.setDefaultValue(120)
+			.setTextGetter(MobsThinkNowConfigScreen::decimalTenths)
+			.setTooltip(Component.translatable("mobsthinknow.config.coordination_radius.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.coordinationRadius = value / 10.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.minimum_squad_size"),
+			config.minimumSquadSize,
+			2,
+			MobsThinkNowConfig.MAXIMUM_MAXIMUM_COORDINATED_ZOMBIES
+		)
+			.setDefaultValue(3)
+			.setTooltip(Component.translatable("mobsthinknow.config.minimum_squad_size.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.minimumSquadSize = value))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.squad_formation_interval_ticks"),
+			config.squadFormationIntervalTicks,
+			4,
+			40
+		)
+			.setDefaultValue(10)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_formation_interval_ticks.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.squadFormationIntervalTicks = value))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.squad_formation_ticks"),
+			config.squadFormationTicks,
+			4,
+			60
+		)
+			.setDefaultValue(12)
+			.setTooltip(Component.translatable("mobsthinknow.config.squad_formation_ticks.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.squadFormationTicks = value))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.rally_timeout_ticks"),
+			config.rallyTimeoutTicks,
+			20,
+			200
+		)
+			.setDefaultValue(60)
+			.setTooltip(Component.translatable("mobsthinknow.config.rally_timeout_ticks.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.rallyTimeoutTicks = value))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.deployment_timeout_ticks"),
+			config.deploymentTimeoutTicks,
+			20,
+			200
+		)
+			.setDefaultValue(80)
+			.setTooltip(Component.translatable("mobsthinknow.config.deployment_timeout_ticks.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.deploymentTimeoutTicks = value))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.member_heartbeat_timeout_ticks"),
+			config.memberHeartbeatTimeoutTicks,
+			20,
+			100
+		)
+			.setDefaultValue(40)
+			.setTooltip(Component.translatable("mobsthinknow.config.member_heartbeat_timeout_ticks.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.memberHeartbeatTimeoutTicks = value))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.rally_radius"),
+			(int)Math.round(config.rallyRadius * 10.0),
+			10,
+			40
+		)
+			.setDefaultValue(18)
+			.setTextGetter(MobsThinkNowConfigScreen::decimalTenths)
+			.setTooltip(Component.translatable("mobsthinknow.config.rally_radius.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.rallyRadius = value / 10.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.emergency_engage_distance"),
+			(int)Math.round(config.emergencyEngageDistance * 10.0),
+			20,
+			120
+		)
+			.setDefaultValue(50)
+			.setTextGetter(MobsThinkNowConfigScreen::decimalTenths)
+			.setTooltip(Component.translatable("mobsthinknow.config.emergency_engage_distance.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.emergencyEngageDistance = value / 10.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.rally_quorum"),
+			(int)Math.round(config.rallyQuorum * 100.0),
+			50,
+			100
+		)
+			.setDefaultValue(70)
+			.setTooltip(Component.translatable("mobsthinknow.config.rally_quorum.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.rallyQuorum = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.deployment_quorum"),
+			(int)Math.round(config.deploymentQuorum * 100.0),
+			40,
+			100
+		)
+			.setDefaultValue(60)
+			.setTooltip(Component.translatable("mobsthinknow.config.deployment_quorum.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.deploymentQuorum = value / 100.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.formation_radius"),
+			(int)Math.round(config.formationRadius * 10.0),
+			20,
+			60
+		)
+			.setDefaultValue(28)
+			.setTextGetter(MobsThinkNowConfigScreen::decimalTenths)
+			.setTooltip(Component.translatable("mobsthinknow.config.formation_radius.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.formationRadius = value / 10.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.flank_behind_distance"),
+			(int)Math.round(config.flankBehindDistance * 10.0),
+			10,
+			60
+		)
+			.setDefaultValue(22)
+			.setTextGetter(MobsThinkNowConfigScreen::decimalTenths)
+			.setTooltip(Component.translatable("mobsthinknow.config.flank_behind_distance.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.flankBehindDistance = value / 10.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.flank_side_distance"),
+			(int)Math.round(config.flankSideDistance * 10.0),
+			10,
+			60
+		)
+			.setDefaultValue(24)
+			.setTextGetter(MobsThinkNowConfigScreen::decimalTenths)
+			.setTooltip(Component.translatable("mobsthinknow.config.flank_side_distance.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.flankSideDistance = value / 10.0))
+			.build());
+		advancedCategory.addEntry(entries.startIntSlider(
+			Component.translatable("mobsthinknow.config.tactical_speed_modifier"),
+			(int)Math.round(config.tacticalSpeedModifier * 100.0),
+			75,
+			135
+		)
+			.setDefaultValue(108)
+			.setTooltip(Component.translatable("mobsthinknow.config.tactical_speed_modifier.tooltip"))
+			.setSaveConsumer(value -> updateDraft(edited, updated -> updated.tacticalSpeedModifier = value / 100.0))
+			.build());
+
 		builder.setSavingRunnable(() -> saveDraft(edited));
 		return builder.build();
 	}
@@ -1142,5 +1403,9 @@ public final class MobsThinkNowConfigScreen {
 		final Consumer<MobsThinkNowConfig> updater
 	) {
 		updater.accept(draft);
+	}
+
+	private static Component decimalTenths(final int value) {
+		return Component.literal(String.format(java.util.Locale.ROOT, "%.1f", value / 10.0));
 	}
 }

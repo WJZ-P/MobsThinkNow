@@ -126,7 +126,8 @@ public final class ConfigManager {
 			json.append(buffer, 0, read);
 		}
 
-		try (JsonReader strictReader = new JsonReader(new StringReader(json.toString()))) {
+		String document = json.toString();
+		try (JsonReader strictReader = new JsonReader(new StringReader(document))) {
 			strictReader.setStrictness(Strictness.STRICT);
 			strictReader.setNestingLimit(MAXIMUM_CONFIG_NESTING);
 			verifyJsonValue(strictReader);
@@ -134,7 +135,7 @@ public final class ConfigManager {
 				throw new JsonParseException("Configuration contains trailing JSON content at " + strictReader.getPath());
 			}
 		}
-		return GSON.fromJson(json.toString(), MobsThinkNowConfig.class);
+		return GSON.fromJson(document, MobsThinkNowConfig.class);
 	}
 
 	private static void verifyJsonValue(final JsonReader reader) throws IOException {
