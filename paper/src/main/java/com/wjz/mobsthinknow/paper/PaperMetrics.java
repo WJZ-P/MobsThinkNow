@@ -96,6 +96,13 @@ public final class PaperMetrics {
 	private final AtomicLong spiderPounceReservationsAcquired = new AtomicLong();
 	private final AtomicLong spiderPounceReservationConflicts = new AtomicLong();
 	private final AtomicLong spiderPounceReservationsReleased = new AtomicLong();
+	private final AtomicLong spiderWebTrapWindups = new AtomicLong();
+	private final AtomicLong spiderWebTrapsPlaced = new AtomicLong();
+	private final AtomicLong spiderWebTrapsRestored = new AtomicLong();
+	private final AtomicLong spiderWebTrapPlacementRejects = new AtomicLong();
+	private final AtomicLong spiderWebTrapProtectionRejects = new AtomicLong();
+	private final AtomicLong spiderWebTrapOwnershipLosses = new AtomicLong();
+	private final AtomicLong spiderBlastContainmentWebs = new AtomicLong();
 	private final AtomicLong mountedBreachAssemblies = new AtomicLong();
 	private final AtomicLong mountedBreachBoardingLeaps = new AtomicLong();
 	private final AtomicLong mountedBreachMounts = new AtomicLong();
@@ -485,6 +492,46 @@ public final class PaperMetrics {
 		this.spiderPounceReservationsReleased.incrementAndGet();
 	}
 
+	public void spiderWebTrapWindup() {
+		this.spiderWebTrapWindups.incrementAndGet();
+	}
+
+	public void spiderWebTrapPlaced() {
+		this.spiderWebTrapsPlaced.incrementAndGet();
+	}
+
+	public void spiderWebTrapRestored() {
+		this.spiderWebTrapsRestored.incrementAndGet();
+	}
+
+	public void spiderWebTrapPlacementRejected() {
+		this.spiderWebTrapPlacementRejects.incrementAndGet();
+	}
+
+	public void spiderWebTrapProtectionRejected() {
+		this.spiderWebTrapProtectionRejects.incrementAndGet();
+	}
+
+	public void spiderWebTrapOwnershipLost() {
+		this.spiderWebTrapOwnershipLosses.incrementAndGet();
+	}
+
+	public void spiderBlastContainmentWeb() {
+		this.spiderBlastContainmentWebs.incrementAndGet();
+	}
+
+	public WebTrapSnapshot webTrapSnapshot() {
+		return new WebTrapSnapshot(
+			this.spiderWebTrapWindups.get(),
+			this.spiderWebTrapsPlaced.get(),
+			this.spiderWebTrapsRestored.get(),
+			this.spiderWebTrapPlacementRejects.get(),
+			this.spiderWebTrapProtectionRejects.get(),
+			this.spiderWebTrapOwnershipLosses.get(),
+			this.spiderBlastContainmentWebs.get()
+		);
+	}
+
 	public void mountedBreachAssemblyStarted() {
 		this.mountedBreachAssemblies.incrementAndGet();
 	}
@@ -705,6 +752,17 @@ public final class PaperMetrics {
 		long returnsCompleted,
 		long pathFailures,
 		long cyclesAborted
+	) {
+	}
+
+	public record WebTrapSnapshot(
+		long windups,
+		long placed,
+		long restored,
+		long placementRejects,
+		long protectionRejects,
+		long ownershipLosses,
+		long blastContainmentWebs
 	) {
 	}
 }

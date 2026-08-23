@@ -31,6 +31,18 @@ public final class PaperPounceCoordinator {
 	public boolean tryAcquire(final Spider spider, final LivingEntity target) {
 		long now = Bukkit.getCurrentTick();
 		this.cleanupExpired(now);
+		PaperSettings config = this.settings.get();
+		if (!config.enabled()
+			|| !config.spiderTacticsEnabled()
+			|| !config.spiderPredictivePounceEnabled()
+			|| !spider.isValid()
+			|| spider.isDead()
+			|| !target.isValid()
+			|| target.isDead()
+			|| spider.getWorld() != target.getWorld()) {
+			this.release(spider, false);
+			return false;
+		}
 		UUID targetId = target.getUniqueId();
 		Long cooldown = this.targetCooldownUntil.get(targetId);
 		if (cooldown != null) {
@@ -56,11 +68,12 @@ public final class PaperPounceCoordinator {
 			return false;
 		}
 
-		long expiresAt = now + this.settings.get().spiderPounceLeaseTicks();
+		long expiresAt = saturatingAdd(now, config.spiderPounceLeaseTicks());
 		Reservation replacement = new Reservation(spiderId, targetId, expiresAt);
 		this.byTarget.put(targetId, replacement);
 		this.targetBySpider.put(spiderId, targetId);
 		this.reservationExpiries.add(new ReservationExpiry(spiderId, targetId, expiresAt));
+		this.compactExpiryQueuesIfNeeded();
 		if (current == null) {
 			this.metrics.spiderPounceReservationAcquired();
 		}
@@ -80,13 +93,16 @@ public final class PaperPounceCoordinator {
 		if (current != null && current.spiderId().equals(spiderId)) {
 			this.byTarget.remove(targetId);
 			if (completedPounce) {
-				long cooldownUntil = (long)Bukkit.getCurrentTick()
-					+ this.settings.get().spiderPounceStaggerTicks();
+				long cooldownUntil = saturatingAdd(
+					Bukkit.getCurrentTick(),
+					this.settings.get().spiderPounceStaggerTicks()
+				);
 				this.targetCooldownUntil.put(targetId, cooldownUntil);
 				this.cooldownExpiries.add(new CooldownExpiry(targetId, cooldownUntil));
 			}
 			this.metrics.spiderPounceReservationReleased();
 		}
+		this.compactExpiryQueuesIfNeeded();
 	}
 
 	public int activeCount() {
@@ -129,6 +145,31 @@ public final class PaperPounceCoordinator {
 			this.targetCooldownUntil.remove(expiry.targetId(), expiry.expiresAt());
 			cleaned++;
 		}
+	}
+
+	private void compactExpiryQueuesIfNeeded() {
+		int maximumReservations = Math.max(128, this.byTarget.size() * 4);
+		if (this.reservationExpiries.size() > maximumReservations) {
+			this.reservationExpiries.clear();
+			for (Reservation reservation : this.byTarget.values()) {
+				this.reservationExpiries.add(new ReservationExpiry(
+					reservation.spiderId(),
+					reservation.targetId(),
+					reservation.expiresAt()
+				));
+			}
+		}
+		int maximumCooldowns = Math.max(128, this.targetCooldownUntil.size() * 4);
+		if (this.cooldownExpiries.size() > maximumCooldowns) {
+			this.cooldownExpiries.clear();
+			for (Map.Entry<UUID, Long> entry : this.targetCooldownUntil.entrySet()) {
+				this.cooldownExpiries.add(new CooldownExpiry(entry.getKey(), entry.getValue()));
+			}
+		}
+	}
+
+	private static long saturatingAdd(final long left, final long right) {
+		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
 	private record Reservation(UUID spiderId, UUID targetId, long expiresAt) {

@@ -44,6 +44,7 @@ public final class PaperTestSpawner {
 		EntityType.SKELETON,
 		EntityType.STRAY,
 		EntityType.BOGGED,
+		EntityType.PARCHED,
 		EntityType.WITHER_SKELETON,
 		EntityType.CREEPER,
 		EntityType.SPIDER
@@ -125,7 +126,7 @@ public final class PaperTestSpawner {
 		if (types.isEmpty()) {
 			return new Result(0, 0, false, "empty batch");
 		}
-		List<Location> placements = this.planPlacements(player, types.size());
+		List<Location> placements = this.planPlacements(player, types);
 		if (placements.size() != types.size()) {
 			return new Result(0, types.size(), true, "not enough collision-free ground near the command source");
 		}
@@ -171,7 +172,8 @@ public final class PaperTestSpawner {
 		this.intelligence.set(mob, preset.intelligence());
 	}
 
-	private List<Location> planPlacements(final Player player, final int count) {
+	private List<Location> planPlacements(final Player player, final List<SpawnSpec> specs) {
+		int count = specs.size();
 		World world = player.getWorld();
 		Vector forward = player.getLocation().getDirection().setY(0.0);
 		if (forward.lengthSquared() < 1.0E-6) {
@@ -189,7 +191,7 @@ public final class PaperTestSpawner {
 			Location preferred = origin.clone()
 				.add(forward.clone().multiply(row * GRID_SPACING))
 				.add(right.clone().multiply(centeredColumn * GRID_SPACING));
-			Location safe = findSafe(world, preferred, result);
+			Location safe = findSafe(world, preferred, result, specs.get(index).type());
 			if (safe == null) {
 				return List.of();
 			}
@@ -201,7 +203,8 @@ public final class PaperTestSpawner {
 	private static Location findSafe(
 		final World world,
 		final Location preferred,
-		final List<Location> reserved
+		final List<Location> reserved,
+		final EntityType type
 	) {
 		int baseY = preferred.getBlockY();
 		for (int offset : HEIGHT_OFFSETS) {
@@ -218,10 +221,8 @@ public final class PaperTestSpawner {
 				continue;
 			}
 			Block feet = world.getBlockAt(candidate);
-			Block head = world.getBlockAt(feet.getX(), feetY + 1, feet.getZ());
 			Block floor = world.getBlockAt(feet.getX(), feetY - 1, feet.getZ());
-			if (isOpen(feet)
-				&& isOpen(head)
+			if (hasVerticalClearance(world, feet, requiredClearanceBlocks(type))
 				&& floor.getType().isSolid()
 				&& !HAZARDS.contains(floor.getType())
 				&& world.getNearbyEntities(candidate, 0.9, 1.3, 0.9).isEmpty()) {
@@ -229,6 +230,19 @@ public final class PaperTestSpawner {
 			}
 		}
 		return null;
+	}
+
+	private static boolean hasVerticalClearance(final World world, final Block feet, final int blocks) {
+		for (int offset = 0; offset < blocks; offset++) {
+			if (!isOpen(world.getBlockAt(feet.getX(), feet.getY() + offset, feet.getZ()))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static int requiredClearanceBlocks(final EntityType type) {
+		return type == EntityType.WITHER_SKELETON ? 3 : 2;
 	}
 
 	private static boolean tooCloseToReserved(final Location candidate, final List<Location> reserved) {

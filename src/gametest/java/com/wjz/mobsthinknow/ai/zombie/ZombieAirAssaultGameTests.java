@@ -21,6 +21,7 @@ import net.minecraft.world.phys.Vec3;
 
 /** 装备、真实滑翔/烟花物理、长矛碰撞伤害和弹尽着陆的端到端验证。 */
 public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker {
+	private static final int MULTI_PASS_FIXTURE_ROCKETS = 64;
 	@GameTest
 	public void spearLoadoutReceivesElytraAndDifficultyWeightedRocketsAndPersists(final GameTestHelper helper) {
 		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
@@ -63,7 +64,12 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 		zombie.setTarget(target);
 		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SPEAR));
 		zombie.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.ELYTRA));
-		zombie.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.FIREWORK_ROCKET, 16));
+		// This case verifies two complete attack passes. Exhaustion and ground hand-off have their own
+		// dedicated one/last-rocket tests below, so use the legal loadout maximum to isolate multi-pass timing.
+		zombie.setItemSlot(
+			EquipmentSlot.OFFHAND,
+			new ItemStack(Items.FIREWORK_ROCKET, MULTI_PASS_FIXTURE_ROCKETS)
+		);
 		((ZombieFlightAccess)zombie).mobsthinknow$stopFallFlying();
 		zombie.setOnGround(true);
 		zombie.stopUsingItem();
@@ -208,7 +214,7 @@ public final class ZombieAirAssaultGameTests implements CustomTestMethodInvoker 
 			zombie.setTarget(target);
 			target.invulnerableTime = 0;
 			maximumAltitude[0] = Math.max(maximumAltitude[0], zombie.getY());
-			if (zombie.getOffhandItem().getCount() < 16) {
+			if (zombie.getOffhandItem().getCount() < MULTI_PASS_FIXTURE_ROCKETS) {
 				sawRocketUse.set(true);
 			}
 			if (zombie.isFallFlying()) {

@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.config;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.gson.Gson;
+import com.wjz.mobsthinknow.shared.ai.SpiderWebTrapPlanner;
 import org.junit.jupiter.api.Test;
 
 class MobsThinkNowConfigTest {
@@ -62,8 +63,8 @@ class MobsThinkNowConfigTest {
 		assertEquals(true, config.spiderPredictivePounce);
 		assertEquals(true, config.spiderHitAndRun);
 		assertEquals(true, config.spiderWebTraps);
-		assertEquals(240, config.spiderWebTrapCooldownTicks);
-		assertEquals(160, config.spiderWebTrapLifetimeTicks);
+		assertEquals(SpiderWebTrapPlanner.DEFAULT_COOLDOWN_TICKS, config.spiderWebTrapCooldownTicks);
+		assertEquals(SpiderWebTrapPlanner.DEFAULT_LIFETIME_TICKS, config.spiderWebTrapLifetimeTicks);
 		assertEquals(true, config.spiderCreeperCoordination);
 		assertEquals(true, config.spiderTransportRouteAssessment);
 		assertEquals(8.0, config.spiderCreeperSearchRadius);

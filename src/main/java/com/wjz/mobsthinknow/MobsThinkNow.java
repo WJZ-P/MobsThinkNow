@@ -1,35 +1,41 @@
 package com.wjz.mobsthinknow;
 
-import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
-import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
-import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerEquipment;
-import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
-import com.wjz.mobsthinknow.ai.zombie.ZombieGroundItemReservations;
-import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
-import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
-import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
-import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
-import com.wjz.mobsthinknow.ai.zombie.ZombieRetreatMemory;
-import com.wjz.mobsthinknow.ai.zombie.ZombieShieldMemory;
-import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceName;
+import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligenceName;
 import com.wjz.mobsthinknow.ai.enderman.EndermanIntelligenceName;
 import com.wjz.mobsthinknow.ai.giant.GiantIntelligenceName;
 import com.wjz.mobsthinknow.ai.giant.GiantZombieSpawnConversion;
+import com.wjz.mobsthinknow.ai.skeleton.SkeletonIntelligenceName;
 import com.wjz.mobsthinknow.ai.spider.SpiderIntelligenceName;
 import com.wjz.mobsthinknow.ai.spider.SpiderWebTrapRegistry;
-import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
+import com.wjz.mobsthinknow.ai.zombie.ZombieArmory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieBuilderInventory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieEngineerEquipment;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFireSupportMemory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFluidThreatMemory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieFoodEquipment;
+import com.wjz.mobsthinknow.ai.zombie.ZombieGroundItemReservations;
+import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligence;
+import com.wjz.mobsthinknow.ai.zombie.ZombieIntelligenceName;
+import com.wjz.mobsthinknow.ai.zombie.ZombieRetreatMemory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieShieldMemory;
+import com.wjz.mobsthinknow.ai.zombie.ZombieSunlightRules;
+import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.command.MtnCommands;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.Creeper;
@@ -53,8 +59,32 @@ public final class MobsThinkNow implements ModInitializer {
 				GiantZombieSpawnConversion.queueIfMarked(zombie, level);
 			}
 		});
+		// 区块卸载不等同于死亡；显式丢弃只在当前 tick 有效的强引用，避免未消费求援把实体/区块留在内存。
+		ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
+			if (entity instanceof Mob mob) {
+				ZombieSquadCoordinator.unregisterIfTracked(level, mob);
+			}
+			if (entity instanceof LivingEntity living) {
+				ZombieFluidThreatMemory.discardAttacker(living);
+			}
+			if (entity instanceof Zombie zombie && OverworldUndeadFamilies.isZombieFamily(zombie)) {
+				ZombieArmory.discardShieldState(zombie);
+				ZombieRetreatMemory.discard(zombie);
+				ZombieShieldMemory.discard(zombie);
+				ZombieFireSupportMemory.discard(zombie);
+				ZombieFluidThreatMemory.discardHelper(zombie);
+			}
+		});
 		ServerTickEvents.END_LEVEL_TICK.register(GiantZombieSpawnConversion::tickLevel);
 		ServerTickEvents.END_LEVEL_TICK.register(SpiderWebTrapRegistry::tickLevel);
+		ServerChunkEvents.CHUNK_UNLOAD.register((level, chunk) ->
+			SpiderWebTrapRegistry.unloadChunk(level, chunk.getPos().x(), chunk.getPos().z())
+		);
+		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> {
+			if (level instanceof ServerLevel serverLevel) {
+				SpiderWebTrapRegistry.discardOwnership(serverLevel, pos);
+			}
+		});
 		// 协调器统一在每个维度 tick 的末尾做一次决策，保证本 tick 的所有僵尸心跳已经收齐。
 		ServerTickEvents.END_LEVEL_TICK.register(ZombieSquadCoordinator::tickLevel);
 		ServerLevelEvents.UNLOAD.register((server, level) -> {
@@ -72,6 +102,7 @@ public final class MobsThinkNow implements ModInitializer {
 			SpiderWebTrapRegistry.restoreAll();
 		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			TacticalActivityLease.clear();
 			GiantZombieSpawnConversion.clear();
 			ZombieSquadCoordinator.clearAll();
 			ZombieArmory.clearShieldState();
@@ -82,11 +113,13 @@ public final class MobsThinkNow implements ModInitializer {
 			ZombieFireSupportMemory.clear();
 			ZombieFluidThreatMemory.clear();
 			ZombieGroundItemReservations.clear();
+			ZombieSunlightRules.clearTestingOverrides();
 			SpiderWebTrapRegistry.clearAll();
 		});
 		// 在 die() 记录“Named entity died”日志之前恢复职业名牌；只做表现清理，不改变死亡结果。
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, damageSource, damageAmount) -> {
 			if (entity instanceof Zombie zombie && OverworldUndeadFamilies.isZombieFamily(zombie)) {
+				ZombieArmory.discardShieldState(zombie);
 				ZombieRetreatMemory.discard(zombie);
 				ZombieShieldMemory.discard(zombie);
 				ZombieFireSupportMemory.discard(zombie);

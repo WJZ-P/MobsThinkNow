@@ -1,6 +1,8 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
@@ -9,9 +11,11 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.zombie.Drowned;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.AABB;
 
 public final class ZombieFoodGameTests implements CustomTestMethodInvoker {
 	@GameTest
@@ -134,6 +138,66 @@ public final class ZombieFoodGameTests implements CustomTestMethodInvoker {
 			helper.assertTrue(food.isAlive() && food.getItem().getCount() == 2, "The remaining bread stack was altered after the meal.");
 			helper.succeed();
 		});
+	}
+
+	@GameTest
+	public void groundZombieVariantsShareFoodInterception(final GameTestHelper helper) {
+		Zombie husk = helper.spawn(EntityType.HUSK, 1, 0, 1);
+		Zombie villager = helper.spawn(EntityType.ZOMBIE_VILLAGER, 3, 0, 1);
+		Zombie drowned = helper.spawn(EntityType.DROWNED, 5, 0, 1);
+		var config = new MobsThinkNowConfig();
+		ItemStack bread = new ItemStack(Items.BREAD);
+		helper.assertTrue(
+			ZombieFoodSearchGoal.managesFood(husk, bread, config),
+			"Husk food was left to vanilla looting instead of the shared ground-family transaction."
+		);
+		helper.assertTrue(
+			ZombieFoodSearchGoal.managesFood(villager, bread, config),
+			"Zombie villager food was left to vanilla looting instead of the shared ground-family transaction."
+		);
+		helper.assertTrue(
+			!ZombieFoodSearchGoal.managesFood(drowned, bread, config),
+			"Drowned lost its deliberately separate amphibious behavior boundary."
+		);
+		helper.succeed();
+	}
+
+	@GameTest
+	public void conversionRestoresStowedWeaponBeforeEquipmentIsCopied(final GameTestHelper helper) throws Exception {
+		Zombie zombie = helper.spawn(EntityType.ZOMBIE, 2, 0, 2);
+		zombie.setNoAi(true);
+		zombie.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
+		ZombieFoodEquipment.begin(zombie, InteractionHand.MAIN_HAND, new ItemStack(Items.BREAD));
+		helper.assertTrue(zombie.getMainHandItem().is(Items.BREAD), "The fixture did not expose temporary food.");
+
+		Method conversion = Zombie.class.getDeclaredMethod(
+			"convertToZombieType",
+			net.minecraft.server.level.ServerLevel.class,
+			EntityType.class
+		);
+		conversion.setAccessible(true);
+		conversion.invoke(zombie, helper.getLevel(), EntityType.DROWNED);
+
+		List<Drowned> converted = helper.getLevel().getEntitiesOfClass(
+			Drowned.class,
+			new AABB(zombie.blockPosition()).inflate(3.0),
+			Drowned::isAlive
+		);
+		helper.assertTrue(converted.size() == 1, "The controlled zombie-to-drowned conversion did not complete.");
+		helper.assertTrue(
+			converted.getFirst().getMainHandItem().is(Items.IRON_SWORD),
+			"Conversion permanently copied the one-serving animation food over the stowed weapon."
+		);
+		helper.assertTrue(!ZombieFoodEquipment.isActive(zombie), "The removed source retained a stale food hand swap.");
+		helper.assertTrue(
+			helper.getLevel().getEntitiesOfClass(
+				ItemEntity.class,
+				new AABB(zombie.blockPosition()).inflate(3.0),
+				item -> item.isAlive() && item.getItem().is(Items.BREAD)
+			).size() == 1,
+			"The interrupted serving was neither consumed nor returned to the world."
+		);
+		helper.succeed();
 	}
 
 	@GameTest

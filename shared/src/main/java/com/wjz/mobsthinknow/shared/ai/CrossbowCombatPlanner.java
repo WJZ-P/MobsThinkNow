@@ -38,7 +38,7 @@ public final class CrossbowCombatPlanner {
 		int adjustedMaximum = Math.max(adjustedMinimum, maximum - masteryReduction);
 		int span = adjustedMaximum - adjustedMinimum + 1;
 		long mixed = mix64(Integer.toUnsignedLong(stableOrder) ^ shotSequence * 0x9E3779B97F4A7C15L);
-		return adjustedMinimum + (int)Math.floorMod(mixed, span);
+		return adjustedMinimum + Math.floorMod(mixed, span);
 	}
 
 	/**

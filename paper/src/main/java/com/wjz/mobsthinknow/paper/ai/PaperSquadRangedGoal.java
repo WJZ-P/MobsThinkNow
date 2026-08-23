@@ -263,12 +263,28 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		}
 		this.cachedLane = FiringLanePlanner.check(
 			toVector(this.skeleton.getEyeLocation()),
-			toVector(target.getEyeLocation()),
+			this.firingEndpoint(target),
 			allies,
 			config.skeletonFriendlyLaneMaximumChecks()
 		);
 		this.nextLaneCheckAt = now + LANE_CACHE_TICKS;
 		return this.cachedLane;
+	}
+
+	private Vec3d firingEndpoint(final LivingEntity target) {
+		if (!this.holdsCrossbow()) {
+			return toVector(target.getEyeLocation());
+		}
+		PaperCrossbowSettings config = this.settings.get().skeletonCrossbowTactics();
+		boolean firework = this.crossbowPayload == CrossbowPayload.FIREWORK;
+		return CrossbowCombatPlanner.intercept(
+			toVector(this.skeleton.getEyeLocation()),
+			toVector(target.getEyeLocation()),
+			toVector(target.getVelocity()),
+			firework ? config.firework().projectileSpeed() : config.projectileSpeed(),
+			firework ? 0.0 : config.gravityPerTickSquared(),
+			config.maximumLeadTicks()
+		).aimPoint();
 	}
 
 	private void handleBlockedLane(
@@ -369,7 +385,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 				if (now < this.nextReleaseAt - chargeTicks - this.crossbowAimDelay) {
 					return;
 				}
-				this.crossbowPayload = this.chooseCrossbowPayload(target, config.firework());
+				this.crossbowPayload = this.chooseCrossbowPayload(target, config);
 				this.setCrossbowLoaded(false, this.crossbowPayload);
 				this.skeleton.startUsingItem(EquipmentSlot.HAND);
 				this.skeleton.getWorld().playSound(
@@ -407,7 +423,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 					return;
 				}
 				if (this.crossbowPayload == CrossbowPayload.FIREWORK
-					&& !this.fireworkSafe(target, config.firework())) {
+					&& !this.fireworkSafe(target, config)) {
 					this.crossbowPayload = CrossbowPayload.ARROW;
 					this.setCrossbowLoaded(true, this.crossbowPayload);
 				}
@@ -502,19 +518,21 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 
 	private CrossbowPayload chooseCrossbowPayload(
 		final LivingEntity target,
-		final PaperFireworkSettings config
+		final PaperCrossbowSettings crossbow
 	) {
+		PaperFireworkSettings config = crossbow.firework();
 		ItemStack ammunition = this.skeleton.getEquipment().getItemInOffHand();
 		return config.enabled()
 			&& this.intelligence.get(this.skeleton) >= config.minimumIntelligence()
 			&& ammunition.getType() == Material.FIREWORK_ROCKET
 			&& ammunition.getAmount() > 0
-			&& this.fireworkSafe(target, config)
+			&& this.fireworkSafe(target, crossbow)
 			? CrossbowPayload.FIREWORK
 			: CrossbowPayload.ARROW;
 	}
 
-	private boolean fireworkSafe(final LivingEntity target, final PaperFireworkSettings config) {
+	private boolean fireworkSafe(final LivingEntity target, final PaperCrossbowSettings crossbow) {
+		PaperFireworkSettings config = crossbow.firework();
 		List<CrossbowCombatPlanner.BlastAlly<UUID>> allies = new ArrayList<>();
 		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
 			Location center = ally.getLocation().add(0.0, ally.getHeight() * 0.5, 0.0);
@@ -524,9 +542,19 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 				ally.getWidth() * 0.65
 			));
 		}
+		Vec3d shooter = toVector(this.skeleton.getEyeLocation());
+		Vec3d targetCenter = toVector(target.getEyeLocation());
+		Vec3d predictedImpact = CrossbowCombatPlanner.intercept(
+			shooter,
+			targetCenter,
+			toVector(target.getVelocity()),
+			config.projectileSpeed(),
+			0.0,
+			crossbow.maximumLeadTicks()
+		).aimPoint();
 		return CrossbowCombatPlanner.assessBlast(
-			toVector(this.skeleton.getEyeLocation()),
-			toVector(target.getLocation().add(0.0, target.getHeight() * 0.5, 0.0)),
+			shooter,
+			predictedImpact,
 			allies,
 			config.minimumRange(),
 			config.maximumRange(),
@@ -563,6 +591,10 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 
 	private static Vec3d toVector(final Location location) {
 		return new Vec3d(location.getX(), location.getY(), location.getZ());
+	}
+
+	private static Vec3d toVector(final Vector vector) {
+		return new Vec3d(vector.getX(), vector.getY(), vector.getZ());
 	}
 
 	private enum CrossbowPhase {

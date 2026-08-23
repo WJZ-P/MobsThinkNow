@@ -5,7 +5,10 @@ import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.shared.ai.SpiderWebTrapPlanner;
+import com.wjz.mobsthinknow.shared.math.Vec3d;
 import java.util.EnumSet;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -43,8 +46,8 @@ public final class SpiderWebTrapGoal extends Goal {
 	private boolean placed;
 	private boolean acquired;
 	private boolean blastContainment;
-	private int plannedCreeperId;
-	private int lastSupportedCreeperId;
+	private @Nullable UUID plannedCreeperId;
+	private @Nullable UUID lastSupportedCreeperId;
 
 	public SpiderWebTrapGoal(final Spider spider) {
 		this.spider = spider;
@@ -77,12 +80,11 @@ public final class SpiderWebTrapGoal extends Goal {
 		ZombieSquadCoordinator.SquadBlastThreat activeBlast = config.squadCreeperWebContainment
 			? ZombieSquadCoordinator.forLevel(level).activeBlastForContainment(this.spider, currentTarget)
 			: null;
-		int activeCreeperId = activeBlast == null ? 0 : activeBlast.creeper().getId();
-		boolean containmentOpportunity = activeCreeperId > 0 && activeCreeperId != this.lastSupportedCreeperId;
+		UUID activeCreeperId = activeBlast == null ? null : activeBlast.creeper().getUUID();
+		boolean containmentOpportunity = activeCreeperId != null && !activeCreeperId.equals(this.lastSupportedCreeperId);
 		if (!SpiderWebTrapPlanner.mayBypassCooldownForBlast(
 			level.getGameTime() >= this.nextTrapTick,
-			containmentOpportunity ? activeCreeperId : 0,
-			this.lastSupportedCreeperId
+			containmentOpportunity
 		)) {
 			return false;
 		}
@@ -101,7 +103,7 @@ public final class SpiderWebTrapGoal extends Goal {
 		this.target = currentTarget;
 		this.plannedPosition = candidate;
 		this.blastContainment = containmentOpportunity;
-		this.plannedCreeperId = containmentOpportunity ? activeCreeperId : 0;
+		this.plannedCreeperId = containmentOpportunity ? activeCreeperId : null;
 		if (containmentOpportunity) {
 			// 预订发生在 canUse 成功时，防止 GoalSelector 多次试探同一引信并绕过冷却。
 			this.lastSupportedCreeperId = activeCreeperId;
@@ -202,7 +204,7 @@ public final class SpiderWebTrapGoal extends Goal {
 		this.placed = false;
 		this.acquired = false;
 		this.blastContainment = false;
-		this.plannedCreeperId = 0;
+		this.plannedCreeperId = null;
 		this.activityLease.release(this.spider);
 	}
 
@@ -217,31 +219,35 @@ public final class SpiderWebTrapGoal extends Goal {
 		final int intelligence,
 		final ZombieSquadCoordinator.@Nullable SquadBlastThreat activeBlast
 	) {
-		Iterable<Vec3> centers;
+		Iterable<Vec3d> centers;
 		if (activeBlast != null) {
 			centers = SpiderWebTrapPlanner.blastEscapeCandidateCenters(
-				currentTarget.position(),
-				currentTarget.getDeltaMovement(),
-				activeBlast.center(),
+				toShared(currentTarget.position()),
+				toShared(currentTarget.getDeltaMovement()),
+				toShared(activeBlast.center()),
 				this.stableSide
 			);
 		} else {
-			Vec3 predicted = SpiderWebTrapPlanner.predictedPosition(
-				currentTarget.position(),
-				currentTarget.getDeltaMovement(),
-				currentTarget.getLookAngle(),
+			Vec3d predicted = SpiderWebTrapPlanner.predictedPosition(
+				toShared(currentTarget.position()),
+				toShared(currentTarget.getDeltaMovement()),
+				toShared(currentTarget.getLookAngle()),
 				intelligence
 			);
 			centers = SpiderWebTrapPlanner.candidateCenters(
-				currentTarget.position(),
+				toShared(currentTarget.position()),
 				predicted,
-				currentTarget.getLookAngle(),
+				toShared(currentTarget.getLookAngle()),
 				this.stableSide
 			);
 		}
-		for (Vec3 center : centers) {
+		for (Vec3d center : centers) {
 			for (int yOffset : VERTICAL_SEARCH_ORDER) {
-				BlockPos pos = BlockPos.containing(center.x, currentTarget.getBoundingBox().minY + yOffset, center.z);
+				BlockPos pos = BlockPos.containing(
+					center.x(),
+					currentTarget.getBoundingBox().minY + yOffset,
+					center.z()
+				);
 				if (this.isUsefulPlacement(level, pos, currentTarget)) {
 					return pos.immutable();
 				}
@@ -256,7 +262,7 @@ public final class SpiderWebTrapGoal extends Goal {
 	}
 
 	public boolean isBlastContainmentPlan() {
-		return this.blastContainment && this.plannedCreeperId > 0;
+		return this.blastContainment && this.plannedCreeperId != null;
 	}
 
 	private boolean isUsefulPlacement(
@@ -286,5 +292,9 @@ public final class SpiderWebTrapGoal extends Goal {
 
 	private static boolean isValidTarget(final @Nullable LivingEntity target) {
 		return target != null && target.isAlive() && EntitySelector.NO_CREATIVE_OR_SPECTATOR.test(target);
+	}
+
+	private static Vec3d toShared(final Vec3 vector) {
+		return new Vec3d(vector.x, vector.y, vector.z);
 	}
 }

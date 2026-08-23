@@ -13,6 +13,7 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MoverType;
@@ -23,6 +24,7 @@ import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.npc.villager.AbstractVillager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
@@ -37,6 +39,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class GiantMeleeCombatGoal extends Goal {
 	private static final double QUERY_RADIUS = 7.60;
+	private static final int MAXIMUM_NEARBY_ENEMIES = 64;
 	private static final double MAXIMUM_VERTICAL_START_DIFFERENCE = 5.0;
 	private static final int MINIMUM_RECOVERY_TICKS = 8;
 	private static final int MAXIMUM_RECOVERY_TICKS = 15;
@@ -413,11 +416,27 @@ public final class GiantMeleeCombatGoal extends Goal {
 
 	private List<LivingEntity> nearbyEnemies() {
 		AABB query = this.giant.getBoundingBox().inflate(QUERY_RADIUS, 4.75, QUERY_RADIUS);
-		return this.giant.level().getEntitiesOfClass(
-			LivingEntity.class,
+		List<LivingEntity> nearby = new ArrayList<>(MAXIMUM_NEARBY_ENEMIES);
+		this.giant.level().getEntities(
+			EntityTypeTest.<Entity, LivingEntity>forClass(LivingEntity.class),
 			query,
-			this::isAttackableEnemy
+			this::isAttackableEnemy,
+			nearby,
+			MAXIMUM_NEARBY_ENEMIES
 		);
+		// The engine-side cap protects dense mob farms, but the primary combat target must never
+		// disappear merely because an arbitrary entity-section iteration filled that cap first.
+		LivingEntity primary = this.giant.getTarget();
+		if (primary != null
+			&& query.intersects(primary.getBoundingBox())
+			&& this.isAttackableEnemy(primary)
+			&& !nearby.contains(primary)) {
+			if (nearby.size() == MAXIMUM_NEARBY_ENEMIES) {
+				nearby.removeLast();
+			}
+			nearby.add(primary);
+		}
+		return nearby;
 	}
 
 	private boolean isAttackableEnemy(final LivingEntity entity) {

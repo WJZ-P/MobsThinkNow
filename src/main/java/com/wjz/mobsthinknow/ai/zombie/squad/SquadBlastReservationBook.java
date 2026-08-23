@@ -19,6 +19,9 @@ public final class SquadBlastReservationBook {
 		final long now
 	) {
 		this.prune(now);
+		if (ownerId <= 0 || targetId <= 0 || !isValid(center, dangerRadius)) {
+			return false;
+		}
 		return this.firstConflict(ownerId, targetId, center, dangerRadius) == null;
 	}
 
@@ -32,6 +35,9 @@ public final class SquadBlastReservationBook {
 		final long lifetimeTicks
 	) {
 		this.prune(now);
+		if (ownerId <= 0 || targetId <= 0 || !isValid(center, dangerRadius)) {
+			return Decision.CONFLICT;
+		}
 		Reservation existing = this.reservations.get(ownerId);
 		if (!forced && this.firstConflict(ownerId, targetId, center, dangerRadius) != null) {
 			return Decision.CONFLICT;
@@ -42,7 +48,7 @@ public final class SquadBlastReservationBook {
 			center,
 			Math.max(0.5, dangerRadius),
 			forced,
-			now + Math.max(1L, lifetimeTicks)
+			saturatingAdd(now, Math.max(1L, lifetimeTicks))
 		);
 		this.reservations.put(ownerId, updated);
 		return existing == null ? Decision.ACQUIRED : Decision.RENEWED;
@@ -56,7 +62,7 @@ public final class SquadBlastReservationBook {
 	) {
 		this.prune(now);
 		Reservation existing = this.reservations.get(ownerId);
-		if (existing == null) {
+		if (existing == null || !isValid(center, existing.dangerRadius())) {
 			return false;
 		}
 		if (!existing.forced
@@ -69,7 +75,7 @@ public final class SquadBlastReservationBook {
 			center,
 			existing.dangerRadius,
 			existing.forced,
-			now + Math.max(1L, lifetimeTicks)
+			saturatingAdd(now, Math.max(1L, lifetimeTicks))
 		));
 		return true;
 	}
@@ -91,6 +97,9 @@ public final class SquadBlastReservationBook {
 		final long now
 	) {
 		this.prune(now);
+		if (ownerId <= 0 || targetId <= 0 || !isValid(center, dangerRadius)) {
+			return null;
+		}
 		return this.firstConflict(ownerId, targetId, center, dangerRadius);
 	}
 
@@ -135,6 +144,19 @@ public final class SquadBlastReservationBook {
 		this.reservations.values().removeIf(reservation -> reservation.expiresAt < now);
 	}
 
+	private static boolean isValid(final Vec3 center, final double dangerRadius) {
+		return center != null
+			&& Double.isFinite(center.x)
+			&& Double.isFinite(center.y)
+			&& Double.isFinite(center.z)
+			&& Double.isFinite(dangerRadius)
+			&& dangerRadius > 0.0;
+	}
+
+	private static long saturatingAdd(final long left, final long right) {
+		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
+	}
+
 	public enum Decision {
 		ACQUIRED,
 		RENEWED,
@@ -149,5 +171,10 @@ public final class SquadBlastReservationBook {
 		boolean forced,
 		long expiresAt
 	) {
+		public Reservation {
+			if (ownerId <= 0 || targetId <= 0 || !isValid(center, dangerRadius)) {
+				throw new IllegalArgumentException("invalid blast reservation");
+			}
+		}
 	}
 }

@@ -11,7 +11,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 
 /** 与 26.1.2 原版日晒条件对齐的确定性判定，不复制原版那一层随机点火抽样。 */
-final class ZombieSunlightRules {
+public final class ZombieSunlightRules {
 	private static final Set<UUID> FORCED_TEST_EXPOSURE = ConcurrentHashMap.newKeySet();
 
 	private ZombieSunlightRules() {
@@ -60,6 +60,11 @@ final class ZombieSunlightRules {
 		} else {
 			FORCED_TEST_EXPOSURE.remove(zombie.getUUID());
 		}
+	}
+
+	/** Test overrides must never survive a server lifecycle, including a failed GameTest. */
+	public static void clearTestingOverrides() {
+		FORCED_TEST_EXPOSURE.clear();
 	}
 
 	private static boolean isForcedForTesting(final Zombie zombie) {

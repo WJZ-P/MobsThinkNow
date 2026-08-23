@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.MobsThinkNow;
 import com.wjz.mobsthinknow.ai.zombie.squad.WeaponClass;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import com.wjz.mobsthinknow.shared.ai.MeleeWeaponPlanner;
+import java.util.UUID;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.resources.Identifier;
@@ -68,7 +69,7 @@ final class ZombieWeaponCombat {
 
 	private final Zombie zombie;
 	private WeaponClass weaponClass = WeaponClass.NONE;
-	private int targetId = Integer.MIN_VALUE;
+	private UUID targetId;
 	private long nextAttackAt;
 	private long swordFeintStartedAt = Long.MIN_VALUE;
 	private long nextSwordFeintAt;
@@ -98,10 +99,10 @@ final class ZombieWeaponCombat {
 		}
 
 		long now = this.zombie.level().getGameTime();
-		if (this.weaponClass != currentWeapon || this.targetId != target.getId()) {
+		if (this.weaponClass != currentWeapon || !target.getUUID().equals(this.targetId)) {
 			this.clearOwnedBodyActions();
 			this.weaponClass = currentWeapon;
-			this.targetId = target.getId();
+			this.targetId = target.getUUID();
 			this.swordFeintStartedAt = Long.MIN_VALUE;
 			this.nextSwordFeintAt = now;
 			this.axePreparationDeadline = Long.MIN_VALUE;

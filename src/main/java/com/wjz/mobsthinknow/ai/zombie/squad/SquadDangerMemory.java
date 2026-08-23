@@ -38,7 +38,7 @@ public final class SquadDangerMemory {
 		BlockPos key = position.immutable();
 		Entry previous = this.entries.get(key);
 		int boundedSeverity = Math.clamp(severity, 1, 3);
-		long expiresAt = now + Math.max(1L, lifetimeTicks);
+		long expiresAt = saturatingAdd(now, Math.max(1L, lifetimeTicks));
 		if (previous != null) {
 			this.entries.put(key, new Entry(
 				key,
@@ -98,6 +98,10 @@ public final class SquadDangerMemory {
 
 	private void prune(final long now) {
 		this.entries.values().removeIf(entry -> entry.expiresAt < now);
+	}
+
+	private static long saturatingAdd(final long left, final long right) {
+		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
 	public record Entry(

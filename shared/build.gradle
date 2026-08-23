@@ -17,6 +17,7 @@ dependencies {
 tasks.withType(JavaCompile).configureEach {
 	options.release = 25
 	options.encoding = "UTF-8"
+	options.compilerArgs.addAll(["-Xlint:all", "-Xlint:-processing", "-Xlint:-serial", "-Xlint:-classfile", "-Werror"])
 }
 
 tasks.withType(Test).configureEach {
@@ -32,4 +33,51 @@ java {
 
 base {
 	archivesName = "mobsthinknow-shared"
+}
+
+def rootProjectName = rootProject.name
+def rootLicense = rootProject.file("LICENSE")
+
+tasks.named("jar", Jar) {
+	duplicatesStrategy = DuplicatesStrategy.FAIL
+	from(rootLicense) {
+		rename { "${it}_${rootProjectName}-Shared" }
+	}
+}
+
+tasks.named("sourcesJar", Jar) {
+	duplicatesStrategy = DuplicatesStrategy.FAIL
+	from(rootLicense) {
+		rename { "${it}_${rootProjectName}-Shared" }
+	}
+}
+
+def sharedJar = tasks.named("jar", Jar).flatMap { it.archiveFile }
+def sharedSourcesJar = tasks.named("sourcesJar", Jar).flatMap { it.archiveFile }
+tasks.register("verifyReleaseArchives") {
+	group = "verification"
+	description = "Verify standalone shared binary and source archives include the repository license exactly once."
+	dependsOn(tasks.named("jar"), tasks.named("sourcesJar"))
+	inputs.files(sharedJar, sharedSourcesJar, rootLicense)
+	doLast {
+		for (File archiveFile : [sharedJar.get().asFile, sharedSourcesJar.get().asFile]) {
+			new java.util.zip.ZipFile(archiveFile).withCloseable { archive ->
+				def names = archive.entries().findAll { !it.directory }*.name
+				if (names.size() != names.toSet().size()) {
+					throw new GradleException("Shared archive contains duplicate ZIP entries: ${archiveFile.name}")
+				}
+				def license = archive.getEntry("LICENSE_MobsThinkNow-Shared")
+				if (license == null || !java.util.Arrays.equals(
+					archive.getInputStream(license).bytes,
+					rootLicense.bytes
+				)) {
+					throw new GradleException("Shared archive license differs from repository LICENSE: ${archiveFile.name}")
+				}
+			}
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyReleaseArchives"))
 }

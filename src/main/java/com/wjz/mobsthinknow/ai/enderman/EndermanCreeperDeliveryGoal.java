@@ -4,6 +4,7 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.spider.CreeperTransportAccess;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -23,6 +24,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -46,6 +48,8 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 	private static final double REAR_SPREAD_RADIANS = 0.75;
 	private static final double MINIMUM_FRONT_ALIGNMENT = 0.90;
 	private static final double MAXIMUM_REAR_ALIGNMENT = -0.72;
+	private static final double MINIMUM_FRONT_DROP_ALIGNMENT = 0.70;
+	private static final double MAXIMUM_REAR_DROP_ALIGNMENT = -0.50;
 	private static final double[] DROP_FALLBACK_SPREADS = {0.0, 0.16, -0.16, 0.30, -0.30, 0.46, -0.46};
 	private static final double[] DROP_FALLBACK_SCALES = {1.0, 0.88, 1.12};
 	private static final double PICKUP_DISTANCE_SQUARED = 2.35 * 2.35;
@@ -372,10 +376,13 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 		double intelligenceScale = 0.65 + intelligence * 0.035;
 		double radius = config.endermanCreeperSearchRadius * intelligenceScale;
 		AABB searchBox = this.enderman.getBoundingBox().inflate(radius, Math.min(radius, 8.0), radius);
-		List<Creeper> nearby = this.enderman.level().getEntitiesOfClass(
-			Creeper.class,
+		List<Creeper> nearby = new ArrayList<>(MAXIMUM_CANDIDATE_CHECKS);
+		this.enderman.level().getEntities(
+			EntityTypeTest.forClass(Creeper.class),
 			searchBox,
-			candidate -> candidate.getType() == EntityType.CREEPER && candidate.isAlive()
+			candidate -> candidate.getType() == EntityType.CREEPER && candidate.isAlive(),
+			nearby,
+			MAXIMUM_CANDIDATE_CHECKS
 		);
 		SmartEndermanMetrics.carrierSearch();
 		Creeper selected = null;
@@ -504,10 +511,13 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 				.subtract(currentTarget.position())
 				.multiply(1.0, 0.0, 1.0);
 			double horizontalDistanceSquared = targetToCarrier.lengthSqr();
-			double alignment = horizontalLook.dot(horizontalDirection(targetToCarrier));
-			boolean correctSide = side == DeliverySide.FRONT
-				? alignment >= MINIMUM_FRONT_ALIGNMENT && currentTarget.hasLineOfSight(current)
-				: alignment <= MAXIMUM_REAR_ALIGNMENT;
+			boolean correctSide = isOnDeliverySide(
+				horizontalLook,
+				targetToCarrier,
+				side,
+				MINIMUM_FRONT_ALIGNMENT,
+				MAXIMUM_REAR_ALIGNMENT
+			) && (side != DeliverySide.FRONT || currentTarget.hasLineOfSight(current));
 			if (correctSide
 				&& verticalDifference <= 5.0
 				&& horizontalDistanceSquared <= (distance + 2.5) * (distance + 2.5)) {
@@ -565,7 +575,7 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 	private Vec3 findSafeDropFeet(final Vec3 preferred, final Player currentTarget) {
 		ServerLevel level = (ServerLevel)this.enderman.level();
 		Vec3 safe = this.findGroundedDropFeet(level, new Vec3(preferred.x, this.enderman.getY(), preferred.z));
-		if (safe != null) {
+		if (safe != null && this.isOnCommittedDropSide(currentTarget, safe)) {
 			return safe;
 		}
 
@@ -578,12 +588,23 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 				Vec3 offset = deliveryOffset(horizontalLook, distance, side, spread, scale);
 				Vec3 sample = currentTarget.position().add(offset).add(0.0, 3.0, 0.0);
 				safe = this.findGroundedDropFeet(level, sample);
-				if (safe != null) {
+				if (safe != null && this.isOnCommittedDropSide(currentTarget, safe)) {
 					return safe;
 				}
 			}
 		}
 		return this.enderman.position();
+	}
+
+	private boolean isOnCommittedDropSide(final Player target, final Vec3 feet) {
+		DeliverySide side = this.deliverySide != null ? this.deliverySide : DeliverySide.FRONT;
+		return isOnDeliverySide(
+			target.getLookAngle(),
+			feet.subtract(target.position()),
+			side,
+			MINIMUM_FRONT_DROP_ALIGNMENT,
+			MAXIMUM_REAR_DROP_ALIGNMENT
+		);
 	}
 
 	private @Nullable Vec3 findGroundedDropFeet(final ServerLevel level, final Vec3 sample) {
@@ -707,6 +728,19 @@ public final class EndermanCreeperDeliveryGoal extends Goal {
 			direction = direction.scale(-1.0);
 		}
 		return direction.yRot((float)spreadRadians).scale(distance * distanceScale);
+	}
+
+	static boolean isOnDeliverySide(
+		final Vec3 horizontalLook,
+		final Vec3 targetToCandidate,
+		final DeliverySide side,
+		final double minimumFrontAlignment,
+		final double maximumRearAlignment
+	) {
+		double alignment = horizontalDirection(horizontalLook).dot(horizontalDirection(targetToCandidate));
+		return side == DeliverySide.FRONT
+			? alignment >= minimumFrontAlignment
+			: alignment <= maximumRearAlignment;
 	}
 
 	private static Vec3 horizontalDirection(final Vec3 vector) {

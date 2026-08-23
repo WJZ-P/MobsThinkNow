@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -11,7 +12,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
@@ -25,6 +26,7 @@ import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -942,11 +944,11 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 			base.getY() + height + 2.0,
 			base.getZ() + 1.0
 		).deflate(0.02);
-		return level.getEntitiesOfClass(
-			LivingEntity.class,
+		return !level.hasEntities(
+			EntityTypeTest.<Entity, LivingEntity>forClass(LivingEntity.class),
 			column,
 			entity -> entity.isAlive() && entity != this.zombie
-		).isEmpty();
+		);
 	}
 
 	private boolean canStandAt(final ServerLevel level, final BlockPos feet) {
@@ -1174,7 +1176,7 @@ public final class ZombieTerrainTacticsGoal extends Goal {
 		return config.enabled
 			&& config.zombieAiEnabled
 			&& config.terrainTactics
-			&& zombie.getType() == EntityType.ZOMBIE
+			&& OverworldUndeadFamilies.usesGroundZombieTactics(zombie.getType())
 			&& zombie.isAlive()
 			&& ZombieIntelligence.get(zombie) >= config.terrainMinimumIntelligence;
 	}

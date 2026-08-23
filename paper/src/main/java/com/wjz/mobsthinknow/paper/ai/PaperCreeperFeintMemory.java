@@ -19,12 +19,14 @@ import org.bukkit.scheduler.BukkitTask;
  */
 public final class PaperCreeperFeintMemory {
 	private static final int MAXIMUM_COOLING_ENTRIES = 64;
+	private static final int MAXIMUM_COMPLETION_ENTRIES = 256;
+	private static final long COMPLETION_MEMORY_TICKS = 600L;
 
 	private final Set<UUID> active = new HashSet<>();
 	private final Set<UUID> ownedIgnition = new HashSet<>();
 	private final Set<UUID> externallyIgnited = new HashSet<>();
 	private final Map<UUID, Long> nextAllowedAt = new HashMap<>();
-	private final Map<UUID, Long> completedAt = new HashMap<>();
+	private final Map<UUID, Long> completedAt = new LinkedHashMap<>();
 	private final Map<UUID, CoolingEntry> cooling = new LinkedHashMap<>();
 	private BukkitTask coolingTask;
 
@@ -32,7 +34,7 @@ public final class PaperCreeperFeintMemory {
 		if (this.coolingTask == null) {
 			this.coolingTask = Bukkit.getScheduler().runTaskTimer(
 				plugin,
-				this::tickCooling,
+				() -> this.tickCooling(Bukkit.getCurrentTick()),
 				1L,
 				1L
 			);
@@ -49,10 +51,15 @@ public final class PaperCreeperFeintMemory {
 
 	public boolean canStart(final Creeper creeper, final long now) {
 		UUID id = creeper.getUniqueId();
+		Long nextAllowed = this.nextAllowedAt.get(id);
+		if (nextAllowed != null && now >= nextAllowed) {
+			this.nextAllowedAt.remove(id, nextAllowed);
+			nextAllowed = null;
+		}
 		return !this.active.contains(id)
 			&& !this.cooling.containsKey(id)
 			&& this.active.size() + this.cooling.size() < MAXIMUM_COOLING_ENTRIES
-			&& now >= this.nextAllowedAt.getOrDefault(id, Long.MIN_VALUE);
+			&& nextAllowed == null;
 	}
 
 	public boolean begin(final Creeper creeper, final long now) {
@@ -72,6 +79,12 @@ public final class PaperCreeperFeintMemory {
 	public boolean blocksCombatGoals(final Creeper creeper) {
 		UUID id = creeper.getUniqueId();
 		CoolingEntry entry = this.cooling.get(id);
+		if (entry != null && Bukkit.getCurrentTick() >= entry.combatUnlockAt()) {
+			coolDown(entry.creeper());
+			this.cooling.remove(id, entry);
+			this.ownedIgnition.remove(id);
+			entry = null;
+		}
 		return this.active.contains(id)
 			|| entry != null && Bukkit.getCurrentTick() < entry.combatUnlockAt();
 	}
@@ -129,10 +142,16 @@ public final class PaperCreeperFeintMemory {
 	}
 
 	public void markCompleted(final Creeper creeper, final long now) {
+		this.pruneCompletions(now);
 		this.completedAt.put(creeper.getUniqueId(), now);
+		while (this.completedAt.size() > MAXIMUM_COMPLETION_ENTRIES) {
+			this.completedAt.remove(this.completedAt.keySet().iterator().next());
+		}
 	}
 
 	public boolean completedSince(final Creeper creeper, final long tick) {
+		long now = Bukkit.getCurrentTick();
+		this.pruneCompletions(now);
 		return this.completedAt.getOrDefault(creeper.getUniqueId(), Long.MIN_VALUE) >= tick;
 	}
 
@@ -166,7 +185,8 @@ public final class PaperCreeperFeintMemory {
 		this.cooling.clear();
 	}
 
-	private void tickCooling() {
+	void tickCooling(final long now) {
+		this.pruneCompletions(now);
 		var iterator = this.cooling.entrySet().iterator();
 		while (iterator.hasNext()) {
 			Map.Entry<UUID, CoolingEntry> mapped = iterator.next();
@@ -178,7 +198,15 @@ public final class PaperCreeperFeintMemory {
 				continue;
 			}
 			coolDown(creeper);
+			if (now >= entry.combatUnlockAt()) {
+				this.ownedIgnition.remove(mapped.getKey());
+				iterator.remove();
+			}
 		}
+	}
+
+	private void pruneCompletions(final long now) {
+		this.completedAt.values().removeIf(completed -> now - completed > COMPLETION_MEMORY_TICKS);
 	}
 
 	private static void coolDown(final Creeper creeper) {

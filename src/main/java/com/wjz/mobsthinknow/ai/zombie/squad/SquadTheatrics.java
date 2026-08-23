@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
@@ -44,7 +45,7 @@ public final class SquadTheatrics {
 	private static final DustParticleOptions LEADER_AURA_DUST = new DustParticleOptions(0xFFC933, 1.0F);
 
 	/** 记录被名牌覆盖前的原始名字，成员离队时恢复。 */
-	private final Map<Integer, StoredName> storedNames = new HashMap<>();
+	private final Map<UUID, StoredName> storedNames = new HashMap<>();
 
 	/** 协调器每 tick 对每支存活小队调用一次。 */
 	void tickSquad(
@@ -113,7 +114,7 @@ public final class SquadTheatrics {
 
 	/** 成员正式离队时恢复原始名字与可见性；玩家中途用命名牌起的新名字优先保留。 */
 	void restoreName(final Mob mob) {
-		StoredName stored = this.storedNames.remove(mob.getId());
+		StoredName stored = this.storedNames.remove(mob.getUUID());
 		if (stored == null) {
 			return;
 		}
@@ -152,7 +153,7 @@ public final class SquadTheatrics {
 	}
 
 	private void applyRoleTag(final Mob mob, final SquadRole role) {
-		StoredName stored = this.storedNames.get(mob.getId());
+		StoredName stored = this.storedNames.get(mob.getUUID());
 		Component current = mob.getCustomName();
 		if (stored != null && !Objects.equals(current, stored.applied())) {
 			// 佩戴名牌期间被外部改名（玩家命名牌等）：以新名字为原名重新记录，别吞掉玩家的命名。
@@ -166,7 +167,7 @@ public final class SquadTheatrics {
 		boolean originalVisible = stored != null ? stored.visible() : mob.isCustomNameVisible();
 		Component base = original != null ? original : mob.getType().getDescription();
 		Component tagged = Component.empty().append(base).append(Component.literal(" ")).append(roleTag(role));
-		this.storedNames.put(mob.getId(), new StoredName(original, originalVisible, role, tagged));
+		this.storedNames.put(mob.getUUID(), new StoredName(original, originalVisible, role, tagged));
 		mob.setCustomName(tagged);
 		mob.setCustomNameVisible(true);
 	}

@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.nether;
 
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -22,7 +23,7 @@ public final class HoglinChargeController {
 
 	private Phase phase = Phase.IDLE;
 	private int ticksRemaining;
-	private int targetEntityId = -1;
+	private UUID targetId;
 	private int chargeStartedAt;
 	private Vec3 chargeDirection = Vec3.ZERO;
 	private boolean impactResolved;
@@ -39,7 +40,7 @@ public final class HoglinChargeController {
 			this.reset();
 			return;
 		}
-		if (this.targetEntityId != -1 && this.targetEntityId != target.getId()) {
+		if (this.targetId != null && !this.targetId.equals(target.getUUID())) {
 			this.reset();
 		}
 
@@ -80,7 +81,7 @@ public final class HoglinChargeController {
 			12 + Math.floorMod(body.getId(), 5),
 			NetherProfessionProfile.get(body)
 		);
-		this.targetEntityId = target.getId();
+		this.targetId = target.getUUID();
 		this.chargeDirection = direction;
 		this.impactResolved = false;
 		level.playSound(
@@ -210,7 +211,7 @@ public final class HoglinChargeController {
 	private void reset() {
 		this.phase = Phase.IDLE;
 		this.ticksRemaining = 0;
-		this.targetEntityId = -1;
+		this.targetId = null;
 		this.chargeDirection = Vec3.ZERO;
 		this.impactResolved = false;
 	}

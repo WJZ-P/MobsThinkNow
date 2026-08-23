@@ -8,9 +8,11 @@ import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
@@ -101,10 +103,13 @@ public final class SkeletonShotSafety {
 
 		List<Vec3> samples = trajectorySamples(start, target);
 		AABB corridor = boundsOf(samples).inflate(CORRIDOR_QUERY_PADDING);
-		List<Mob> corridorAllies = level.getEntitiesOfClass(
-			Mob.class,
+		List<Mob> corridorAllies = new ArrayList<>(config.maximumCoordinatedZombies);
+		level.getEntities(
+			EntityTypeTest.<Entity, Mob>forClass(Mob.class),
 			corridor,
-			ally -> isRelevantSquadmate(shooter, ally) && ally != shooter.getVehicle()
+			ally -> isRelevantSquadmate(shooter, ally) && ally != shooter.getVehicle(),
+			corridorAllies,
+			config.maximumCoordinatedZombies
 		);
 		for (Mob ally : corridorAllies) {
 			AABB hitbox = ally.getBoundingBox().inflate(ALLY_HITBOX_PADDING);
@@ -121,11 +126,19 @@ public final class SkeletonShotSafety {
 		}
 
 		if (explosive) {
-			AABB dangerZone = target.getBoundingBox().inflate(FIREWORK_DANGER_RADIUS);
-			List<Mob> endangered = level.getEntitiesOfClass(
-				Mob.class,
+			Vec3 predictedEye = samples.getLast();
+			AABB dangerZone = sweptBlastBounds(
+				target.getBoundingBox(),
+				predictedEye.subtract(target.getEyePosition()),
+				FIREWORK_DANGER_RADIUS
+			);
+			List<Mob> endangered = new ArrayList<>(config.maximumCoordinatedZombies);
+			level.getEntities(
+				EntityTypeTest.<Entity, Mob>forClass(Mob.class),
 				dangerZone,
-				ally -> isRelevantSquadmate(shooter, ally)
+				ally -> isRelevantSquadmate(shooter, ally),
+				endangered,
+				config.maximumCoordinatedZombies
 			);
 			if (!endangered.isEmpty()) {
 				return new Assessment(Status.ALLY_IN_BLAST_RADIUS, endangered.getFirst().getId());
@@ -178,6 +191,27 @@ public final class SkeletonShotSafety {
 			maxZ = Math.max(maxZ, point.z);
 		}
 		return new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+	}
+
+	static AABB sweptBlastBounds(final AABB current, final Vec3 translation, final double radius) {
+		double boundedRadius = Double.isFinite(radius) ? Math.max(0.0, radius) : 0.0;
+		Vec3 movement = Double.isFinite(translation.x) && Double.isFinite(translation.y) && Double.isFinite(translation.z)
+			? translation
+			: Vec3.ZERO;
+		double movedMinX = current.minX + movement.x;
+		double movedMinY = current.minY + movement.y;
+		double movedMinZ = current.minZ + movement.z;
+		double movedMaxX = current.maxX + movement.x;
+		double movedMaxY = current.maxY + movement.y;
+		double movedMaxZ = current.maxZ + movement.z;
+		return new AABB(
+			Math.min(current.minX, movedMinX),
+			Math.min(current.minY, movedMinY),
+			Math.min(current.minZ, movedMinZ),
+			Math.max(current.maxX, movedMaxX),
+			Math.max(current.maxY, movedMaxY),
+			Math.max(current.maxZ, movedMaxZ)
+		).inflate(boundedRadius);
 	}
 
 	private static Vec3 clampHorizontal(final Vec3 vector, final double maximumLength) {

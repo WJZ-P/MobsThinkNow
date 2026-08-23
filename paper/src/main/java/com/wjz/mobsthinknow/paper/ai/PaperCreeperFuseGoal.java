@@ -6,6 +6,7 @@ import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
+import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.shared.ai.CreeperTacticalPlanner;
 import com.wjz.mobsthinknow.shared.math.Vec3d;
 import java.util.EnumSet;
@@ -30,6 +31,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 	private final PaperIntelligenceService intelligence;
 	private final PaperCreeperFeintMemory feintMemory;
 	private final PaperBlastReservationBoard reservations;
+	private final PaperSquadCoordinator squads;
 	private final PaperMetrics metrics;
 	private final int stableSide;
 
@@ -48,6 +50,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		final PaperIntelligenceService intelligence,
 		final PaperCreeperFeintMemory feintMemory,
 		final PaperBlastReservationBoard reservations,
+		final PaperSquadCoordinator squads,
 		final PaperMetrics metrics
 	) {
 		this.creeper = creeper;
@@ -56,6 +59,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		this.intelligence = intelligence;
 		this.feintMemory = feintMemory;
 		this.reservations = reservations;
+		this.squads = squads;
 		this.metrics = metrics;
 		this.stableSide = (creeper.getUniqueId().hashCode() & 1) == 0 ? -1 : 1;
 	}
@@ -65,6 +69,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		PaperSettings config = this.settings.get();
 		if (!enabled(config)
 			|| this.feintMemory.blocksCombatGoals(this.creeper)
+			|| this.delegatedToSquad(this.creeper.isIgnited() && !this.creeper.isInsideVehicle())
 			|| this.intelligence.get(this.creeper) < config.creeperMinimumIntelligence()) {
 			return false;
 		}
@@ -80,6 +85,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		PaperSettings config = this.settings.get();
 		if (!enabled(config)
 			|| this.feintMemory.blocksCombatGoals(this.creeper)
+			|| this.delegatedToSquad(this.externallyIgnited)
 			|| this.abortRequested
 			|| !this.creeper.isValid()
 			|| this.creeper.isDead()) {
@@ -315,6 +321,14 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 
 	private boolean enabled(final PaperSettings config) {
 		return config.enabled() && config.creeperTacticsEnabled();
+	}
+
+	private boolean delegatedToSquad(final boolean preserveExternalIgnition) {
+		if (preserveExternalIgnition) {
+			return false;
+		}
+		return this.squads.isHoldingForOrders(this.creeper)
+			|| this.squads.isAssignedTransportPayload(this.creeper);
 	}
 
 	private Location toLocation(final Vec3d vector) {

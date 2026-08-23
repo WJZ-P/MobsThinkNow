@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.config.ConfigManager;
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.lang.reflect.Method;
 import java.util.List;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
@@ -159,6 +160,31 @@ public final class ZombieEngineerSkillGameTests implements CustomTestMethodInvok
 			);
 			helper.succeed();
 		});
+	}
+
+	@GameTest
+	public void markedGroundVariantsShareEngineerEligibility(final GameTestHelper helper) {
+		Zombie husk = helper.spawn(EntityType.HUSK, 1, 0, 1);
+		Zombie villager = helper.spawn(EntityType.ZOMBIE_VILLAGER, 3, 0, 1);
+		Zombie drowned = helper.spawn(EntityType.DROWNED, 5, 0, 1);
+		for (Zombie zombie : new Zombie[] {husk, villager, drowned}) {
+			zombie.setBaby(false);
+			ZombieEngineerProfile.setEngineer(zombie, true);
+		}
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		helper.assertTrue(
+			ZombieEngineerSkillGoal.isEnabled(husk, config),
+			"Marked husk did not inherit the shared ground-family engineer state machine."
+		);
+		helper.assertTrue(
+			ZombieEngineerSkillGoal.isEnabled(villager, config),
+			"Marked zombie villager did not inherit the shared ground-family engineer state machine."
+		);
+		helper.assertTrue(
+			!ZombieEngineerSkillGoal.isEnabled(drowned, config),
+			"Drowned lost its deliberately separate amphibious engineer boundary."
+		);
+		helper.succeed();
 	}
 
 	@Override

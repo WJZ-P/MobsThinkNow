@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.phys.Vec3;
@@ -77,7 +78,7 @@ public final class ReactiveRetreatGoal extends Goal {
 			&& this.activityLease.owns(this.zombie, this.zombie.level().getGameTime())
 			&& this.zombie.isAlive()
 			&& this.attacker != null
-			&& this.attacker.isAlive()
+			&& this.isUsableAttacker(this.attacker)
 			&& shouldContinueRetreat(
 				this.zombie.level().getGameTime(),
 				this.retreatDeadline,
@@ -194,12 +195,23 @@ public final class ReactiveRetreatGoal extends Goal {
 		// 重伤优先远离造成该次重击的实体；低血则优先响应最近仍在施压的实体。
 		LivingEntity preferred = heavyHit ? attack.largestDamageAttacker() : attack.latestAttacker();
 		LivingEntity fallback = heavyHit ? attack.latestAttacker() : attack.largestDamageAttacker();
-		LivingEntity freshAttacker = preferred.isAlive() ? preferred : fallback;
-		if (!freshAttacker.isAlive()) {
+		LivingEntity freshAttacker = this.isUsableAttacker(preferred)
+			? preferred
+			: this.isUsableAttacker(fallback) ? fallback : null;
+		if (freshAttacker == null) {
 			return null;
 		}
 		this.attacker = freshAttacker;
 		return freshAttacker;
+	}
+
+	private boolean isUsableAttacker(final @Nullable LivingEntity attacker) {
+		return attacker != null
+			&& attacker != this.zombie
+			&& attacker.level() == this.zombie.level()
+			&& attacker.isAlive()
+			&& !attacker.isRemoved()
+			&& EntitySelector.NO_CREATIVE_OR_SPECTATOR.test(attacker);
 	}
 
 	private void updateEscapePath(final MobsThinkNowConfig config, final long now) {

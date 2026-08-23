@@ -9,6 +9,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperProjectileThreatBoard;
+import com.wjz.mobsthinknow.paper.ai.PaperWebTrapService;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadMetrics;
@@ -22,14 +23,18 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Spider;
 
 /** 首批插件诊断与测试命令；所有改写命令均受 mobsthinknow.admin 权限保护。 */
 public final class MtnPaperCommand implements TabExecutor {
 	private static final String ADMIN_PERMISSION = "mobsthinknow.admin";
+	private static final List<String> PUBLIC_ACTIONS = List.of("status", "inspect");
+	private static final List<String> ADMIN_ACTIONS = List.of(
+		"status", "inspect", "reload", "setiq", "spawn", "spawnall", "assault", "selftest"
+	);
 	private static final Map<String, EntityType> SPAWN_TYPES = Map.ofEntries(
 		Map.entry("zombie", EntityType.ZOMBIE),
 		Map.entry("husk", EntityType.HUSK),
@@ -38,6 +43,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		Map.entry("skeleton", EntityType.SKELETON),
 		Map.entry("stray", EntityType.STRAY),
 		Map.entry("bogged", EntityType.BOGGED),
+		Map.entry("parched", EntityType.PARCHED),
 		Map.entry("wither_skeleton", EntityType.WITHER_SKELETON),
 		Map.entry("creeper", EntityType.CREEPER),
 		Map.entry("spider", EntityType.SPIDER)
@@ -50,6 +56,7 @@ public final class MtnPaperCommand implements TabExecutor {
 	private final PaperBlastReservationBoard blastReservations;
 	private final PaperPounceCoordinator pounceCoordinator;
 	private final PaperProjectileThreatBoard projectileThreats;
+	private final PaperWebTrapService webTraps;
 	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperSquadCoordinator squadCoordinator;
 	private final PaperMetrics metrics;
@@ -64,6 +71,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		final PaperBlastReservationBoard blastReservations,
 		final PaperPounceCoordinator pounceCoordinator,
 		final PaperProjectileThreatBoard projectileThreats,
+		final PaperWebTrapService webTraps,
 		final PaperFireworkBoltService fireworkBolts,
 		final PaperSquadCoordinator squadCoordinator,
 		final PaperRuntimeSelfTest runtimeSelfTest,
@@ -76,6 +84,7 @@ public final class MtnPaperCommand implements TabExecutor {
 		this.blastReservations = blastReservations;
 		this.pounceCoordinator = pounceCoordinator;
 		this.projectileThreats = projectileThreats;
+		this.webTraps = webTraps;
 		this.fireworkBolts = fireworkBolts;
 		this.squadCoordinator = squadCoordinator;
 		this.metrics = metrics;
@@ -112,10 +121,10 @@ public final class MtnPaperCommand implements TabExecutor {
 		final String[] args
 	) {
 		if (args.length == 1) {
-			String prefix = args[0].toLowerCase(Locale.ROOT);
-			return List.of("status", "inspect", "reload", "setiq", "spawn", "spawnall", "assault", "selftest").stream()
-				.filter(value -> value.startsWith(prefix))
-				.toList();
+			return actionSuggestions(sender.hasPermission(ADMIN_PERMISSION), args[0]);
+		}
+		if (!sender.hasPermission(ADMIN_PERMISSION)) {
+			return List.of();
 		}
 		if (args.length == 2 && args[0].equalsIgnoreCase("setiq")) {
 			List<String> values = new ArrayList<>(10);
@@ -147,13 +156,25 @@ public final class MtnPaperCommand implements TabExecutor {
 		return List.of();
 	}
 
+	static List<String> actionSuggestions(final boolean administrator, final String rawPrefix) {
+		String prefix = rawPrefix.toLowerCase(Locale.ROOT);
+		return (administrator ? ADMIN_ACTIONS : PUBLIC_ACTIONS).stream()
+			.filter(value -> value.startsWith(prefix))
+			.toList();
+	}
+
 	private boolean status(final CommandSender sender) {
 		PaperMetrics.Snapshot snapshot = this.metrics.snapshot();
 		PaperMetrics.CoverSnapshot cover = this.metrics.coverSnapshot();
+		PaperMetrics.WebTrapSnapshot webs = this.metrics.webTrapSnapshot();
 		PaperSquadMetrics.Snapshot squads = this.squadCoordinator.metrics().snapshot();
 		sender.sendMessage(Component.text(
 			"Mobs Think Now Paper | enabled=" + this.plugin.settings().enabled()
 				+ ", loadedSupportedMobs=" + this.lifecycle.loadedSupportedMobCount()
+				+ ", projectileSensorRunning=" + this.projectileThreats.isRunning()
+				+ ", webTrapSchedulerRunning=" + this.webTraps.isRunning()
+				+ ", fireworkSchedulerRunning=" + this.fireworkBolts.isRunning()
+				+ ", squadSchedulerRunning=" + this.squadCoordinator.isRunning()
 				+ ", intelligenceAssignments=" + snapshot.intelligenceAssignments()
 				+ ", retreatGoalsInstalled=" + snapshot.retreatGoalsInstalled()
 				+ ", retreatGoalsRemoved=" + snapshot.retreatGoalsRemoved()
@@ -249,6 +270,14 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", unsafeLandings=" + snapshot.spiderUnsafeLandingsRejected()
 				+ ", pounceConflicts=" + snapshot.spiderPounceReservationConflicts()
 				+ ", activePounceReservations=" + this.pounceCoordinator.activeCount()
+				+ ", webTrapWindups=" + webs.windups()
+				+ ", webTrapsPlaced=" + webs.placed()
+				+ ", webTrapsRestored=" + webs.restored()
+				+ ", webTrapRejects=" + webs.placementRejects()
+				+ ", webTrapProtectionRejects=" + webs.protectionRejects()
+				+ ", webTrapOwnershipLosses=" + webs.ownershipLosses()
+				+ ", blastContainmentWebs=" + webs.blastContainmentWebs()
+				+ ", activeWebTraps=" + this.webTraps.activeCount()
 				+ ", mountedAssemblies=" + snapshot.mountedBreachAssemblies()
 				+ ", boardingLeaps=" + snapshot.mountedBreachBoardingLeaps()
 				+ ", creepersMounted=" + snapshot.mountedBreachMounts()
@@ -277,8 +306,14 @@ public final class MtnPaperCommand implements TabExecutor {
 		if (!this.requireAdmin(sender)) {
 			return true;
 		}
-		this.plugin.reloadPluginSettings();
-		sender.sendMessage(Component.text("Mobs Think Now Paper configuration reloaded.", NamedTextColor.GREEN));
+		if (this.plugin.reloadPluginSettings()) {
+			sender.sendMessage(Component.text("Mobs Think Now Paper configuration reloaded.", NamedTextColor.GREEN));
+		} else {
+			sender.sendMessage(Component.text(
+				"Mobs Think Now Paper configuration reload failed; the previous settings remain active.",
+				NamedTextColor.RED
+			));
+		}
 		return true;
 	}
 
@@ -289,11 +324,17 @@ public final class MtnPaperCommand implements TabExecutor {
 			return true;
 		}
 		PaperSquadDirective directive = this.squadCoordinator.directiveFor(mob);
+		String webTrap = mob instanceof Spider
+			? this.webTraps.ownedTrap(mob.getUniqueId())
+				.map(location -> location.getBlockX() + "/" + location.getBlockY() + "/" + location.getBlockZ())
+				.orElse("none")
+			: null;
 		sender.sendMessage(Component.text(
 			mob.getType().key().asString()
 				+ " | uuid=" + mob.getUniqueId()
 				+ ", intelligence=" + this.intelligence.get(mob)
 				+ ", target=" + (mob.getTarget() == null ? "none" : mob.getTarget().getUniqueId())
+				+ (webTrap == null ? "" : ", webTrap=" + webTrap)
 				+ (directive == null ? ", squad=none" : ", squad=" + directive.squadId()
 					+ ", term=" + directive.term()
 					+ ", leader=" + directive.leaderId()
@@ -457,9 +498,13 @@ public final class MtnPaperCommand implements TabExecutor {
 		if (!(sender instanceof Player player)) {
 			return null;
 		}
-		return player.getNearbyEntities(12.0, 8.0, 12.0).stream()
-			.filter(Entity::isValid)
-			.filter(entity -> entity instanceof Mob mob && this.intelligence.supports(mob))
+		return player.getWorld().getNearbyEntities(
+			player.getLocation(),
+			12.0,
+			8.0,
+			12.0,
+			entity -> entity.isValid() && entity instanceof Mob mob && this.intelligence.supports(mob)
+		).stream()
 			.map(entity -> (Mob)entity)
 			.min(Comparator.comparingDouble(entity -> entity.getLocation().distanceSquared(player.getLocation())))
 			.orElse(null);

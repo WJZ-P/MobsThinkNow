@@ -52,7 +52,8 @@ public final class PaperFireworkBoltService {
 	}
 
 	public void start() {
-		if (this.task == null) {
+		PaperSettings root = this.settings.get();
+		if (this.task == null && root.enabled() && root.skeletonCrossbowTactics().firework().enabled()) {
 			this.task = Bukkit.getScheduler().runTaskTimer(this.plugin, this::tick, 1L, 1L);
 		}
 	}
@@ -76,12 +77,18 @@ public final class PaperFireworkBoltService {
 		final LivingEntity target,
 		final Vector requestedDirection
 	) {
-		PaperFireworkSettings config = this.settings.get().skeletonCrossbowTactics().firework();
-		if (!config.enabled()
+		PaperSettings root = this.settings.get();
+		PaperFireworkSettings config = root.skeletonCrossbowTactics().firework();
+		if (!root.enabled()
+			|| !root.skeletonCrossbowTactics().enabled()
+			|| !config.enabled()
+			|| this.task == null
 			|| !shooter.isValid()
+			|| shooter.isDead()
 			|| !target.isValid()
+			|| target.isDead()
 			|| shooter.getWorld() != target.getWorld()
-			|| requestedDirection.lengthSquared() < MINIMUM_DIRECTION_LENGTH_SQUARED
+			|| !isUsableDirection(requestedDirection)
 			|| this.active.size() >= config.maximumActiveProjectiles()) {
 			this.metrics.fireworkCapacityRejected();
 			return false;
@@ -111,7 +118,13 @@ public final class PaperFireworkBoltService {
 		long now = Bukkit.getCurrentTick();
 		this.active.put(
 			firework.getUniqueId(),
-			new ActiveBolt(firework, shooter.getUniqueId(), target.getUniqueId(), direction, now + config.projectileLifetimeTicks())
+			new ActiveBolt(
+				firework,
+				shooter.getUniqueId(),
+				target.getUniqueId(),
+				direction,
+				saturatingAdd(now, config.projectileLifetimeTicks())
+			)
 		);
 		this.metrics.fireworkLaunched();
 		return true;
@@ -119,6 +132,10 @@ public final class PaperFireworkBoltService {
 
 	public int activeCount() {
 		return this.active.size();
+	}
+
+	public boolean isRunning() {
+		return this.task != null;
 	}
 
 	/** 事务式测试/世界清理使用：只移除与指定射手或目标有关的受管弹体。 */
@@ -187,6 +204,18 @@ public final class PaperFireworkBoltService {
 
 	private static boolean isIntendedTarget(final Entity entity, final UUID targetId) {
 		return entity instanceof LivingEntity && entity.getUniqueId().equals(targetId);
+	}
+
+	static boolean isUsableDirection(final Vector direction) {
+		return direction != null
+			&& Double.isFinite(direction.getX())
+			&& Double.isFinite(direction.getY())
+			&& Double.isFinite(direction.getZ())
+			&& direction.lengthSquared() >= MINIMUM_DIRECTION_LENGTH_SQUARED;
+	}
+
+	private static long saturatingAdd(final long left, final long right) {
+		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
 	private record ActiveBolt(

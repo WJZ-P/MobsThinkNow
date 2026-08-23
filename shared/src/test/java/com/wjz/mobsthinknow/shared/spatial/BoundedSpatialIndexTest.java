@@ -160,6 +160,17 @@ class BoundedSpatialIndexTest {
 		));
 	}
 
+	@Test
+	void directResultConstructionDefensivelyCopiesAndValidates() {
+		List<String> mutable = new ArrayList<>(List.of("first"));
+		BoundedSpatialIndex.ScanResult<String> result = new BoundedSpatialIndex.ScanResult<>(mutable, 1);
+		mutable.add("second");
+		assertEquals(List.of("first"), result.candidates());
+		assertThrows(UnsupportedOperationException.class, () -> result.candidates().add("third"));
+		assertThrows(IllegalArgumentException.class, () -> new BoundedSpatialIndex.ScanResult<>(List.of(), -1));
+		assertThrows(NullPointerException.class, () -> new BoundedSpatialIndex.ScanResult<>(null, 0));
+	}
+
 	private static BoundedSpatialIndex<Integer, Candidate> newIndex(final double cellSize) {
 		return new BoundedSpatialIndex<>(cellSize, Candidate::group, Candidate::x, Candidate::z);
 	}

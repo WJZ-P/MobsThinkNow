@@ -112,7 +112,11 @@ public final class ZombieSquadCoordinator {
 	public static void tickLevel(final ServerLevel level) {
 		MobsThinkNowConfig config = ConfigManager.get();
 		ZombieSquadCoordinator existing = COORDINATORS.get(level);
-		if (existing == null && !squadsEnabled(config)) {
+		if (!squadsEnabled(config)) {
+			if (existing != null) {
+				existing.reset();
+				COORDINATORS.remove(level, existing);
+			}
 			return;
 		}
 
@@ -134,9 +138,22 @@ public final class ZombieSquadCoordinator {
 		}
 	}
 
+	/** Entity unload callbacks must not create an otherwise disabled/empty coordinator just to remove one member. */
+	public static void unregisterIfTracked(final ServerLevel level, final Mob mob) {
+		ZombieSquadCoordinator coordinator = COORDINATORS.get(level);
+		if (coordinator != null) {
+			coordinator.unregister(mob);
+		}
+	}
+
 	/** 命令诊断使用；调用方同样位于服务器主线程。 */
 	public static int activeSquadCount() {
 		return COORDINATORS.values().stream().mapToInt(coordinator -> coordinator.squads.size()).sum();
+	}
+
+	/** Test/status visibility into the bounded per-level heartbeat registry. */
+	public int trackedMemberCount() {
+		return this.members.size();
 	}
 
 	public static int activeDangerMemoryCount() {
@@ -238,8 +255,8 @@ public final class ZombieSquadCoordinator {
 		if (coordinator == null) {
 			return false;
 		}
-		MemberRecord a = coordinator.members.get(first.getId());
-		MemberRecord b = coordinator.members.get(second.getId());
+		MemberRecord a = coordinator.memberFor(first);
+		MemberRecord b = coordinator.memberFor(second);
 		return a != null && b != null && a.squadId != 0L && a.squadId == b.squadId;
 	}
 
@@ -262,7 +279,7 @@ public final class ZombieSquadCoordinator {
 		if (coordinator == null) {
 			return;
 		}
-		MemberRecord member = coordinator.members.get(victim.getId());
+		MemberRecord member = coordinator.memberFor(victim);
 		ZombieSquad squad = member == null ? null : coordinator.squads.get(member.squadId);
 		if (squad == null) {
 			return;
@@ -291,7 +308,7 @@ public final class ZombieSquadCoordinator {
 		if (coordinator == null) {
 			return;
 		}
-		MemberRecord member = coordinator.members.get(victim.getId());
+		MemberRecord member = coordinator.memberFor(victim);
 		ZombieSquad squad = member == null ? null : coordinator.squads.get(member.squadId);
 		if (squad == null) {
 			return;
@@ -335,8 +352,12 @@ public final class ZombieSquadCoordinator {
 		}
 
 		long now = mob.level().getGameTime();
-		MemberRecord member = this.members.get(mob.getId());
+		MemberRecord member = this.memberFor(mob);
 		if (member == null) {
+			MemberRecord stale = this.members.remove(mob.getId());
+			if (stale != null) {
+				this.detachFromSquad(stale);
+			}
 			// 首次注册时剥掉上次异常退出可能残留在存档里的职业名牌。
 			SquadTheatrics.stripLeftoverRoleTag(mob);
 			member = new MemberRecord(mob);
@@ -381,7 +402,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 返回当前命令快照；未组队时返回 {@code null}，由单体战术继续接管。 */
 	public @Nullable SquadDirective directiveFor(final Mob mob) {
-		MemberRecord member = this.members.get(mob.getId());
+		MemberRecord member = this.memberFor(mob);
 		if (member == null || member.squadId == 0L) {
 			return null;
 		}
@@ -457,7 +478,7 @@ public final class ZombieSquadCoordinator {
 		if (!config.dynamicSquadReplanning) {
 			return false;
 		}
-		MemberRecord member = this.members.get(mob.getId());
+		MemberRecord member = this.memberFor(mob);
 		ZombieSquad squad = member == null ? null : this.squads.get(member.squadId);
 		if (squad == null || squad.state != SquadState.ENGAGING || squad.planEpoch != observedPlanEpoch) {
 			return false;
@@ -812,7 +833,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 测试和诊断使用的只读小队摘要。 */
 	public @Nullable SquadView viewFor(final Mob mob) {
-		MemberRecord member = this.members.get(mob.getId());
+		MemberRecord member = this.memberFor(mob);
 		ZombieSquad squad = member == null ? null : this.squads.get(member.squadId);
 		if (squad == null) {
 			return null;
@@ -903,8 +924,9 @@ public final class ZombieSquadCoordinator {
 			int blockedSides = 0;
 			for (Direction direction : TACTIC_CARDINAL_DIRECTIONS) {
 				BlockPos side = feet.relative(direction);
-				if (player.level().getBlockState(side).blocksMotion()
-					|| player.level().getBlockState(side.above()).blocksMotion()) {
+				if (!player.level().getBlockState(side).getCollisionShape(player.level(), side).isEmpty()
+					|| !player.level().getBlockState(side.above())
+						.getCollisionShape(player.level(), side.above()).isEmpty()) {
 					blockedSides++;
 				}
 			}
@@ -1214,7 +1236,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 返回真实引信实体和预约的预测爆点，使队友不是只会远离苦力怕当前脚下位置。 */
 	public @Nullable SquadBlastThreat nearestBlastThreatFor(final Mob mob) {
-		MemberRecord member = this.members.get(mob.getId());
+		MemberRecord member = this.memberFor(mob);
 		ZombieSquad squad = member == null ? null : this.squads.get(member.squadId);
 		if (squad == null || squad.primedCreeperIds.isEmpty()) {
 			return null;
@@ -1265,7 +1287,7 @@ public final class ZombieSquadCoordinator {
 	 * 判断自己是否应该让路；真正开始接送则由 {@link #activeTransportPartnerFor(Spider)} 控制。
 	 */
 	public @Nullable Mob assignedTransportPartnerFor(final Spider spider) {
-		MemberRecord carrier = this.members.get(spider.getId());
+		MemberRecord carrier = this.memberFor(spider);
 		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
 		if (squad == null) {
 			return null;
@@ -1281,7 +1303,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 只有小队正式交战后，蜘蛛才离开阵位去接取乘员。 */
 	public @Nullable Mob activeTransportPartnerFor(final Spider spider) {
-		MemberRecord carrier = this.members.get(spider.getId());
+		MemberRecord carrier = this.memberFor(spider);
 		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
 		return squad != null && squad.state == SquadState.ENGAGING
 			? this.assignedTransportPartnerFor(spider)
@@ -1293,7 +1315,7 @@ public final class ZombieSquadCoordinator {
 	 * 苦力怕从侧后方提交爆破，骷髅则停在交叉射界，不让远程乘员被载具送去贴脸。
 	 */
 	public @Nullable Vec3 carrierStagingPointFor(final Spider spider) {
-		MemberRecord carrier = this.members.get(spider.getId());
+		MemberRecord carrier = this.memberFor(spider);
 		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
 		if (squad == null || squad.state != SquadState.ENGAGING || !squad.target.isAlive()) {
 			return null;
@@ -1335,7 +1357,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 返回分给巨人头顶火力位的射手；集结阶段同样保留预约关系。 */
 	public @Nullable AbstractSkeleton assignedGiantHeadRiderFor(final Giant giant) {
-		MemberRecord carrier = this.members.get(giant.getId());
+		MemberRecord carrier = this.memberFor(giant);
 		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
 		Integer riderId = squad == null ? null : squad.giantHeadRiders.get(giant.getId());
 		MemberRecord rider = riderId == null ? null : this.members.get(riderId);
@@ -1349,7 +1371,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 射手反向查询自己的巨人火力平台。 */
 	public @Nullable Giant assignedGiantMountFor(final AbstractSkeleton skeleton) {
-		MemberRecord rider = this.members.get(skeleton.getId());
+		MemberRecord rider = this.memberFor(skeleton);
 		ZombieSquad squad = rider == null ? null : this.squads.get(rider.squadId);
 		if (squad == null) {
 			return null;
@@ -1368,7 +1390,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 只有正式交战时，射手才从阵位跳上巨人头顶。 */
 	public @Nullable Giant activeGiantMountFor(final AbstractSkeleton skeleton) {
-		MemberRecord rider = this.members.get(skeleton.getId());
+		MemberRecord rider = this.memberFor(skeleton);
 		ZombieSquad squad = rider == null ? null : this.squads.get(rider.squadId);
 		return squad != null && squad.state == SquadState.ENGAGING
 			? this.assignedGiantMountFor(skeleton)
@@ -1377,7 +1399,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 返回巨人左右手的固定载荷预约，顺序即右手、左手。 */
 	public List<Mob> assignedGiantPayloadsFor(final Giant giant) {
-		MemberRecord carrier = this.members.get(giant.getId());
+		MemberRecord carrier = this.memberFor(giant);
 		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
 		List<Integer> payloadIds = squad == null ? null : squad.giantHandPayloads.get(giant.getId());
 		if (payloadIds == null || payloadIds.isEmpty()) {
@@ -1395,7 +1417,7 @@ public final class ZombieSquadCoordinator {
 
 	/** 巨人只在正式交战阶段离开阵位收取双手载荷。 */
 	public List<Mob> activeGiantPayloadsFor(final Giant giant) {
-		MemberRecord carrier = this.members.get(giant.getId());
+		MemberRecord carrier = this.memberFor(giant);
 		ZombieSquad squad = carrier == null ? null : this.squads.get(carrier.squadId);
 		return squad != null && squad.state == SquadState.ENGAGING
 			? this.assignedGiantPayloadsFor(giant)
@@ -1404,8 +1426,8 @@ public final class ZombieSquadCoordinator {
 
 	/** 目标失效时立即注销；正常 Goal 切换则交给心跳超时，避免频繁退队又入队。 */
 	public void unregister(final Mob mob) {
-		MemberRecord member = this.members.remove(mob.getId());
-		if (member != null) {
+		MemberRecord member = this.memberFor(mob);
+		if (member != null && this.members.remove(mob.getId(), member)) {
 			this.detachFromSquad(member);
 		}
 	}
@@ -1494,6 +1516,7 @@ public final class ZombieSquadCoordinator {
 			seeds.add(member);
 			spatialIndex.add(member);
 		}
+		this.recruitExistingSquads(spatialIndex, config, now);
 
 		seeds.sort(Comparator.comparingInt(member -> member.mob.getId()));
 		for (MemberRecord seed : seeds) {
@@ -1515,6 +1538,97 @@ public final class ZombieSquadCoordinator {
 				nearby = new ArrayList<>(nearby.subList(0, config.maximumCoordinatedZombies));
 			}
 			this.createSquad(nearby, config, now);
+		}
+	}
+
+	/**
+	 * Heartbeats from different species need not arrive on the same tick. During each bounded formation pass,
+	 * existing squads first absorb nearby unassigned members sharing their exact live target; otherwise a late
+	 * Parched/Drowned heartbeat can permanently fragment one encounter into adjacent squads.
+	 */
+	private void recruitExistingSquads(
+		final BoundedSpatialIndex<Integer, MemberRecord> unassigned,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		for (ZombieSquad squad : this.squads.values()) {
+			int capacity = config.maximumCoordinatedZombies - squad.memberIds.size();
+			MemberRecord leader = this.members.get(squad.leaderId);
+			if (capacity <= 0 || leader == null || !squad.target.isAlive()) {
+				continue;
+			}
+			MemberRecord anchor = leader;
+			if (leader.target != squad.target) {
+				anchor = new MemberRecord(leader.mob);
+				anchor.target = squad.target;
+			}
+			double radiusSquared = config.coordinationRadius * config.coordinationRadius;
+			BoundedSpatialIndex.ScanResult<MemberRecord> scan = unassigned.collectNearby(
+				anchor,
+				candidate -> candidate.squadId == 0L && candidate.target == squad.target,
+				(first, second) -> first.mob.distanceToSqr(second.mob),
+				radiusSquared,
+				capacity,
+				config.maximumCoordinatedZombies * 16,
+				false
+			);
+			SmartZombieMetrics.squadCandidateChecks(scan.rawChecks());
+			if (scan.candidates().isEmpty()) {
+				continue;
+			}
+			List<MemberRecord> recruits = new ArrayList<>(scan.candidates());
+			recruits.sort(
+				Comparator.comparingDouble((MemberRecord member) -> member.mob.distanceToSqr(leader.mob))
+					.thenComparingInt(member -> member.mob.getId())
+			);
+			for (MemberRecord member : recruits) {
+				if (member.squadId != 0L || squad.memberIds.size() >= config.maximumCoordinatedZombies) {
+					continue;
+				}
+				squad.memberIds.add(member.mob.getId());
+				squad.targetAssignments.put(member.mob.getId(), squad.target.getId());
+				member.squadId = squad.id;
+				this.updatePrimedCreeperIndex(squad, member);
+				this.mergeObservation(squad, member);
+			}
+			boolean leadershipTransitioned = false;
+			if (squad.state == SquadState.FORMING) {
+				this.electInitialLeader(squad);
+			} else {
+				int currentLeaderIntelligence = intelligenceOf(leader.mob);
+				boolean smarterRecruitArrived = recruits.stream()
+					.anyMatch(member -> intelligenceOf(member.mob) > currentLeaderIntelligence);
+				if (smarterRecruitArrived) {
+					leadershipTransitioned = this.electReplacementLeader(squad, config, now);
+				}
+			}
+			if (!leadershipTransitioned) {
+				this.rebuildRoles(squad);
+				this.refreshOrdersAfterRecruitment(squad, config, now);
+			}
+		}
+	}
+
+	private void refreshOrdersAfterRecruitment(
+		final ZombieSquad squad,
+		final MobsThinkNowConfig config,
+		final long now
+	) {
+		switch (squad.state) {
+			case FORMING, RALLYING, REORGANIZING -> this.assignRallyOrders(squad, squad.rallyPoint, config);
+			case BRIEFING -> {
+				this.assignRallyOrders(squad, squad.rallyPoint, config);
+				this.prepareBriefingRoutes(squad, config);
+			}
+			case DEPLOYING -> {
+				this.prepareBriefingRoutes(squad, config);
+				this.refreshCombatOrders(squad, config, false, true, true, now);
+			}
+			case ENGAGING -> {
+				SquadCombatCadence.Window window = this.combatWindowFor(squad, now);
+				this.refreshThreatAssignments(squad, config, now);
+				this.refreshCombatOrders(squad, config, !window.beat().holdsFormation(), false, true, now);
+			}
 		}
 	}
 
@@ -2735,8 +2849,14 @@ public final class ZombieSquadCoordinator {
 	}
 
 	private @Nullable ZombieSquad squadFor(final Mob mob) {
-		MemberRecord member = this.members.get(mob.getId());
+		MemberRecord member = this.memberFor(mob);
 		return member == null || member.squadId == 0L ? null : this.squads.get(member.squadId);
+	}
+
+	/** Entity ids are fast local keys but may eventually be reused; external lookups confirm object identity. */
+	private @Nullable MemberRecord memberFor(final Mob mob) {
+		MemberRecord member = this.members.get(mob.getId());
+		return member != null && member.mob == mob ? member : null;
 	}
 
 	private @Nullable LivingEntity assignedTargetEntity(final ZombieSquad squad, final int memberId) {

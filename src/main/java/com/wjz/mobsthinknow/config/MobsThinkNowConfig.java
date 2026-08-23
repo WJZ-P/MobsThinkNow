@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.config;
 
+import com.wjz.mobsthinknow.shared.ai.SpiderWebTrapPlanner;
+
 public final class MobsThinkNowConfig {
 	public static final int DEFAULT_MAXIMUM_COORDINATED_ZOMBIES = 20;
 	public static final int MINIMUM_MAXIMUM_COORDINATED_ZOMBIES = 4;
@@ -57,10 +59,10 @@ public final class MobsThinkNowConfig {
 	public static final double DEFAULT_SPIDER_CREEPER_CARRIER_SPEED = 1.40;
 	public static final double MINIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.10;
 	public static final double MAXIMUM_SPIDER_CREEPER_CARRIER_SPEED = 1.70;
-	public static final int DEFAULT_SPIDER_WEB_TRAP_COOLDOWN_TICKS = 240;
+	public static final int DEFAULT_SPIDER_WEB_TRAP_COOLDOWN_TICKS = SpiderWebTrapPlanner.DEFAULT_COOLDOWN_TICKS;
 	public static final int MINIMUM_SPIDER_WEB_TRAP_COOLDOWN_TICKS = 80;
 	public static final int MAXIMUM_SPIDER_WEB_TRAP_COOLDOWN_TICKS = 600;
-	public static final int DEFAULT_SPIDER_WEB_TRAP_LIFETIME_TICKS = 160;
+	public static final int DEFAULT_SPIDER_WEB_TRAP_LIFETIME_TICKS = SpiderWebTrapPlanner.DEFAULT_LIFETIME_TICKS;
 	public static final int MINIMUM_SPIDER_WEB_TRAP_LIFETIME_TICKS = 60;
 	public static final int MAXIMUM_SPIDER_WEB_TRAP_LIFETIME_TICKS = 400;
 	public static final double DEFAULT_ENDERMAN_CREEPER_SEARCH_RADIUS = 16.0;

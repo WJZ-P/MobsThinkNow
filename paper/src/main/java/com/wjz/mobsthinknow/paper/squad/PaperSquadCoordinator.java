@@ -80,7 +80,13 @@ public final class PaperSquadCoordinator {
 	}
 
 	public void reconfigure() {
+		this.stopTask();
 		this.resetSquads();
+		if (!this.enabled()) {
+			this.members.clear();
+			this.spatialIndex.clear();
+			return;
+		}
 		this.rebuildSpatialIndex();
 		this.start();
 	}
@@ -92,8 +98,12 @@ public final class PaperSquadCoordinator {
 		this.spatialIndex.clear();
 	}
 
+	public boolean isRunning() {
+		return this.task != null;
+	}
+
 	public void track(final Mob mob) {
-		if (!this.intelligence.supports(mob)) {
+		if (!this.enabled() || !this.intelligence.supports(mob)) {
 			return;
 		}
 		MemberRecord record = this.members.computeIfAbsent(
@@ -216,6 +226,15 @@ public final class PaperSquadCoordinator {
 		return payload != null && payload.mob instanceof Creeper creeper ? creeper : null;
 	}
 
+	/** O(1) reverse lookup used by creeper goals so a delegated payload does not prime or run away independently. */
+	public boolean isAssignedTransportPayload(final Creeper creeper) {
+		Long squadId = this.squadByMember.get(creeper.getUniqueId());
+		Squad squad = squadId == null ? null : this.squads.get(squadId);
+		UUID carrierId = squad == null ? null : squad.transportCarriers.get(creeper.getUniqueId());
+		MemberRecord carrier = carrierId == null ? null : this.members.get(carrierId);
+		return carrier != null && carrier.mob instanceof Spider && carrier.mob.isValid() && !carrier.mob.isDead();
+	}
+
 	public int activeSquadCount() {
 		return this.squads.size();
 	}
@@ -236,6 +255,8 @@ public final class PaperSquadCoordinator {
 		PaperSquadSettings config = this.settings.get();
 		if (!this.globallyEnabled.getAsBoolean() || !config.enabled()) {
 			this.resetSquads();
+			this.members.clear();
+			this.spatialIndex.clear();
 			return;
 		}
 		long now = Bukkit.getCurrentTick();
@@ -441,6 +462,11 @@ public final class PaperSquadCoordinator {
 			));
 		}
 		squad.transportPairs = MixedSquadTransportPlanner.pairCreeperCarriers(squad.plan, transportMembers);
+		Map<UUID, UUID> carriers = new HashMap<>();
+		for (Map.Entry<UUID, UUID> pair : squad.transportPairs.entrySet()) {
+			carriers.put(pair.getValue(), pair.getKey());
+		}
+		squad.transportCarriers = Map.copyOf(carriers);
 	}
 
 	private List<MixedSquadPlanner.Member<UUID>> snapshots(final Squad squad) {
@@ -796,6 +822,7 @@ public final class PaperSquadCoordinator {
 		private MixedSquadPlan plan = MixedSquadPlan.SWARM;
 		private Map<UUID, MixedSquadRole> roles = Map.of();
 		private Map<UUID, UUID> transportPairs = Map.of();
+		private Map<UUID, UUID> transportCarriers = Map.of();
 
 		private Squad(final long id, final LivingEntity target, final long now) {
 			this.id = id;

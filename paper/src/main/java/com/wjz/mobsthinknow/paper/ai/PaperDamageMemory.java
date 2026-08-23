@@ -27,14 +27,20 @@ public final class PaperDamageMemory {
 		this.pending.compute(
 			zombie.getUniqueId(),
 			(ignored, existing) -> existing == null
-				? new DamageSnapshot(attacker.getUniqueId(), attacker.getUniqueId(), finalDamage, now)
+				? DamageSnapshot.first(attacker.getUniqueId(), finalDamage, now)
 				: existing.withHit(attacker.getUniqueId(), finalDamage, now)
 		);
 	}
 
 	public DamageSnapshot consume(final Zombie zombie, final long now, final int maximumAgeTicks) {
 		DamageSnapshot snapshot = this.pending.remove(zombie.getUniqueId());
-		return snapshot != null && now - snapshot.observedAt <= Math.max(1, maximumAgeTicks) ? snapshot : null;
+		int maximumAge = Math.max(1, maximumAgeTicks);
+		if (snapshot == null || !isFresh(now, snapshot.latestObservedAt(), maximumAge)) {
+			return null;
+		}
+		return isFresh(now, snapshot.largestDamageObservedAt(), maximumAge)
+			? snapshot
+			: snapshot.withLargestFromLatest();
 	}
 
 	public void discard(final Zombie zombie) {
@@ -51,14 +57,43 @@ public final class PaperDamageMemory {
 
 	public record DamageSnapshot(
 		UUID latestAttackerId,
+		double latestDamage,
+		long latestObservedAt,
 		UUID largestDamageAttackerId,
 		double largestDamage,
-		long observedAt
+		long largestDamageObservedAt
 	) {
+		private static DamageSnapshot first(final UUID attackerId, final double damage, final long now) {
+			return new DamageSnapshot(attackerId, damage, now, attackerId, damage, now);
+		}
+
 		private DamageSnapshot withHit(final UUID attackerId, final double damage, final long now) {
 			return damage >= this.largestDamage
-				? new DamageSnapshot(attackerId, attackerId, damage, now)
-				: new DamageSnapshot(attackerId, this.largestDamageAttackerId, this.largestDamage, now);
+				? new DamageSnapshot(attackerId, damage, now, attackerId, damage, now)
+				: new DamageSnapshot(
+					attackerId,
+					damage,
+					now,
+					this.largestDamageAttackerId,
+					this.largestDamage,
+					this.largestDamageObservedAt
+				);
 		}
+
+		private DamageSnapshot withLargestFromLatest() {
+			return new DamageSnapshot(
+				this.latestAttackerId,
+				this.latestDamage,
+				this.latestObservedAt,
+				this.latestAttackerId,
+				this.latestDamage,
+				this.latestObservedAt
+			);
+		}
+	}
+
+	private static boolean isFresh(final long now, final long observedAt, final int maximumAgeTicks) {
+		long age = now - observedAt;
+		return age >= 0L && age <= maximumAgeTicks;
 	}
 }

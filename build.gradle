@@ -47,8 +47,29 @@ fabricApi {
 	}
 }
 
+def gameTestRuntimeDirectory = layout.buildDirectory.dir("run/gameTest")
+tasks.named("runGameTest") {
+	// Minecraft creates these files only after logging a scary first-run error. Seed the isolated build directory
+	// before launch so a clean verification has no false-negative ERROR/WARN noise.
+	doFirst {
+		File gameTestDirectory = gameTestRuntimeDirectory.get().asFile
+		gameTestDirectory.mkdirs()
+		File properties = new File(gameTestDirectory, "server.properties")
+		if (!properties.exists()) {
+			properties.setText("online-mode=false\n", "UTF-8")
+		}
+		File eula = new File(gameTestDirectory, "eula.txt")
+		if (!eula.exists()) {
+			eula.setText("eula=true\n", "UTF-8")
+		}
+	}
+}
+
 dependencies {
-	implementation project(":shared")
+	// 共享内核会由 jar 任务直接合入成品；只进入编译、本地运行和测试类路径，不作为外部 Maven 依赖发布。
+	compileOnly project(":shared")
+	localRuntime project(":shared")
+	testImplementation project(":shared")
 
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
@@ -71,17 +92,20 @@ dependencies {
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 }
 
+def resourceVersion = project.version
+
 processResources {
-	inputs.property "version", project.version
+	inputs.property "version", resourceVersion
 
 	filesMatching("fabric.mod.json") {
-		expand "version": project.version
+		expand "version": resourceVersion
 	}
 }
 
 tasks.withType(JavaCompile).configureEach {
 	options.release = 25
 	options.encoding = "UTF-8"
+	options.compilerArgs.addAll(["-Xlint:all", "-Xlint:-processing", "-Xlint:-serial", "-Xlint:-classfile", "-Werror"])
 }
 
 tasks.withType(Test).configureEach {
@@ -106,18 +130,159 @@ java {
 	withSourcesJar()
 }
 
+def rootProjectName = project.name
+evaluationDependsOn(":shared")
+
 jar {
 	// 共享模块只包含平台无关的纯 Java 决策类，直接合入 Fabric 成品，避免玩家安装第二个前置。
+	duplicatesStrategy = DuplicatesStrategy.FAIL
 	from(project(":shared").sourceSets.main.output)
 	from("LICENSE") {
-		rename { "${it}_${project.name}" }
+		rename { "${it}_${rootProjectName}" }
 	}
+}
+
+tasks.named("sourcesJar", Jar) {
+	duplicatesStrategy = DuplicatesStrategy.FAIL
+	from(project(":shared").sourceSets.main.allSource)
+	from("LICENSE") {
+		rename { "${it}_${rootProjectName}" }
+	}
+}
+
+def fabricJar = tasks.named("jar", Jar).flatMap { it.archiveFile }
+def sharedBinaryJar = project(":shared").tasks.named("jar", Jar).flatMap { it.archiveFile }
+def fabricSourcesJar = tasks.named("sourcesJar", Jar).flatMap { it.archiveFile }
+def sharedSourcesJar = project(":shared").tasks.named("sourcesJar", Jar).flatMap { it.archiveFile }
+def rootLicense = file("LICENSE")
+def expectedFabricDependencies = [
+	"fabricloader": ">=${project.loader_version}",
+	"minecraft": "~${project.minecraft_version}",
+	"java": ">=25",
+	"fabric-api": ">=${project.fabric_api_version.toString().split('\\+')[0]}"
+]
+def expectedFabricSuggestions = [
+	"modmenu": ">=${project.modmenu_version}",
+	"cloth-config": ">=${project.cloth_config_version}"
+]
+tasks.register("verifyBundledSharedClasses") {
+	group = "verification"
+	description = "Verify the distributable Fabric archives contain the platform-neutral shared kernel."
+	dependsOn(tasks.named("jar"))
+	dependsOn(tasks.named("sourcesJar"))
+	dependsOn(project(":shared").tasks.named("jar"))
+	dependsOn(project(":shared").tasks.named("sourcesJar"))
+	inputs.file(fabricJar)
+	inputs.file(sharedBinaryJar)
+	inputs.file(fabricSourcesJar)
+	inputs.file(sharedSourcesJar)
+	inputs.file(rootLicense)
+	doLast {
+		new java.util.zip.ZipFile(sharedBinaryJar.get().asFile).withCloseable { sharedArchive ->
+			def required = sharedArchive.entries().findAll {
+				!it.directory && it.name.startsWith("com/wjz/mobsthinknow/shared/") && it.name.endsWith(".class")
+			}*.name
+			if (required.isEmpty()) {
+				throw new GradleException("Shared binary jar contains no shared classes")
+			}
+			new java.util.zip.ZipFile(fabricJar.get().asFile).withCloseable { archive ->
+				required.addAll([
+					"fabric.mod.json",
+					"mobsthinknow.mixins.json",
+					"LICENSE_MobsThinkNow",
+					"com/wjz/mobsthinknow/MobsThinkNow.class",
+					"com/wjz/mobsthinknow/client/MobsThinkNowModMenu.class"
+				])
+				def missing = required.findAll { archive.getEntry(it) == null }
+				if (!missing.isEmpty()) {
+					throw new GradleException("Fabric jar is missing required release entries: ${missing.join(', ')}")
+				}
+				def names = archive.entries().findAll { !it.directory }*.name
+				if (names.size() != names.toSet().size()) {
+					throw new GradleException("Fabric jar contains duplicate ZIP entries")
+				}
+				if (!java.util.Arrays.equals(
+					archive.getInputStream(archive.getEntry("LICENSE_MobsThinkNow")).bytes,
+					rootLicense.bytes
+				)) {
+					throw new GradleException("Fabric jar license content differs from repository LICENSE")
+				}
+				def metadata = new groovy.json.JsonSlurper().parse(archive.getInputStream(archive.getEntry("fabric.mod.json")))
+				if (metadata.version != resourceVersion.toString()) {
+					throw new GradleException(
+						"fabric.mod.json version ${metadata.version} does not match project version ${resourceVersion}"
+					)
+				}
+				if (metadata.id != "mobsthinknow"
+					|| metadata.environment != "*"
+					|| metadata.depends != expectedFabricDependencies
+					|| metadata.suggests != expectedFabricSuggestions) {
+					throw new GradleException("fabric.mod.json identity or dependency constraints differ from Gradle properties")
+				}
+				def entrypointClasses = metadata.entrypoints.values().flatten().collect {
+					it instanceof Map ? it.value : it
+				}.findAll { it instanceof String }.collect { it.replace('.', '/') + ".class" }
+				def mixinConfig = new groovy.json.JsonSlurper().parse(
+					archive.getInputStream(archive.getEntry("mobsthinknow.mixins.json"))
+				)
+				def mixinPackage = mixinConfig.package.replace('.', '/')
+				def mixinClasses = ["mixins", "client", "server"].collectMany { section ->
+					(mixinConfig[section] ?: []).collect { "${mixinPackage}/${it.replace('.', '/')}.class" }
+				}
+				def missingDeclaredClasses = (entrypointClasses + mixinClasses).findAll { archive.getEntry(it) == null }
+				if (!missingDeclaredClasses.isEmpty()) {
+					throw new GradleException(
+						"Fabric metadata references missing classes: ${missingDeclaredClasses.join(', ')}"
+					)
+				}
+				def paperLeak = archive.entries().find { it.name.startsWith("com/wjz/mobsthinknow/paper/") }
+				if (paperLeak != null) {
+					throw new GradleException("Fabric jar unexpectedly contains Paper class: ${paperLeak.name}")
+				}
+			}
+		}
+		new java.util.zip.ZipFile(sharedSourcesJar.get().asFile).withCloseable { sharedArchive ->
+			def required = sharedArchive.entries().findAll {
+				!it.directory && it.name.startsWith("com/wjz/mobsthinknow/shared/") && it.name.endsWith(".java")
+			}*.name
+			if (required.isEmpty()) {
+				throw new GradleException("Shared sources jar contains no shared sources")
+			}
+			new java.util.zip.ZipFile(fabricSourcesJar.get().asFile).withCloseable { archive ->
+				required.add("LICENSE_MobsThinkNow")
+				def missing = required.findAll { archive.getEntry(it) == null }
+				if (!missing.isEmpty()) {
+					throw new GradleException("Fabric sources jar is missing shared sources: ${missing.join(', ')}")
+				}
+				def names = archive.entries().findAll { !it.directory }*.name
+				if (names.size() != names.toSet().size()) {
+					throw new GradleException("Fabric sources jar contains duplicate ZIP entries")
+				}
+				if (!java.util.Arrays.equals(
+					archive.getInputStream(archive.getEntry("LICENSE_MobsThinkNow")).bytes,
+					rootLicense.bytes
+				)) {
+					throw new GradleException("Fabric sources jar license differs from repository LICENSE")
+				}
+			}
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyBundledSharedClasses"))
 }
 
 tasks.named("build") {
 	// 根项目的 build 同时验证共享内核和 Paper 插件，避免只构建 Fabric 后误以为双端均可发布。
 	dependsOn(":shared:build", ":paper:build")
 }
+
+def paperSmokeJava = javaToolchains.launcherFor {
+	languageVersion = JavaLanguageVersion.of(25)
+}
+def paperSmokeScript = file("tools/paper_smoke_test.py")
+def paperSmokeSelftestRuns = providers.gradleProperty("paperSmokeSelftestRuns").orElse("1")
 
 tasks.register("paperSmokeTest", Exec) {
 	group = "verification"
@@ -126,6 +291,8 @@ tasks.register("paperSmokeTest", Exec) {
 	workingDir = rootDir
 	def paperJar = project(":paper").tasks.named("jar", Jar).flatMap { it.archiveFile }
 	inputs.file(paperJar)
+	inputs.property("javaLauncher", paperSmokeJava.map { it.metadata.installationPath.asFile.absolutePath })
+	inputs.property("selftestRuns", paperSmokeSelftestRuns)
 	doFirst {
 		def defaultPython = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")
 			? "python"
@@ -133,9 +300,13 @@ tasks.register("paperSmokeTest", Exec) {
 		def python = System.getenv("PYTHON") ?: defaultPython
 		commandLine(
 			python,
-			file("tools/paper_smoke_test.py").absolutePath,
+			paperSmokeScript.absolutePath,
 			"--plugin",
-			paperJar.get().asFile.absolutePath
+			paperJar.get().asFile.absolutePath,
+			"--java",
+			paperSmokeJava.get().executablePath.asFile.absolutePath,
+			"--selftest-runs",
+			paperSmokeSelftestRuns.get()
 		)
 	}
 }
@@ -143,7 +314,184 @@ tasks.register("paperSmokeTest", Exec) {
 publishing {
 	publications {
 		create("mavenJava", MavenPublication) {
+			artifactId = project.archives_base_name
 			from components.java
 		}
 	}
+}
+
+def publishedPom = layout.buildDirectory.file("publications/mavenJava/pom-default.xml")
+def publishedModule = layout.buildDirectory.file("publications/mavenJava/module.json")
+def publishedArtifactId = project.archives_base_name
+def publishedGroup = project.group.toString()
+def publishedVersion = project.version.toString()
+def expectedRuntimeDependencies = [
+	"net.fabricmc:fabric-loader": project.loader_version.toString(),
+	"net.fabricmc.fabric-api:fabric-api": project.fabric_api_version.toString()
+]
+tasks.register("verifyPublicationMetadata") {
+	group = "verification"
+	description = "Verify shaded shared classes are not advertised as an unresolved external dependency."
+	dependsOn(tasks.named("generatePomFileForMavenJavaPublication"))
+	dependsOn(tasks.named("generateMetadataFileForMavenJavaPublication"))
+	inputs.file(publishedPom)
+	inputs.file(publishedModule)
+	doLast {
+		def pomText = publishedPom.get().asFile.getText("UTF-8")
+		def moduleText = publishedModule.get().asFile.getText("UTF-8")
+		def pom = new groovy.xml.XmlSlurper(false, false).parseText(pomText)
+		if (pom.groupId.text() != publishedGroup
+			|| pom.artifactId.text() != publishedArtifactId.toString()
+			|| pom.version.text() != publishedVersion) {
+			throw new GradleException("Published POM coordinates do not match the project coordinates")
+		}
+		def pomDependencies = pom.dependencies.dependency.collectEntries { dependency ->
+			[("${dependency.groupId.text()}:${dependency.artifactId.text()}").toString(), [
+				version: dependency.version.text(),
+				scope: dependency.scope.text()
+			]]
+		}
+		def expectedPomDependencies = expectedRuntimeDependencies.collectEntries { coordinate, dependencyVersion ->
+			[coordinate, [version: dependencyVersion, scope: "runtime"]]
+		}
+		if (pomDependencies != expectedPomDependencies) {
+			throw new GradleException("Published POM dependencies differ from the intended Fabric runtime set")
+		}
+		def module = new groovy.json.JsonSlurper().parseText(moduleText)
+		if (module.component.group != publishedGroup
+			|| module.component.module != publishedArtifactId.toString()
+			|| module.component.version != publishedVersion) {
+			throw new GradleException("Gradle Module Metadata coordinates do not match the project coordinates")
+		}
+		def runtimeVariant = module.variants.find { it.name == "runtimeElements" }
+		def moduleDependencies = (runtimeVariant?.dependencies ?: []).collectEntries { dependency ->
+			[("${dependency.group}:${dependency.module}").toString(), dependency.version.requires.toString()]
+		}
+		if (moduleDependencies != expectedRuntimeDependencies) {
+			throw new GradleException("Gradle Module Metadata dependencies differ from the intended Fabric runtime set")
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyPublicationMetadata"))
+}
+
+def localizationSources = fileTree("src/main/java") { include("**/*.java") }
+def englishLanguage = file("src/main/resources/assets/mobsthinknow/lang/en_us.json")
+def chineseLanguage = file("src/main/resources/assets/mobsthinknow/lang/zh_cn.json")
+tasks.register("verifyLocalizationResources") {
+	group = "verification"
+	description = "Verify English and Chinese translation keys and every static code reference stay in sync."
+	inputs.files(localizationSources, englishLanguage, chineseLanguage)
+	doLast {
+		def parseLanguage = { File language ->
+			def raw = language.getText("UTF-8")
+			def parsed = new groovy.json.JsonSlurper().parseText(raw)
+			if (!(parsed instanceof Map)) {
+				throw new GradleException("Language resource must be a JSON object: ${language.name}")
+			}
+			def declaredKeys = (raw =~ /(?m)^\s*"([^"]+)"\s*:/).collect { it[1] }
+			if (declaredKeys.size() != parsed.size() || declaredKeys.toSet().size() != declaredKeys.size()) {
+				throw new GradleException("Language resource contains duplicate keys: ${language.name}")
+			}
+			def invalidValues = parsed.findAll { key, value -> !(value instanceof String) || value.isBlank() }.keySet()
+			if (!invalidValues.isEmpty()) {
+				throw new GradleException("Language resource contains blank or non-string values: ${invalidValues}")
+			}
+			return parsed.keySet() as Set
+		}
+		def englishKeys = parseLanguage(englishLanguage)
+		def chineseKeys = parseLanguage(chineseLanguage)
+		if (englishKeys != chineseKeys) {
+			throw new GradleException(
+				"Translation key mismatch: missingChinese=${(englishKeys - chineseKeys).sort()}, "
+					+ "missingEnglish=${(chineseKeys - englishKeys).sort()}"
+			)
+		}
+		def referencedKeys = [] as Set
+		localizationSources.files.each { source ->
+			def matcher = source.getText("UTF-8") =~ /"([A-Za-z0-9_.-]*mobsthinknow\.[A-Za-z0-9_.-]+)"/
+			referencedKeys.addAll(matcher.collect { it[1] }.findAll { !it.endsWith(".") })
+		}
+		def missingReferences = (referencedKeys - englishKeys).sort()
+		if (!missingReferences.isEmpty()) {
+			throw new GradleException("Code references missing translation keys: ${missingReferences}")
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyLocalizationResources"))
+}
+
+def documentationFiles = fileTree(rootDir) {
+	include("**/*.md")
+	exclude("**/build/**", ".gradle/**", ".git/**")
+}
+tasks.register("verifyDocumentationLinks") {
+	group = "verification"
+	description = "Verify every repository-local Markdown link resolves to an existing file."
+	inputs.files(documentationFiles)
+	doLast {
+		def missing = []
+		documentationFiles.files.each { document ->
+			def matcher = document.getText("UTF-8") =~ /\[[^\]]*\]\(([^)]+)\)/
+			matcher.each { match ->
+				def rawTarget = match[1].trim().replaceFirst(/\s+["'][^"']*["']$/, "")
+				def target = rawTarget.split("#", 2)[0]
+				if (!target.isEmpty()
+					&& !target.startsWith("#")
+					&& !(target ==~ /(?i)^[a-z][a-z0-9+.-]*:.*/)) {
+					def decoded = java.net.URLDecoder.decode(target, java.nio.charset.StandardCharsets.UTF_8)
+					def linked = new File(document.parentFile, decoded)
+					if (!linked.exists()) {
+						missing.add("${rootDir.toPath().relativize(document.toPath())} -> ${rawTarget}")
+					}
+				}
+			}
+		}
+		if (!missing.isEmpty()) {
+			throw new GradleException("Broken local Markdown links: ${missing.sort().join(', ')}")
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyDocumentationLinks"))
+}
+
+def gameTestSources = fileTree("src/gametest/java") { include("**/*.java") }
+def gameTestMetadata = file("src/gametest/resources/fabric.mod.json")
+tasks.register("verifyGameTestEntrypoints") {
+	group = "verification"
+	description = "Verify every class containing Fabric GameTests is registered exactly once."
+	inputs.files(gameTestSources, gameTestMetadata)
+	doLast {
+		def metadata = new groovy.json.JsonSlurper().parse(gameTestMetadata)
+		def declared = metadata.entrypoints?.get("fabric-gametest") ?: []
+		def duplicates = declared.groupBy { it }.findAll { ignored, occurrences -> occurrences.size() > 1 }.keySet()
+		def discovered = gameTestSources.files.findAll { source ->
+			source.getText("UTF-8") =~ /@GameTest(?:\s*\(|\s*(?:\R|$))/
+		}.collect { source ->
+			def text = source.getText("UTF-8")
+			def packageMatch = text =~ /(?m)^package\s+([A-Za-z0-9_.]+);\s*$/
+			if (!packageMatch.find()) {
+				throw new GradleException("GameTest source has no package declaration: ${source}")
+			}
+			return packageMatch.group(1) + "." + source.name.replaceFirst(/\.java$/, "")
+		} as Set
+		def declaredSet = declared as Set
+		def missing = (discovered - declaredSet).sort()
+		def stale = (declaredSet - discovered).sort()
+		if (!duplicates.isEmpty() || !missing.isEmpty() || !stale.isEmpty()) {
+			throw new GradleException(
+				"Fabric GameTest entrypoint mismatch: duplicates=${duplicates.sort()}, missing=${missing}, stale=${stale}"
+			)
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyGameTestEntrypoints"))
 }

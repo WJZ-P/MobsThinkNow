@@ -2,13 +2,15 @@ package com.wjz.mobsthinknow.ai.zombie;
 
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -17,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.Consumable;
 import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
 import org.jspecify.annotations.Nullable;
@@ -42,6 +45,7 @@ public final class ZombieFoodSearchGoal extends Goal {
 	private static final int SEARCH_TIMEOUT_TICKS = 200;
 	private static final int PATH_REFRESH_TICKS = 10;
 	private static final int MAXIMUM_PATH_CANDIDATES = 4;
+	private static final int MAXIMUM_RAW_CANDIDATES = 64;
 
 	private final Zombie zombie;
 	private final SearchDecision searchDecision;
@@ -252,12 +256,15 @@ public final class ZombieFoodSearchGoal extends Goal {
 
 	private @Nullable SearchTarget findReachableFood(final ServerLevel level, final long now) {
 		AABB searchBox = this.zombie.getBoundingBox().inflate(SEARCH_RADIUS, SEARCH_VERTICAL_RADIUS, SEARCH_RADIUS);
-		List<ItemEntity> foods = level.getEntitiesOfClass(
-			ItemEntity.class,
+		List<ItemEntity> foods = new ArrayList<>(MAXIMUM_RAW_CANDIDATES);
+		level.getEntities(
+			EntityTypeTest.<Entity, ItemEntity>forClass(ItemEntity.class),
 			searchBox,
 			entity -> isAvailableFoodEntity(entity)
 				&& this.zombie.distanceToSqr(entity) <= SEARCH_RADIUS * SEARCH_RADIUS
-				&& ZombieGroundItemReservations.isAvailableTo(entity, this.zombie, now)
+				&& ZombieGroundItemReservations.isAvailableTo(entity, this.zombie, now),
+			foods,
+			MAXIMUM_RAW_CANDIDATES
 		);
 		foods.sort(
 			Comparator.<ItemEntity>comparingInt(entity -> foodPriority(entity.getItem())).reversed()
@@ -293,7 +300,9 @@ public final class ZombieFoodSearchGoal extends Goal {
 
 	/** 原版 looting 不再把食物当武器装备；所有食物拾取统一走上面的单份消费事务。 */
 	public static boolean managesFood(final Zombie zombie, final ItemStack stack, final MobsThinkNowConfig config) {
-		return zombie.getType() == EntityType.ZOMBIE && isEnabled(config) && isFood(stack);
+		return OverworldUndeadFamilies.usesGroundZombieTactics(zombie.getType())
+			&& isEnabled(config)
+			&& isFood(stack);
 	}
 
 	public static boolean isFood(final ItemStack stack) {
@@ -339,7 +348,7 @@ public final class ZombieFoodSearchGoal extends Goal {
 	}
 
 	private static boolean canSearchNow(final Zombie zombie, final MobsThinkNowConfig config) {
-		return zombie.getType() == EntityType.ZOMBIE
+		return OverworldUndeadFamilies.usesGroundZombieTactics(zombie.getType())
 			&& isEnabled(config)
 			&& zombie.isAlive()
 			&& isBelowFoodThreshold(zombie.getHealth(), zombie.getMaxHealth());

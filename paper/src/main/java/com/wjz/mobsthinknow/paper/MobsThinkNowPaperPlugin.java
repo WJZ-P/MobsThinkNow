@@ -9,12 +9,15 @@ import com.wjz.mobsthinknow.paper.ai.PaperSkeletonProfile;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonLoadoutService;
 import com.wjz.mobsthinknow.paper.ai.PaperPounceCoordinator;
 import com.wjz.mobsthinknow.paper.ai.PaperProjectileThreatBoard;
+import com.wjz.mobsthinknow.paper.ai.PaperWebTrapService;
 import com.wjz.mobsthinknow.paper.ai.PaperShieldMemory;
 import com.wjz.mobsthinknow.paper.command.MtnPaperCommand;
 import com.wjz.mobsthinknow.paper.command.PaperRuntimeSelfTest;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadSettings;
+import com.wjz.mobsthinknow.shared.ai.SpiderWebTrapPlanner;
 import java.util.Objects;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -27,6 +30,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private PaperSettings settings;
 	private PaperProjectileEvasionSettings projectileEvasionSettings;
 	private PaperCoverSettings coverSettings;
+	private PaperWebTrapSettings webTrapSettings;
 	private PaperIntelligenceService intelligence;
 	private PaperSkeletonProfile skeletonProfile;
 	private PaperSkeletonLoadoutService skeletonLoadouts;
@@ -34,17 +38,27 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 	private PaperBlastReservationBoard blastReservations;
 	private PaperPounceCoordinator pounceCoordinator;
 	private PaperProjectileThreatBoard projectileThreats;
+	private PaperWebTrapService webTraps;
 	private PaperSquadSettings squadSettings;
 	private PaperSquadCoordinator squadCoordinator;
 	private PaperRuntimeSelfTest runtimeSelfTest;
 	private PaperMobLifecycle mobLifecycle;
+	private FileConfiguration strictConfiguration;
 
 	@Override
 	public void onEnable() {
 		this.saveDefaultConfig();
+		try {
+			this.strictConfiguration = PaperConfigurationLoader.load(
+				this.getDataFolder().toPath().resolve("config.yml")
+			);
+		} catch (Exception exception) {
+			throw new IllegalStateException("Unable to load a valid config.yml", exception);
+		}
 		this.settings = this.readSettings();
 		this.projectileEvasionSettings = this.readProjectileEvasionSettings();
 		this.coverSettings = this.readCoverSettings();
+		this.webTrapSettings = this.readWebTrapSettings();
 		this.squadSettings = this.readSquadSettings();
 		this.intelligence = new PaperIntelligenceService(this, this::settings, this.metrics);
 		this.skeletonProfile = new PaperSkeletonProfile(this);
@@ -57,7 +71,12 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		this.fireworkBolts = new PaperFireworkBoltService(this, this::settings, this.metrics);
 		this.blastReservations = new PaperBlastReservationBoard(this::settings, this.metrics);
 		this.pounceCoordinator = new PaperPounceCoordinator(this::settings, this.metrics);
-		this.projectileThreats = new PaperProjectileThreatBoard(this::projectileEvasionSettings, this.metrics);
+		this.projectileThreats = new PaperProjectileThreatBoard(
+			() -> this.settings.enabled(),
+			this::projectileEvasionSettings,
+			this.metrics
+		);
+		this.webTraps = new PaperWebTrapService(() -> this.settings.enabled(), this::webTrapSettings, this.metrics);
 		this.squadCoordinator = new PaperSquadCoordinator(
 			this,
 			() -> this.settings.enabled(),
@@ -71,6 +90,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.fireworkBolts,
 			this.skeletonLoadouts,
 			this.creeperFeintMemory,
+			this.webTraps,
 			this.metrics
 		);
 		this.mobLifecycle = new PaperMobLifecycle(
@@ -81,7 +101,9 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.skeletonLoadouts,
 			this::projectileEvasionSettings,
 			this::coverSettings,
+			this::webTrapSettings,
 			this.projectileThreats,
+			this.webTraps,
 			this.creeperFeintMemory,
 			this.blastReservations,
 			this.pounceCoordinator,
@@ -100,6 +122,7 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.blastReservations,
 			this.pounceCoordinator,
 			this.projectileThreats,
+			this.webTraps,
 			this.fireworkBolts,
 			this.squadCoordinator,
 			this.runtimeSelfTest,
@@ -112,8 +135,11 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		command.setExecutor(commandHandler);
 		command.setTabCompleter(commandHandler);
 		this.projectileThreats.start(this);
+		this.webTraps.start(this);
 		this.mobLifecycle.installLoadedEntities();
-		this.creeperFeintMemory.start(this);
+		if (this.creeperFeintsEnabled()) {
+			this.creeperFeintMemory.start(this);
+		}
 		this.fireworkBolts.start();
 		this.squadCoordinator.start();
 		this.getLogger().info(
@@ -134,6 +160,9 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		}
 		if (this.projectileThreats != null) {
 			this.projectileThreats.stop();
+		}
+		if (this.webTraps != null) {
+			this.webTraps.stop();
 		}
 		if (this.squadCoordinator != null) {
 			this.squadCoordinator.stop();
@@ -165,22 +194,66 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 		return this.coverSettings;
 	}
 
-	public void reloadPluginSettings() {
+	public PaperWebTrapSettings webTrapSettings() {
+		return this.webTrapSettings;
+	}
+
+	@Override
+	public FileConfiguration getConfig() {
+		return this.strictConfiguration != null ? this.strictConfiguration : super.getConfig();
+	}
+
+	public boolean reloadPluginSettings() {
+		FileConfiguration previous = this.strictConfiguration;
+		PaperSettings nextSettings;
+		PaperProjectileEvasionSettings nextProjectileEvasionSettings;
+		PaperCoverSettings nextCoverSettings;
+		PaperWebTrapSettings nextWebTrapSettings;
+		PaperSquadSettings nextSquadSettings;
+		try {
+			this.strictConfiguration = PaperConfigurationLoader.load(
+				this.getDataFolder().toPath().resolve("config.yml")
+			);
+			nextSettings = this.readSettings();
+			nextProjectileEvasionSettings = this.readProjectileEvasionSettings();
+			nextCoverSettings = this.readCoverSettings();
+			nextWebTrapSettings = this.readWebTrapSettings();
+			nextSquadSettings = this.readSquadSettings();
+		} catch (Exception exception) {
+			this.strictConfiguration = previous;
+			Throwable detail = exception.getCause() == null ? exception : exception.getCause();
+			this.getLogger().warning("Configuration reload rejected; keeping the previous runtime snapshot: "
+				+ detail.getMessage());
+			return false;
+		}
+
 		this.runtimeSelfTest.close();
-		this.reloadConfig();
-		this.settings = this.readSettings();
-		this.projectileEvasionSettings = this.readProjectileEvasionSettings();
-		this.coverSettings = this.readCoverSettings();
-		this.squadSettings = this.readSquadSettings();
+		this.creeperFeintMemory.stop();
+		this.settings = nextSettings;
+		this.projectileEvasionSettings = nextProjectileEvasionSettings;
+		this.coverSettings = nextCoverSettings;
+		this.webTrapSettings = nextWebTrapSettings;
+		this.squadSettings = nextSquadSettings;
 		this.damageMemory.clear();
 		this.shieldMemory.clear();
 		this.blastReservations.clear();
 		this.pounceCoordinator.clear();
 		this.projectileThreats.reconfigure();
+		this.webTraps.reconfigure();
 		this.fireworkBolts.stop();
 		this.fireworkBolts.start();
 		this.squadCoordinator.reconfigure();
 		this.mobLifecycle.refreshLoadedEntities();
+		if (this.creeperFeintsEnabled()) {
+			this.creeperFeintMemory.start(this);
+		}
+		return true;
+	}
+
+	private boolean creeperFeintsEnabled() {
+		return this.settings.enabled()
+			&& this.settings.creeperTacticsEnabled()
+			&& this.settings.creeperFeints().enabled();
 	}
 
 	private PaperProjectileEvasionSettings readProjectileEvasionSettings() {
@@ -211,6 +284,26 @@ public final class MobsThinkNowPaperPlugin extends JavaPlugin {
 			this.getConfig().getInt("skeleton.cover-peeking.maximum-shots-per-cover", 2),
 			this.getConfig().getInt("skeleton.cover-peeking.cycle-timeout-ticks", 240),
 			this.getConfig().getDouble("skeleton.cover-peeking.target-movement-tolerance", 6.0)
+		);
+	}
+
+	private PaperWebTrapSettings readWebTrapSettings() {
+		return PaperWebTrapSettings.validated(
+			this.getConfig().getBoolean("spider.tactics.web-traps.enabled", true),
+			this.getConfig().getInt(
+				"spider.tactics.web-traps.minimum-intelligence",
+				SpiderWebTrapPlanner.MINIMUM_INTELLIGENCE
+			),
+			this.getConfig().getInt(
+				"spider.tactics.web-traps.cooldown-ticks",
+				SpiderWebTrapPlanner.DEFAULT_COOLDOWN_TICKS
+			),
+			this.getConfig().getInt(
+				"spider.tactics.web-traps.lifetime-ticks",
+				SpiderWebTrapPlanner.DEFAULT_LIFETIME_TICKS
+			),
+			this.getConfig().getInt("spider.tactics.web-traps.maximum-active-per-world", 128),
+			this.getConfig().getBoolean("spider.tactics.web-traps.blast-containment", true)
 		);
 	}
 

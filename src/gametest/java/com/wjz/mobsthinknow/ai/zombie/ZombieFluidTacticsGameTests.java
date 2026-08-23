@@ -6,6 +6,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.tags.FluidTags;
@@ -375,6 +376,70 @@ public final class ZombieFluidTacticsGameTests implements CustomTestMethodInvoke
 			"The zombie kept its utility role after the player removed its fluid."
 		);
 		goal.stop();
+		helper.succeed();
+	}
+
+	@GameTest
+	public void fluidThreatMemoryRejectsSelfCreativeAndRemovedAttackers(final GameTestHelper helper) {
+		Zombie helperZombie = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		helperZombie.setNoAi(true);
+
+		ZombieFluidThreatMemory.record(helperZombie, helperZombie, helperZombie.position());
+		helper.assertTrue(
+			ZombieFluidThreatMemory.consume(helperZombie) == null,
+			"A helper accepted itself as a fluid-deployment threat."
+		);
+
+		Player creative = helper.makeMockPlayer(GameType.CREATIVE);
+		helper.getLevel().addFreshEntity(creative);
+		ZombieFluidThreatMemory.record(helperZombie, creative, helperZombie.position());
+		helper.assertTrue(
+			ZombieFluidThreatMemory.consume(helperZombie) == null,
+			"A creative player produced a combat fluid alert."
+		);
+
+		Villager removed = helper.spawn(EntityType.VILLAGER, 3, 1, 2);
+		removed.discard();
+		ZombieFluidThreatMemory.record(helperZombie, removed, helperZombie.position());
+		helper.assertTrue(
+			ZombieFluidThreatMemory.consume(helperZombie) == null,
+			"A removed attacker remained eligible for a fluid alert."
+		);
+
+		Villager unloadingAttacker = helper.spawn(EntityType.VILLAGER, 4, 1, 2);
+		ZombieFluidThreatMemory.record(helperZombie, unloadingAttacker, helperZombie.position());
+		ServerEntityEvents.ENTITY_UNLOAD.invoker().onUnload(helperZombie, helper.getLevel());
+		helper.assertTrue(
+			ZombieFluidThreatMemory.consume(helperZombie) == null,
+			"An unload event left the helper's strong fluid-memory key registered."
+		);
+
+		Villager targetUnloading = helper.spawn(EntityType.VILLAGER, 5, 1, 2);
+		ZombieFluidThreatMemory.record(helperZombie, targetUnloading, helperZombie.position());
+		ServerEntityEvents.ENTITY_UNLOAD.invoker().onUnload(targetUnloading, helper.getLevel());
+		helper.assertTrue(
+			ZombieFluidThreatMemory.consume(helperZombie) == null,
+			"An unloading non-zombie attacker remained consumable in fluid memory."
+		);
+		creative.discard();
+		helper.succeed();
+	}
+
+	@GameTest
+	public void unloadingBurningMemberClearsPendingFireSupportRequest(final GameTestHelper helper) {
+		Zombie waterCarrier = helper.spawn(EntityType.ZOMBIE, 2, 1, 2);
+		Zombie burningMember = helper.spawn(EntityType.ZOMBIE, 3, 1, 2);
+		waterCarrier.setNoAi(true);
+		burningMember.setNoAi(true);
+		burningMember.igniteForSeconds(10.0F);
+		ZombieFireSupportMemory.record(waterCarrier, burningMember);
+
+		ServerEntityEvents.ENTITY_UNLOAD.invoker().onUnload(burningMember, helper.getLevel());
+
+		helper.assertTrue(
+			ZombieFireSupportMemory.consume(waterCarrier) == null,
+			"Unloading the burning squadmate retained a strong fire-support request."
+		);
 		helper.succeed();
 	}
 

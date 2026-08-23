@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
@@ -40,5 +41,15 @@ class SkeletonShotSafetyTest {
 
 		// 12 格距离对应 4 tick 提前量；水平速度上限 0.35，因此最多前置 1.4 格。
 		assertEquals(13.4, end.x, EPSILON);
+	}
+
+	@Test
+	void explosiveDangerBoundsCoverCurrentAndPredictedTargetVolumes() {
+		AABB current = new AABB(-0.3, 0.0, -0.3, 0.3, 1.8, 0.3);
+		AABB swept = SkeletonShotSafety.sweptBlastBounds(current, new Vec3(4.0, 0.0, 1.0), 2.0);
+
+		assertTrue(swept.contains(new Vec3(0.0, 0.9, 0.0)));
+		assertTrue(swept.contains(new Vec3(4.0, 0.9, 1.0)));
+		assertTrue(swept.minX <= -2.3 && swept.maxX >= 6.3);
 	}
 }

@@ -5,7 +5,10 @@ import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.spider.SpiderCombatMath.ApproachMode;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
@@ -53,7 +56,7 @@ public final class SmartSpiderCombatGoal extends MeleeAttackGoal {
 			if (smartAiEnabled()) {
 				return false;
 			}
-			float brightness = this.spider.getLightLevelDependentMagicValue();
+			float brightness = this.currentBrightness();
 			if (brightness >= 0.5F && this.spider.getRandom().nextInt(100) == 0) {
 				this.spider.setTarget(null);
 				return false;
@@ -198,5 +201,19 @@ public final class SmartSpiderCombatGoal extends MeleeAttackGoal {
 	private static boolean smartAiEnabled() {
 		MobsThinkNowConfig config = ConfigManager.get();
 		return config.enabled && config.spiderAiEnabled;
+	}
+
+	/** Mirrors vanilla's deprecated entity helper through the supported level API. */
+	private float currentBrightness() {
+		BlockPos eye = BlockPos.containing(this.spider.getX(), this.spider.getEyeY(), this.spider.getZ());
+		if (!this.spider.level().hasChunk(
+			SectionPos.blockToSectionCoord(eye.getX()),
+			SectionPos.blockToSectionCoord(eye.getZ())
+		)) {
+			return 0.0F;
+		}
+		float brightness = this.spider.level().getMaxLocalRawBrightness(eye) / 15.0F;
+		float adjusted = brightness / (4.0F - 3.0F * brightness);
+		return Mth.lerp(this.spider.level().dimensionType().ambientLight(), adjusted, 1.0F);
 	}
 }

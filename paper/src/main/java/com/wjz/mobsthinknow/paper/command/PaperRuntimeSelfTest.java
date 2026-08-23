@@ -5,6 +5,7 @@ import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperCreeperFeintMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
 import com.wjz.mobsthinknow.paper.ai.PaperSkeletonLoadoutService;
+import com.wjz.mobsthinknow.paper.ai.PaperWebTrapService;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.paper.squad.PaperSquadDirective;
 import com.wjz.mobsthinknow.shared.squad.MixedSquadPlan;
@@ -14,9 +15,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
+import org.bukkit.GameRules;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -53,7 +56,9 @@ public final class PaperRuntimeSelfTest {
 		EntityType.SPIDER
 	);
 	private static final int STRUCTURE_VALIDATION_DELAY_TICKS = 25;
-	private static final int COMBAT_VALIDATION_DELAY_TICKS = 180;
+	// One cover cycle may consume 240 ticks. Include startup jitter, a failed movement cycle and the 60-tick
+	// search cooldown so the production goal gets one complete retry instead of producing a timing false negative.
+	private static final int COMBAT_VALIDATION_DELAY_TICKS = 420;
 	private static final int COMBAT_PROBE_SEARCH_RADIUS = 32;
 	private static final int[] COMBAT_PROBE_TARGET_OFFSETS = {2, 3};
 	private static final int[] FIREWORK_PROBE_TARGET_OFFSETS = {12, 10, 8};
@@ -65,6 +70,7 @@ public final class PaperRuntimeSelfTest {
 	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperSkeletonLoadoutService skeletonLoadouts;
 	private final PaperCreeperFeintMemory creeperFeints;
+	private final PaperWebTrapService webTraps;
 	private final PaperMetrics metrics;
 	private final List<Entity> activeEntities = new ArrayList<>();
 	private final List<Chunk> temporarilyForcedChunks = new ArrayList<>();
@@ -75,10 +81,13 @@ public final class PaperRuntimeSelfTest {
 	private BukkitTask creeperFeintProbeTask;
 	private BukkitTask projectileEvasionProbeTask;
 	private BukkitTask coverProbeTask;
+	private BukkitTask webTrapProbeTask;
 	private Zombie shieldProbeGuard;
 	private IronGolem shieldProbeAttacker;
 	private AbstractSkeleton fireworkProbeShooter;
 	private Skeleton naturalLoadoutProbe;
+	private Mob externalNameProbe;
+	private Component externalNameExpected;
 	private Creeper creeperFeintProbe;
 	private IronGolem creeperFeintTarget;
 	private Skeleton projectileEvasionProbe;
@@ -94,11 +103,26 @@ public final class PaperRuntimeSelfTest {
 	private double coverProbeMaximumDisplacement;
 	private long coverPeekShotBaseline;
 	private long coverReturnBaseline;
+	private Location webTrapProbeLocation;
+	private UUID webTrapObservedOwnerId;
+	private World webTrapRuleWorld;
+	private Boolean webTrapOriginalMobGriefing;
+	private boolean webTrapRuleDisabled;
+	private boolean webTrapProbePlaced;
+	private boolean webTrapProbeRestored;
+	private long webTrapObservedAt;
+	private long webTrapPlacedBaseline;
+	private long webTrapRestoredBaseline;
+	private Spider webTrapProbeSpider;
+	private IronGolem webTrapProbeTarget;
 	private boolean naturalLoadoutProbeExpected;
 	private long shieldProbeAttackAttempts;
 	private long nextShieldProbeAttackAt;
 	private long shieldDisableProbeAttempts;
 	private long creeperFeintProbeStartedAt;
+	private boolean creeperFeintCompletionObserved;
+	private boolean creeperFeintCooledAtCompletion;
+	private boolean creeperFeintMemoryReleased;
 
 	public PaperRuntimeSelfTest(
 		final Plugin plugin,
@@ -107,6 +131,7 @@ public final class PaperRuntimeSelfTest {
 		final PaperFireworkBoltService fireworkBolts,
 		final PaperSkeletonLoadoutService skeletonLoadouts,
 		final PaperCreeperFeintMemory creeperFeints,
+		final PaperWebTrapService webTraps,
 		final PaperMetrics metrics
 	) {
 		this.plugin = plugin;
@@ -115,6 +140,7 @@ public final class PaperRuntimeSelfTest {
 		this.fireworkBolts = fireworkBolts;
 		this.skeletonLoadouts = skeletonLoadouts;
 		this.creeperFeints = creeperFeints;
+		this.webTraps = webTraps;
 		this.metrics = metrics;
 	}
 
@@ -167,6 +193,12 @@ public final class PaperRuntimeSelfTest {
 					skeleton.getEquipment().setItemInMainHand(new ItemStack(Material.CROSSBOW));
 				}
 				this.intelligence.set(mob, 10);
+				if (mob instanceof Zombie && this.externalNameProbe == null) {
+					this.externalNameExpected = Component.text("MTN external-name probe");
+					mob.customName(this.externalNameExpected);
+					this.intelligence.ensure(mob);
+					this.externalNameProbe = mob;
+				}
 				this.squads.observeTarget(mob, target);
 				mob.setTarget(target);
 				mobs.add(mob);
@@ -179,6 +211,8 @@ public final class PaperRuntimeSelfTest {
 			this.spawnCreeperFeintProbe(world, anchor);
 			this.spawnProjectileEvasionProbe(world, anchor);
 			this.spawnCoverProbe(world, anchor);
+			this.spawnWebTrapProbe(world, anchor);
+			this.spawnMountedBreachProbe(world, anchor);
 			this.naturalLoadoutProbeExpected = this.skeletonLoadouts.guaranteesCrossbow(world.getDifficulty());
 			if (this.naturalLoadoutProbeExpected) {
 				this.spawnNaturalLoadoutProbe(world, anchor);
@@ -311,6 +345,10 @@ public final class PaperRuntimeSelfTest {
 			boolean naturalProbeEquipped = this.naturalLoadoutProbe != null
 				&& this.naturalLoadoutProbe.isValid()
 				&& this.naturalLoadoutProbe.getEquipment().getItemInMainHand().getType() == Material.CROSSBOW;
+			boolean externalNamePreserved = this.externalNameProbe != null
+				&& this.externalNameProbe.isValid()
+				&& this.externalNameExpected != null
+				&& this.externalNameExpected.equals(this.externalNameProbe.customName());
 			long weaponAttacks = current.weaponAttacks() - baseline.weaponAttacks();
 			long axeLeaps = current.axeLeaps() - baseline.axeLeaps();
 			long axeCriticals = current.axeCriticalAttacks() - baseline.axeCriticalAttacks();
@@ -333,10 +371,15 @@ public final class PaperRuntimeSelfTest {
 			PaperMetrics.CoverSnapshot cover = this.metrics.coverSnapshot();
 			long coverPeekShots = cover.peekShots() - this.coverPeekShotBaseline;
 			long coverReturns = cover.returnsCompleted() - this.coverReturnBaseline;
-			boolean feintProbeCooled = this.creeperFeintProbe != null
-				&& this.creeperFeintProbe.isValid()
-				&& !this.creeperFeintProbe.isIgnited()
-				&& this.creeperFeintProbe.getFuseTicks() == 0;
+			PaperMetrics.WebTrapSnapshot webs = this.metrics.webTrapSnapshot();
+			long webTrapsPlaced = webs.placed() - this.webTrapPlacedBaseline;
+			long webTrapsRestored = webs.restored() - this.webTrapRestoredBaseline;
+			int activeWebTraps = this.webTraps.activeCount();
+			boolean feintProbeCooled = this.creeperFeintCompletionObserved
+				&& this.creeperFeintCooledAtCompletion;
+			boolean feintMemoryReleased = this.creeperFeintMemoryReleased
+				&& this.creeperFeints.activeCount() == 0
+				&& this.creeperFeints.coolingCount() == 0;
 			if (!engaging
 				|| coordinatedShots <= 0L
 				|| crossbowCharges <= 0L
@@ -348,6 +391,7 @@ public final class PaperRuntimeSelfTest {
 				|| activeFireworkBolts != 0
 				|| this.naturalLoadoutProbeExpected
 					&& (naturalLoadoutInitializations != 1L || naturalCrossbows != 1L || !naturalProbeEquipped)
+				|| !externalNamePreserved
 				|| weaponAttacks <= 0L
 				|| axeLeaps <= 0L
 				|| mounted <= 0L
@@ -357,11 +401,17 @@ public final class PaperRuntimeSelfTest {
 				|| creeperFeints <= 0L
 				|| creeperFeintsCompleted <= 0L
 				|| !feintProbeCooled
+				|| !feintMemoryReleased
 				|| projectileDodges <= 0L
 				|| !this.projectileEvasionProbeDodged
 				|| coverPeekShots <= 0L
 				|| coverReturns <= 0L
-				|| this.coverProbeMaximumDisplacement < 0.75) {
+				|| this.coverProbeMaximumDisplacement < 0.75
+				|| webTrapsPlaced <= 0L
+				|| webTrapsRestored <= 0L
+				|| activeWebTraps != 0
+				|| !this.webTrapProbePlaced
+				|| !this.webTrapProbeRestored) {
 				this.report(
 					sender,
 					false,
@@ -378,6 +428,7 @@ public final class PaperRuntimeSelfTest {
 						+ ", naturalLoadoutInitializations=" + naturalLoadoutInitializations
 						+ ", naturalCrossbows=" + naturalCrossbows
 						+ ", naturalProbeEquipped=" + naturalProbeEquipped
+						+ ", externalNamePreserved=" + externalNamePreserved
 						+ ", weaponAttacks=" + weaponAttacks
 						+ ", axeLeaps=" + axeLeaps
 						+ ", axeCriticals=" + axeCriticals
@@ -397,13 +448,27 @@ public final class PaperRuntimeSelfTest {
 						+ ", creeperFeints=" + creeperFeints
 						+ ", creeperFeintsCompleted=" + creeperFeintsCompleted
 						+ ", feintProbeCooled=" + feintProbeCooled
+						+ ", feintMemoryReleased=" + feintMemoryReleased
 						+ ", feintProbe=" + this.creeperFeintProbeSnapshot()
 						+ ", projectileDodges=" + projectileDodges
 						+ ", projectileEvasionProbeDodged=" + this.projectileEvasionProbeDodged
 						+ ", projectileEvasionProbe=" + this.projectileEvasionProbeSnapshot()
 						+ ", coverPeekShots=" + coverPeekShots
 						+ ", coverReturns=" + coverReturns
+						+ ", coverSearches=" + cover.searches()
+						+ ", coverPlans=" + cover.plansFound()
+						+ ", coverCycles=" + cover.cyclesStarted()
+						+ ", coverPathFailures=" + cover.pathFailures()
+						+ ", coverAborts=" + cover.cyclesAborted()
 						+ ", coverProbe=" + this.coverProbeSnapshot()
+						+ ", webTrapsPlaced=" + webTrapsPlaced
+						+ ", webTrapsRestored=" + webTrapsRestored
+						+ ", webTrapWindups=" + webs.windups()
+						+ ", webTrapRejects=" + webs.placementRejects()
+						+ ", webTrapProtectionRejects=" + webs.protectionRejects()
+						+ ", webTrapOwnershipLosses=" + webs.ownershipLosses()
+						+ ", activeWebTraps=" + activeWebTraps
+						+ ", webTrapProbe=" + this.webTrapProbeSnapshot()
 						+ ", shieldDisableAttempts=" + this.shieldDisableProbeAttempts
 						+ ", shieldProbe=" + this.shieldProbeSnapshot()
 						+ ", carrierPathFailures="
@@ -427,6 +492,7 @@ public final class PaperRuntimeSelfTest {
 					+ ", naturalProbeExpected=" + this.naturalLoadoutProbeExpected
 					+ ", naturalLoadoutInitializations=" + naturalLoadoutInitializations
 					+ ", naturalCrossbows=" + naturalCrossbows
+					+ ", externalNamePreserved=" + externalNamePreserved
 					+ ", weaponAttacks=" + weaponAttacks
 					+ ", axeLeaps=" + axeLeaps
 					+ ", axeCriticals=" + axeCriticals
@@ -441,11 +507,16 @@ public final class PaperRuntimeSelfTest {
 					+ ", creeperFeints=" + creeperFeints
 					+ ", creeperFeintsCompleted=" + creeperFeintsCompleted
 					+ ", feintProbeCooled=" + feintProbeCooled
+					+ ", feintMemoryReleased=" + feintMemoryReleased
 					+ ", projectileDodges=" + projectileDodges
 					+ ", projectileEvasionProbeDodged=" + this.projectileEvasionProbeDodged
 					+ ", coverPeekShots=" + coverPeekShots
 					+ ", coverReturns=" + coverReturns
 					+ ", coverProbeMoved=" + this.coverProbeMaximumDisplacement
+					+ ", webTrapsPlaced=" + webTrapsPlaced
+					+ ", webTrapsRestored=" + webTrapsRestored
+					+ ", activeWebTraps=" + activeWebTraps
+					+ ", webTrapRollback=true"
 			);
 		} catch (RuntimeException exception) {
 			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -475,12 +546,27 @@ public final class PaperRuntimeSelfTest {
 			this.coverProbeTask.cancel();
 			this.coverProbeTask = null;
 		}
+		if (this.webTrapProbeTask != null) {
+			this.webTrapProbeTask.cancel();
+			this.webTrapProbeTask = null;
+		}
+		this.restoreWebTrapGameRule();
+		for (Entity entity : this.activeEntities) {
+			if (entity instanceof Spider spider) {
+				this.webTraps.releaseOwner(spider.getUniqueId(), false);
+			}
+		}
 		this.shieldProbeGuard = null;
 		this.shieldProbeAttacker = null;
 		this.fireworkProbeShooter = null;
 		this.naturalLoadoutProbe = null;
+		this.externalNameProbe = null;
+		this.externalNameExpected = null;
 		this.creeperFeintProbe = null;
 		this.creeperFeintTarget = null;
+		this.creeperFeintCompletionObserved = false;
+		this.creeperFeintCooledAtCompletion = false;
+		this.creeperFeintMemoryReleased = false;
 		this.projectileEvasionProbe = null;
 		this.projectileEvasionTarget = null;
 		this.projectileEvasionStart = null;
@@ -494,6 +580,18 @@ public final class PaperRuntimeSelfTest {
 		this.coverProbeMaximumDisplacement = 0.0;
 		this.coverPeekShotBaseline = 0L;
 		this.coverReturnBaseline = 0L;
+		this.webTrapProbeLocation = null;
+		this.webTrapObservedOwnerId = null;
+		this.webTrapRuleWorld = null;
+		this.webTrapOriginalMobGriefing = null;
+		this.webTrapRuleDisabled = false;
+		this.webTrapProbePlaced = false;
+		this.webTrapProbeRestored = false;
+		this.webTrapObservedAt = 0L;
+		this.webTrapPlacedBaseline = 0L;
+		this.webTrapRestoredBaseline = 0L;
+		this.webTrapProbeSpider = null;
+		this.webTrapProbeTarget = null;
 		this.naturalLoadoutProbeExpected = false;
 		this.shieldProbeAttackAttempts = 0L;
 		this.nextShieldProbeAttackAt = Long.MIN_VALUE;
@@ -673,6 +771,9 @@ public final class PaperRuntimeSelfTest {
 		this.activeEntities.add(breaker);
 
 		Zombie shieldGuard = (Zombie)world.spawnEntity(placement.zombie(), EntityType.ZOMBIE);
+		// This probe isolates the event-layer axe-disable contract. The separate shield probe above exercises the
+		// production goal; disabling AI here prevents an attack/guard phase change from resetting use time at tick 4.
+		shieldGuard.setAI(false);
 		shieldGuard.setShouldBurnInDay(false);
 		shieldGuard.setPersistent(false);
 		shieldGuard.setRemoveWhenFarAway(false);
@@ -681,6 +782,8 @@ public final class PaperRuntimeSelfTest {
 		setMaximumHealth(shieldGuard, 200.0);
 		this.intelligence.set(shieldGuard, 10);
 		shieldGuard.setTarget(breaker);
+		shieldGuard.lookAt(breaker);
+		shieldGuard.startUsingItem(org.bukkit.inventory.EquipmentSlot.OFF_HAND);
 		this.activeEntities.add(shieldGuard);
 		this.shieldDisableProbeAttempts = 0L;
 
@@ -693,6 +796,7 @@ public final class PaperRuntimeSelfTest {
 					&& shieldGuard.hasActiveItem()
 					&& shieldGuard.getActiveItemUsedTime() >= 10) {
 					this.shieldDisableProbeAttempts++;
+					shieldGuard.lookAt(breaker);
 					breaker.lookAt(shieldGuard);
 					breaker.attack(shieldGuard);
 				}
@@ -773,6 +877,9 @@ public final class PaperRuntimeSelfTest {
 		this.creeperFeintProbe = creeper;
 		this.creeperFeintTarget = target;
 		this.creeperFeintProbeStartedAt = Bukkit.getCurrentTick();
+		this.creeperFeintCompletionObserved = false;
+		this.creeperFeintCooledAtCompletion = false;
+		this.creeperFeintMemoryReleased = false;
 		this.activeEntities.add(creeper);
 
 		this.creeperFeintProbeTask = Bukkit.getScheduler().runTaskTimer(
@@ -783,11 +890,24 @@ public final class PaperRuntimeSelfTest {
 				}
 				faceEntity(target, creeper);
 				if (this.creeperFeints.completedSince(creeper, this.creeperFeintProbeStartedAt)) {
+					if (!this.creeperFeintCompletionObserved) {
+						this.creeperFeintCompletionObserved = true;
+						this.creeperFeintCooledAtCompletion = !creeper.isIgnited() && creeper.getFuseTicks() == 0;
+					}
+					// Keep neutralizing the entity until its real combat-unlock boundary. Cancelling this task after
+					// only one reset leaves NMS's already-selected swell Goal able to advance the fuse again.
+					creeper.setAI(false);
 					creeper.setTarget(null);
+					creeper.setIgnited(false);
+					creeper.setFuseTicks(0);
 					creeper.getPathfinder().stopPathfinding();
-					if (this.creeperFeintProbeTask != null) {
-						this.creeperFeintProbeTask.cancel();
-						this.creeperFeintProbeTask = null;
+					if (!this.creeperFeints.blocksCombatGoals(creeper)) {
+						this.creeperFeintMemoryReleased = true;
+						creeper.remove();
+						if (this.creeperFeintProbeTask != null) {
+							this.creeperFeintProbeTask.cancel();
+							this.creeperFeintProbeTask = null;
+						}
 					}
 				}
 			},
@@ -801,6 +921,11 @@ public final class PaperRuntimeSelfTest {
 		IronGolem target = this.creeperFeintTarget;
 		if (creeper == null || target == null) {
 			return "missing";
+		}
+		if (this.creeperFeintMemoryReleased) {
+			return "completionObserved:" + this.creeperFeintCompletionObserved
+				+ ",cooledAtCompletion:" + this.creeperFeintCooledAtCompletion
+				+ ",memoryReleased:true,removedAfterRelease:" + !creeper.isValid();
 		}
 		org.bukkit.util.Vector targetFacing = target.getEyeLocation().getDirection().setY(0.0);
 		org.bukkit.util.Vector towardCreeper = creeper.getLocation().toVector()
@@ -817,7 +942,6 @@ public final class PaperRuntimeSelfTest {
 			+ ",watchingDot:" + watchingDot;
 	}
 
-	/** 由 Paper 自己发出 NATURAL 出生事件；第二次显式初始化必须被 PDC 标记幂等拒绝。 */
 	/**
 	 * Fires real Paper arrows down a clear ten-block lane at an IQ-10 bow skeleton. The probe records actual lateral
 	 * displacement, so a metric increment without visible movement does not satisfy the end-to-end assertion.
@@ -971,9 +1095,12 @@ public final class PaperRuntimeSelfTest {
 		this.coverProbeTask = Bukkit.getScheduler().runTaskTimer(
 			this.plugin,
 			() -> {
-				if (!skeleton.isValid() || this.coverProbeStart == null) {
+				if (!skeleton.isValid() || !target.isValid() || this.coverProbeStart == null) {
 					return;
 				}
+				// Vanilla target selection may clear a stationary synthetic target after a cycle; keep the fixture's
+				// threat stable so this probe measures the production cover state machine rather than target churn.
+				skeleton.setTarget(target);
 				double displacement = skeleton.getLocation().toVector()
 					.subtract(this.coverProbeStart.toVector())
 					.length();
@@ -995,12 +1122,187 @@ public final class PaperRuntimeSelfTest {
 				+ ",maximumDisplacement:" + this.coverProbeMaximumDisplacement;
 	}
 
+	/** Isolate a real production web Goal from carrier/pounce competition, then exercise owner-scoped rollback. */
+	private void spawnWebTrapProbe(final World world, final Location squadAnchor) {
+		CombatProbePlacement placement = findCombatProbePlacement(
+			world,
+			squadAnchor.getBlockX() + 380,
+			squadAnchor.getBlockZ(),
+			new int[] {9}
+		);
+		if (placement == null) {
+			throw new IllegalStateException("no flat collision-free web-trap probe lane found");
+		}
+		this.forceChunk(placement.zombie());
+		this.forceChunk(placement.target());
+
+		IronGolem target = (IronGolem)world.spawnEntity(placement.target(), EntityType.IRON_GOLEM);
+		target.setAI(false);
+		target.setPlayerCreated(true);
+		target.setPersistent(false);
+		target.setRemoveWhenFarAway(false);
+		setMaximumHealth(target, 1000.0);
+		this.activeEntities.add(target);
+
+		Spider spider = (Spider)world.spawnEntity(placement.zombie(), EntityType.SPIDER);
+		spider.setInvulnerable(true);
+		spider.setPersistent(false);
+		spider.setRemoveWhenFarAway(false);
+		// Keep the nine-block lane outside pounce range; zero walking speed prevents lower-priority combat from
+		// closing that gap before the production web wind-up owns MOVE/LOOK for eight ticks.
+		spider.getAttribute(Attribute.MOVEMENT_SPEED).setBaseValue(0.0);
+		this.intelligence.set(spider, 10);
+		spider.setTarget(target);
+		this.webTrapProbeSpider = spider;
+		this.webTrapProbeTarget = target;
+		this.activeEntities.add(spider);
+
+		PaperMetrics.WebTrapSnapshot baseline = this.metrics.webTrapSnapshot();
+		this.webTrapProbeLocation = null;
+		this.webTrapObservedOwnerId = null;
+		this.webTrapRuleWorld = null;
+		this.webTrapOriginalMobGriefing = null;
+		this.webTrapRuleDisabled = false;
+		this.webTrapProbePlaced = false;
+		this.webTrapProbeRestored = false;
+		this.webTrapObservedAt = 0L;
+		this.webTrapPlacedBaseline = baseline.placed();
+		this.webTrapRestoredBaseline = baseline.restored();
+		this.webTrapProbeTask = Bukkit.getScheduler().runTaskTimer(
+			this.plugin,
+			() -> {
+				long now = Bukkit.getCurrentTick();
+				if (!this.webTrapProbePlaced) {
+					Spider candidate = this.webTrapProbeSpider;
+					if (candidate != null && candidate.isValid()) {
+						candidate.setTarget(this.webTrapProbeTarget);
+						var owned = this.webTraps.ownedTrap(candidate.getUniqueId());
+						if (owned.isPresent()) {
+							this.webTrapProbePlaced = true;
+							this.webTrapProbeLocation = owned.orElseThrow().clone();
+							this.webTrapObservedOwnerId = candidate.getUniqueId();
+							this.webTrapRuleWorld = candidate.getWorld();
+							this.webTrapOriginalMobGriefing = candidate.getWorld()
+								.getGameRuleValue(GameRules.MOB_GRIEFING);
+							this.webTrapObservedAt = Bukkit.getCurrentTick();
+						}
+					}
+					return;
+				}
+				if (!this.webTrapProbeRestored && now - this.webTrapObservedAt >= 10L) {
+					if (!this.webTrapRuleDisabled && this.webTrapRuleWorld != null) {
+						this.webTrapRuleWorld.setGameRule(GameRules.MOB_GRIEFING, false);
+						this.webTrapRuleDisabled = true;
+						return;
+					}
+					this.webTrapProbeRestored = this.webTrapObservedOwnerId != null
+						&& this.webTrapProbeLocation != null
+						&& this.webTraps.ownedTrap(this.webTrapObservedOwnerId).isEmpty()
+						&& this.webTrapProbeLocation.getBlock().getType() != Material.COBWEB;
+					if (this.webTrapProbeRestored) {
+						// The extended cover retry window outlives a high-IQ spider's minimum web cooldown. After the
+						// dedicated owner proves rollback, freeze every fixture spider so the combined-arms sample cannot
+						// create an unrelated late trap just before the terminal active-count assertion.
+						this.activeEntities.stream()
+							.filter(Spider.class::isInstance)
+							.map(Spider.class::cast)
+							.filter(Entity::isValid)
+							.forEach(fixtureSpider -> this.intelligence.set(fixtureSpider, 1));
+						this.restoreWebTrapGameRule();
+						if (this.webTrapProbeTask != null) {
+							this.webTrapProbeTask.cancel();
+							this.webTrapProbeTask = null;
+						}
+					}
+				}
+			},
+			1L,
+			1L
+		);
+	}
+
+	/** A two-member isolated squad proves the assigned spider/creeper pair reaches an actual mount. */
+	private void spawnMountedBreachProbe(final World world, final Location squadAnchor) {
+		CombatProbePlacement placement = findCombatProbePlacement(
+			world,
+			squadAnchor.getBlockX() + 420,
+			squadAnchor.getBlockZ(),
+			new int[] {12}
+		);
+		if (placement == null) {
+			throw new IllegalStateException("no flat collision-free mounted-breach probe lane found");
+		}
+		org.bukkit.util.Vector forward = placement.target().toVector()
+			.subtract(placement.zombie().toVector())
+			.setY(0.0)
+			.normalize();
+		org.bukkit.util.Vector right = new org.bukkit.util.Vector(-forward.getZ(), 0.0, forward.getX());
+		Location payloadLocation = placement.zombie().clone().add(right.multiply(1.5));
+		payloadLocation.setY(world.getHighestBlockYAt(payloadLocation) + 1.0);
+		this.forceChunk(placement.zombie());
+		this.forceChunk(payloadLocation);
+		this.forceChunk(placement.target());
+
+		IronGolem target = (IronGolem)world.spawnEntity(placement.target(), EntityType.IRON_GOLEM);
+		target.setAI(false);
+		target.setPlayerCreated(true);
+		target.setPersistent(false);
+		target.setRemoveWhenFarAway(false);
+		setMaximumHealth(target, 1000.0);
+		this.activeEntities.add(target);
+
+		Spider spider = (Spider)world.spawnEntity(placement.zombie(), EntityType.SPIDER);
+		spider.setInvulnerable(true);
+		spider.setPersistent(false);
+		spider.setRemoveWhenFarAway(false);
+		// Mounted-breach itself has no IQ gate; keep this probe below the web threshold so its sole job is transport.
+		this.intelligence.set(spider, 1);
+		spider.setTarget(target);
+		this.squads.observeTarget(spider, target);
+		this.activeEntities.add(spider);
+
+		Creeper creeper = (Creeper)world.spawnEntity(payloadLocation, EntityType.CREEPER);
+		creeper.setInvulnerable(true);
+		creeper.setExplosionRadius(0);
+		creeper.setMaxFuseTicks(200);
+		creeper.setPersistent(false);
+		creeper.setRemoveWhenFarAway(false);
+		this.intelligence.set(creeper, 10);
+		creeper.setTarget(target);
+		this.squads.observeTarget(creeper, target);
+		this.activeEntities.add(creeper);
+	}
+
+	private String webTrapProbeSnapshot() {
+		return "spiderValid:" + (this.webTrapProbeSpider != null && this.webTrapProbeSpider.isValid())
+			+ ",targetValid:" + (this.webTrapProbeTarget != null && this.webTrapProbeTarget.isValid())
+			+ ",placed:" + this.webTrapProbePlaced
+			+ ",restored:" + this.webTrapProbeRestored
+			+ ",location:" + (this.webTrapProbeLocation == null
+				? "none"
+				: this.webTrapProbeLocation.getBlockX() + "/"
+					+ this.webTrapProbeLocation.getBlockY() + "/"
+					+ this.webTrapProbeLocation.getBlockZ())
+			+ ",owner:" + (this.webTrapObservedOwnerId == null ? "none" : this.webTrapObservedOwnerId);
+	}
+
+	private void restoreWebTrapGameRule() {
+		if (this.webTrapRuleDisabled && this.webTrapRuleWorld != null) {
+			this.webTrapRuleWorld.setGameRule(
+				GameRules.MOB_GRIEFING,
+				Boolean.TRUE.equals(this.webTrapOriginalMobGriefing)
+			);
+		}
+		this.webTrapRuleDisabled = false;
+	}
+
 	private void setTemporaryBlock(final Block block, final Material material) {
 		String key = block.getWorld().getUID() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
 		this.temporaryBlocks.computeIfAbsent(key, ignored -> block.getState());
 		block.setType(material, false);
 	}
 
+	/** 由 Paper 自己发出 NATURAL 出生事件；第二次显式初始化必须被 PDC 标记幂等拒绝。 */
 	private void spawnNaturalLoadoutProbe(final World world, final Location squadAnchor) {
 		Location location = safeSurface(
 			world,

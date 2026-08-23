@@ -66,15 +66,15 @@ zombie:
       # A real successful block keeps the shield raised for this many extra ticks before counterattacking.
       minimum-delay-ticks: 2
       maximum-delay-ticks: 4
-      strike-window-ticks: 10
-      block-signal-memory-ticks: 20
-      block:
-        # Paper exposes the use-item pose for mobs, while this plugin supplies the player-style damage resolution.
-        minimum-use-ticks: 5
-        # Normalized horizontal dot product: 0.0 means the front 180-degree hemisphere.
-        minimum-facing-dot: 0.0
-      # A frontal axe hit deals normal damage and keeps this guard from raising the shield again.
-      axe-disable-seconds: 3.0
+    strike-window-ticks: 10
+    block-signal-memory-ticks: 20
+    block:
+      # Paper exposes the use-item pose for mobs, while this plugin supplies the player-style damage resolution.
+      minimum-use-ticks: 5
+      # Normalized horizontal dot product: 0.0 means the front 180-degree hemisphere.
+      minimum-facing-dot: 0.0
+    # A frontal axe hit deals normal damage and keeps this guard from raising the shield again.
+    axe-disable-seconds: 3.0
 
 skeleton:
   crossbow:
@@ -184,6 +184,16 @@ spider:
     pounce-stagger-ticks: 10
     pounce-lease-ticks: 20
     maximum-air-ticks: 40
+    web-traps:
+      # IQ 7+ spiders predict one of five target lanes; every lane probes at most four vertical blocks.
+      enabled: true
+      minimum-intelligence: 7
+      cooldown-ticks: 240
+      lifetime-ticks: 160
+      # Temporary blocks are indexed and restored per world; this is a hard density and memory bound.
+      maximum-active-per-world: 128
+      # A new primed squad creeper may request one emergency web on the target's blast escape lane.
+      blast-containment: true
     # In MOUNTED_BREACH/COMBINED_ARMS squads a spider can carry an assigned creeper.
     mounted-breach: true
     maximum-carrier-speed: 1.35

@@ -3,16 +3,13 @@ package com.wjz.mobsthinknow.paper.ai;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
 import com.wjz.mobsthinknow.shared.ai.IntelligenceDistribution;
+import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.NamespacedKey;
-import org.bukkit.entity.AbstractSkeleton;
-import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Mob;
-import org.bukkit.entity.Spider;
-import org.bukkit.entity.Zombie;
 import org.bukkit.entity.EntityType;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
@@ -37,10 +34,22 @@ public final class PaperIntelligenceService {
 	}
 
 	public boolean supports(final Mob mob) {
-		return mob instanceof Zombie
-			|| mob instanceof AbstractSkeleton
-			|| mob instanceof Creeper
-			|| (mob instanceof Spider && mob.getType() == EntityType.SPIDER);
+		return isSupportedType(mob.getType());
+	}
+
+	/** Explicit type boundary avoids pulling ZombifiedPiglin into overworld squads through Bukkit's Zombie API. */
+	public static boolean isSupportedType(final EntityType type) {
+		return type == EntityType.ZOMBIE
+			|| type == EntityType.HUSK
+			|| type == EntityType.DROWNED
+			|| type == EntityType.ZOMBIE_VILLAGER
+			|| type == EntityType.SKELETON
+			|| type == EntityType.STRAY
+			|| type == EntityType.BOGGED
+			|| type == EntityType.PARCHED
+			|| type == EntityType.WITHER_SKELETON
+			|| type == EntityType.CREEPER
+			|| type == EntityType.SPIDER;
 	}
 
 	public int ensure(final Mob mob) {
@@ -51,10 +60,11 @@ public final class PaperIntelligenceService {
 		Integer stored = data.get(this.intelligenceKey, PersistentDataType.INTEGER);
 		PaperSettings config = this.settings.get();
 		if (!config.enabled()) {
-			this.clearOwnedName(mob, data);
-			return stored == null
+			int fallback = stored == null
 				? IntelligenceDistribution.MINIMUM
 				: IntelligenceDistribution.clamp(stored);
+			this.clearOwnedName(mob, data, fallback);
+			return fallback;
 		}
 		int intelligence;
 		if (stored == null) {
@@ -75,7 +85,18 @@ public final class PaperIntelligenceService {
 	}
 
 	public int get(final Mob mob) {
-		return this.ensure(mob);
+		if (!this.supports(mob)) {
+			return IntelligenceDistribution.MINIMUM;
+		}
+		Integer stored = mob.getPersistentDataContainer().get(this.intelligenceKey, PersistentDataType.INTEGER);
+		if (stored == null) {
+			return this.ensure(mob);
+		}
+		int clamped = IntelligenceDistribution.clamp(stored);
+		if (stored != clamped) {
+			return this.ensure(mob);
+		}
+		return clamped;
 	}
 
 	public void set(final Mob mob, final int intelligence) {
@@ -89,26 +110,81 @@ public final class PaperIntelligenceService {
 
 	private void refreshOwnedName(final Mob mob, final int intelligence, final PaperSettings config) {
 		PersistentDataContainer data = mob.getPersistentDataContainer();
-		boolean ownsName = data.has(this.ownedNameKey, PersistentDataType.BYTE);
+		NameOwnership ownership = this.nameOwnership(mob, data, intelligence);
 		if (!config.enabled() || !config.showIntelligenceNames()) {
-			this.clearOwnedName(mob, data);
+			if (ownership == NameOwnership.OWNED) {
+				mob.customName(null);
+				mob.setCustomNameVisible(false);
+			}
+			data.remove(this.ownedNameKey);
 			return;
 		}
-		if (mob.customName() != null && !ownsName) {
+		if (ownership == NameOwnership.RELINQUISHED
+			|| mob.customName() != null && ownership != NameOwnership.OWNED) {
 			return;
 		}
-		Component name = Component.translatable(mob.getType().translationKey())
-			.append(Component.text(" [IQ " + intelligence + "]", intelligenceColor(intelligence)));
-		mob.customName(name);
+		mob.customName(syntheticName(mob.getType(), intelligence));
 		mob.setCustomNameVisible(false);
-		data.set(this.ownedNameKey, PersistentDataType.BYTE, (byte)1);
+		data.set(this.ownedNameKey, PersistentDataType.INTEGER, intelligence);
 	}
 
-	private void clearOwnedName(final Mob mob, final PersistentDataContainer data) {
-		if (data.has(this.ownedNameKey, PersistentDataType.BYTE)) {
+	private void clearOwnedName(final Mob mob, final PersistentDataContainer data, final int fallbackIntelligence) {
+		if (this.nameOwnership(mob, data, fallbackIntelligence) == NameOwnership.OWNED) {
 			mob.customName(null);
-			data.remove(this.ownedNameKey);
+			mob.setCustomNameVisible(false);
 		}
+		data.remove(this.ownedNameKey);
+	}
+
+	private NameOwnership nameOwnership(
+		final Mob mob,
+		final PersistentDataContainer data,
+		final int fallbackIntelligence
+	) {
+		Integer generatedIntelligence = data.get(this.ownedNameKey, PersistentDataType.INTEGER);
+		if (generatedIntelligence != null) {
+			if (generatedIntelligence < IntelligenceDistribution.MINIMUM) {
+				return NameOwnership.RELINQUISHED;
+			}
+			if (matchesSyntheticName(mob.customName(), mob.getType(), generatedIntelligence)) {
+				return NameOwnership.OWNED;
+			}
+			// Zero is a persistent opt-out: an external rename/clear remains authoritative on future IQ reads.
+			data.set(this.ownedNameKey, PersistentDataType.INTEGER, 0);
+			return NameOwnership.RELINQUISHED;
+		}
+		if (!data.has(this.ownedNameKey, PersistentDataType.BYTE)) {
+			return NameOwnership.NONE;
+		}
+		// v0.1.0-alpha.1 stored only a byte marker. Accept any generated IQ variant once, then migrate on refresh.
+		for (int candidate = IntelligenceDistribution.MINIMUM; candidate <= IntelligenceDistribution.MAXIMUM; candidate++) {
+			if (matchesSyntheticName(mob.customName(), mob.getType(), candidate)) {
+				return NameOwnership.OWNED;
+			}
+		}
+		if (matchesSyntheticName(mob.customName(), mob.getType(), fallbackIntelligence)) {
+			return NameOwnership.OWNED;
+		}
+		data.set(this.ownedNameKey, PersistentDataType.INTEGER, 0);
+		return NameOwnership.RELINQUISHED;
+	}
+
+	static Component syntheticName(final EntityType type, final int intelligence) {
+		return syntheticName(type.translationKey(), intelligence);
+	}
+
+	static Component syntheticName(final String translationKey, final int intelligence) {
+		int clamped = IntelligenceDistribution.clamp(intelligence);
+		return Component.translatable(translationKey)
+			.append(Component.text(" [IQ " + clamped + "]", intelligenceColor(clamped)));
+	}
+
+	static boolean matchesSyntheticName(final Component current, final EntityType type, final int intelligence) {
+		return Objects.equals(current, syntheticName(type, intelligence));
+	}
+
+	static boolean matchesSyntheticName(final Component current, final String translationKey, final int intelligence) {
+		return Objects.equals(current, syntheticName(translationKey, intelligence));
 	}
 
 	private static NamedTextColor intelligenceColor(final int intelligence) {
@@ -119,6 +195,12 @@ public final class PaperIntelligenceService {
 			return NamedTextColor.YELLOW;
 		}
 		return NamedTextColor.GRAY;
+	}
+
+	private enum NameOwnership {
+		NONE,
+		OWNED,
+		RELINQUISHED
 	}
 
 }

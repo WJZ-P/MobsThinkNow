@@ -25,7 +25,8 @@ MobsThinkNow/
 
 ### 持久智力
 
-- 僵尸家族、骷髅家族、苦力怕和蜘蛛使用 PDC 保存 IQ `1～10`；
+- 僵尸、尸壳、溺尸、僵尸村民，五种 `AbstractSkeleton`（含干尸与凋灵骷髅）、普通苦力怕和普通蜘蛛使用 PDC 保存 IQ `1～10`；
+- 类型边界按 `EntityType` 白名单判断；Bukkit API 中继承 `Zombie` 的僵尸猪灵，以及洞穴蜘蛛等近似类型不会因 Java 继承关系误入主世界混编小队；
 - 简单难度范围 `1～7`、普通 `2～9`、困难 `4～10`，与 Fabric 的对应怪物分布共用
   `IntelligenceDistribution`；
 - 插件只为原本没有自定义名字的实体添加 IQ，且通过第二个 PDC 标记确认名字所有权。命名牌或其他插件
@@ -177,6 +178,32 @@ MobsThinkNow/
   安装自己的战斗 Goal。配置关闭、插件卸载或实体离开世界前会移除自定义 Goal 并恢复保存对象，避免
   破坏其他插件的 GoalSelector 状态。
 
+### 蜘蛛预测临时蛛网
+
+- IQ 至少 7、目标可见且距离 `3.25～9` 格的落地蜘蛛会复用共享 `SpiderWebTrapPlanner`。移动目标按真实
+  水平速度提前，静止目标只沿视线前探不到一格；结果固定为中线、左右闪避道和前后修正 5 个中心，
+  每处最多检查 `0/-1/+1/-2` 四层，因此一次决策至多读取 20 个候选方块；
+- 候选必须有安全实体支撑、与蜘蛛碰撞箱分离、位于世界边界内，且蜘蛛眼睛到落点的吐丝射线无阻挡。
+  天然/玩家蛛网周围不会继续堆放；动作先播放叫声并抬身，直到第 8 tick 才真实放置，玩家可读也可打断；
+- 放置同时服从 `mobGriefing`，并发送可取消的 `EntityChangeBlockEvent`，领地或保护插件可在公共 API
+  边界阻止修改。默认每世界最多 128 张，每只蜘蛛的普通冷却约 12 秒，智力与难度只做小幅压缩；读取
+  配置时冷却夹在 `80～600 tick`、寿命夹在 `60～400 tick`，与 Fabric 的公开配置边界一致；
+- `PaperWebTrapService` 只登记自己成功写入的方块。玩家/插件放置、破坏、燃烧、淡化、爆炸和活塞事件
+  会先丢弃所有权，随后到期任务不会覆盖新方块；正常过期、区块/世界卸载、配置关闭和插件停用则恢复
+  原始 `BlockData`。到期队列每 tick 最多处理 64 项，绝不为回滚强制加载已卸载区块；
+- 对不发送上述事件的直接命令/插件改块，下一次所有权查询或同格候选检查也会核对真实方块并惰性清除
+  旧登记，既不覆盖外部结果，也不会让幽灵登记长期占用世界容量；
+- 玩家频繁拆除产生的过期队列节点会在超过“活跃登记四倍或 128 项”时从当前所有权表重建，因而历史
+  节点也有硬性压缩边界，不会靠等待 8 秒自然过期来掩盖内存增长；
+- 重载若降低每世界上限，会按最早到期顺序立即恢复超额蛛网；关闭顶层开关或蛛网子开关也在重载调用
+  内同步回滚，不等待下一次调度 tick，配置边界与活跃登记始终一致；
+- 管理员在运行中把某世界的 `mobGriefing` 切为 `false` 时，该世界现有临时蛛网会在下一 tick 全部恢复，
+  不只阻止后续新放置；
+- 同队苦力怕进入真实引信后，蜘蛛会从至多 20 名小队快照中选择引信进度最高者，排除假引爆，再用共享
+  爆心预测封住目标的外逃线。每个新引信至多绕过一次普通冷却，不会因同一苦力怕反复刷网；
+- `/mtnpaper status` 分别显示 windup、成功放置、恢复、地形/保护拒绝、所有权丢失、爆心封锁与当前活跃
+  数量，便于在生产服确认密度上限和保护插件联动。
+
 ### 蜘蛛—苦力怕机动爆破
 
 - `MixedSquadTransportPlanner` 在共享层为 `MOUNTED_BREACH`/`COMBINED_ARMS` 队伍做稳定的一对一
@@ -208,16 +235,31 @@ MobsThinkNow/
   访问中心及周围八个桶，默认单次最多检查 64 个原始候选、接收 20 人，因此不存在全服成员两两互扫；
 - 同队成员互相设为目标时事件会被取消；可配置阻止普通近战和弹射物误伤。苦力怕的实体爆炸伤害特意
   保留，避免混编小队获得无提示免伤，也要求爆破兵继续遵守已有爆点预约；
-- `/mtnpaper inspect` 会显示最近怪物的小队 ID、任期、首领、阶段、方案和职责；`status` 会显示活跃
+- `/mtnpaper inspect` 会显示最近怪物的小队 ID、任期、首领、阶段、方案和职责；若最近目标是蜘蛛还会
+  显示它当前登记蛛网的绝对方块坐标。`status` 会显示活跃
   小队、成员、招募、换届、目标共享、有界候选检查和阵位寻路失败计数。
 
 ## 构建与安装
 
-需要 JDK 25：
+wrapper 可由 JDK 17 或更高版本启动。仓库已提交 Daemon JVM 25 标准化文件并使用 Foojay toolchain
+resolver；联网环境会自动检测/获取 JDK 25，完全离线时需预先安装：
 
 ```powershell
 ./gradlew.bat :paper:build
 ```
+
+Gradle 9.5.1 wrapper 还固定官方分发 SHA-256；构建工具本身先通过完整性校验，再解析插件和源码。
+配置缓存与本地构建缓存默认开启，Paper JUnit、归档校验和真实 `paperSmokeTest` 均已验证可存储；排障时
+可临时传入 `--no-configuration-cache --no-build-cache`。
+
+`paperSmokeTest` 额外把同一 Gradle JDK 25 launcher 显式交给 Python 隔离运行器，环境变量中的旧
+`JAVA_HOME` 不会污染真实 Paper 子进程。
+
+`:paper:check` 与根项目 `check` 都会直接检查最终二进制/源码归档中的共享类与源码全集、入口、元数据、许可证和平台 API
+隔离；根项目还检查 Maven/Gradle 发布元数据不再引用未发布的 `com.wjz:shared`。共享模块若只留在开发
+类路径、没有进入可分发 JAR，构建会立刻失败。
+Paper 检查还会逐一比对全部插件源码读取路径与默认 YAML 叶节点，任一重复、缺失、闲置、缩进到错误
+父节点，或代码字面 fallback 与 YAML 默认值不一致的字段都会失败；这也覆盖盾反击配置曾被误缩进到 `counter` 下的问题。
 
 产物：
 
@@ -237,12 +279,21 @@ paper/build/libs/mobsthinknow-paper-0.1.0-alpha.1.jar
 ```
 
 任务先构建当前插件，再调用 `tools/paper_smoke_test.py`。运行器固定 Paper `26.1.2 build 74` 及其
-SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/paper-smoke/` 复用服务端运行库，但每次
-重建专属超平坦世界、清除插件配置、选择空闲的 `127.0.0.1` 端口。它等待 `Done` 后才发送
-`mtnpaper selftest`，要求结构与行为 PASS，再发送 `status`、`stop` 并检查 Java 退出码。启动、自测和停服
+SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `.gradle/paper-smoke/` 跨 `clean` 复用服务端运行库，但每次
+重建专属超平坦世界、清除插件配置、选择空闲的 `127.0.0.1` 端口。它等待 `Done` 后先后写入语法损坏与重复键 YAML，验证两次重载都被拒绝且旧快照
+继续运行；再依次写入总开关关闭/开启配置并各发送一次 `mtnpaper reload`，从 `status` 核对四个按需调度器确实停下并重新启动；随后执行 `mtnpaper selftest`，要求结构与行为
+PASS，最后发送 `status`、`stop` 并检查 Java 退出码。启动、禁用、热重载恢复、自测和停服
 都有独立超时，异常路径也会先请求正常停服再强制兜底；完整控制台记录保存在
-`build/paper-smoke/paper-smoke.log`。可设置 `PYTHON` 指定 Python 3 可执行文件，也可直接运行脚本并用
+`.gradle/paper-smoke/paper-smoke.log`。可设置 `PYTHON` 指定 Python 3 可执行文件，也可直接运行脚本并用
 `--offline`、`--paper-jar`、`--java`、`--keep-world` 调整本地验证环境。
+
+需要同进程耐久回归时可运行 `./gradlew.bat paperSmokeTest -PpaperSmokeSelftestRuns=N`（`N=1～100`）。
+每轮自测 PASS 后，运行器会在最多 20 次服务端命令 tick 内轮询 `status`，确认实体、投射物、烟花弹、佯爆记忆、爆点/跳扑预约、蛛网、
+小队和伤害/盾牌邮箱全部回到零，再调度下一轮；这既容纳实体移除事件晚一 tick 收敛，也能发现单次重启 smoke 看不到的跨轮累积泄漏。
+
+Paper 配置使用严格 UTF-8 YAML 解析；文件超过一百万字节会在读入内存前被拒绝，解析器还会拒绝重复键、递归键、过深嵌套、超量别名和超过一百万码点的异常输入。
+`/mtnpaper reload` 会先构造并校验全部不可变设置快照，只有全部成功才一次性切换；语法损坏、读盘失败或构造异常会报告失败并继续使用上一份运行快照，
+不会把空配置或半更新状态发布给 AI tick。
 
 ## 命令
 
@@ -253,29 +304,34 @@ SHA-256，首次运行才从 Paper 官方对象地址下载；随后在 `build/p
 | `/mtnpaper reload` | `mobsthinknow.admin` | 重载、校验配置并刷新已加载实体 |
 | `/mtnpaper setiq <1-10>` | `mobsthinknow.admin` | 修改附近受支持怪物的持久 IQ |
 | `/mtnpaper spawn <type> [1-100]` | `mobsthinknow.admin` | 在玩家前方事务式批量生成指定 Paper 智能怪物 |
-| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 10 种受支持怪物/变种，并追加剑手、斧手、盾卫、弩手与烟花弩手预设 |
+| `/mtnpaper spawnall` | `mobsthinknow.admin` | 各生成一只当前全部 11 种受支持怪物/变种，并追加剑手、斧手、盾卫、弩手与烟花弩手预设 |
 | `/mtnpaper assault [1-8]` | `mobsthinknow.admin` | 每组生成 IQ 10 僵尸、骷髅、苦力怕、蜘蛛以测试联合兵种 |
 | `/mtnpaper selftest` | `mobsthinknow.admin` | 控制台可用；真实 tick 验证联合编队、错峰射击和蜘蛛载客后自动清理 |
 
 `spawn` 类型为：`zombie`、`husk`、`drowned`、`zombie_villager`、`skeleton`、`stray`、`bogged`、
-`wither_skeleton`、`creeper`、`spider`，以及 `zombie_swordsman`、`zombie_axeman`、
+`parched`、`wither_skeleton`、`creeper`、`spider`，以及 `zombie_swordsman`、`zombie_axeman`、
 `zombie_shieldguard`、`skeleton_crossbow`、`skeleton_firework_crossbow` 五个装备/IQ 预设；
 另可用 `spawn assault [组数]`。生成器先为整批实体规划有承重、
-两格净空、无液体/火焰/仙人掌等危险的互不重叠落点；任意实体生成失败会移除本批已经生成的实体，
+符合实际身高（凋灵骷髅为三格、其余为两格）的净空、无液体/火焰/仙人掌等危险的互不重叠落点；任意实体生成失败会移除本批已经生成的实体，
 不会留下半套测试阵容。
 
 `selftest` 不要求在线玩家：它会临时保活测试区块，生成一只持剑僵尸、一名弓手与一名弩手、一只苦力怕、一只蜘蛛
 和一个关闭 AI、无敌的铁傀儡观察目标。每个成员的短期可观察目标写入成队前记忆；25 tick 后先要求
-五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后再运行 180 tick，要求
+五者取得同一个小队 ID、全部进入 `ENGAGING` 且方案为 `COMBINED_ARMS`，随后最多再运行 420 tick，要求
 两名射手至少实际释放一发协调箭，且弩手必须累计真实举弩 tick、装填和发射，并要求苦力怕真实跳上蜘蛛。另有一只 IQ 10 斧手与关闭 AI 但仍可
 攻击的铁傀儡，在有界搜索所得的同高、2～3 格间距、四格净空自然通道中独立验证真实攻击和跳劈；另一个
 隔离通道生成 IQ 10 剑盾卫与铁傀儡，待盾牌连续举起至少 10 tick 后发射真实箭矢，强制验证正面格挡、
-一次性事件信号和 2～4 tick 延迟反击均至少发生一次；第三条通道由持铁斧的卫道士正面攻击成熟举盾者，
-要求伤害不被格挡且 `shieldDisables` 至少增加一次。战斗探针彼此隔离，不会因混编阵位碰撞产生假阴性。
-掩体探针会暂时铺设并逐块恢复一段平台和双高石墙，以验证真实探头、放箭及回撤；第四条相隔 160 格的
+一次性事件信号和 2～4 tick 延迟反击均至少发生一次；第三条通道固定关闭举盾者 AI 并主动维持成熟举盾，
+再由持铁斧的卫道士正面攻击，要求伤害不被格挡且 `shieldDisables` 至少增加一次。生产举盾 Goal 仍由上一条
+独立通道完整验证；各战斗探针彼此隔离，不会因混编阵位碰撞或攻击/防守相位切换产生假阴性。
+掩体探针会暂时铺设并逐块恢复一段平台和双高石墙，以验证真实探头、放箭及回撤；420 tick 上限覆盖
+一次 240 tick 掩体周期、失败后的 60 tick 搜索冷却和完整重试，不会把合法重规划误报为失败。第四条相隔 160 格的
 远距通道生成独行烟花弩手和 500 点生命铁傀儡，
 要求副手火箭真实消耗、集中弹体服务至少发射并碰撞引爆一次，清理后活跃弹体数回到零。
 第五条 6 格注视通道生成 IQ 10 苦力怕，强制验证可见假点燃、9 格侧后重定位、完成计数和残余引信归零。
+混编蜘蛛还必须通过真实吐丝 Goal 放置至少一张登记蛛网；自测观察到精确 owner 后等待 10 tick，短暂把
+该世界 `mobGriefing` 设为 `false`，由生产调度任务恢复原方块并把活跃登记降到零，随后立即还原原规则。
+该断言不会依赖白天蜘蛛是否随机放弃某个独立目标。
 混编样本中的苦力怕爆炸半径临时设为 0、引信延长到 200 tick，因此可以观察载客行为而不破坏测试世界。
 无论成功、失败、重载还是插件关闭，测试实体
 和临时区块票都会清理。中间结构检查输出 `[MTN SELFTEST STRUCTURE PASS]`，最终日志只以
@@ -438,6 +494,13 @@ spider:
     pounce-stagger-ticks: 10
     pounce-lease-ticks: 20
     maximum-air-ticks: 40
+    web-traps:
+      enabled: true
+      minimum-intelligence: 7
+      cooldown-ticks: 240
+      lifetime-ticks: 160
+      maximum-active-per-world: 128
+      blast-containment: true
     mounted-breach: true
     maximum-carrier-speed: 1.35
     payload-release-progress: 0.35
@@ -475,12 +538,13 @@ spider:
    `crossbowPoseTicks`、`fireworkLaunches`、`fireworkDetonations`、`creepersMounted`、`shieldBlocks`、
    `creeperFeints`、`creeperFeintsCompleted` 与 `feintProbeCooled` 均满足真实行为断言，并要求
    `projectileDodges > 0`、独立十格来箭探针产生至少 0.55 格真实横移，并要求临时石墙探针完成至少一次
-   掩体探头射击、回撤和 0.75 格实际移动；
+   掩体探头射击、回撤和 0.75 格实际移动，并要求临时蛛网真实放置、按 owner 回滚、恢复计数递增且
+   `activeWebTraps=0`；
    `shieldCounterattacks` 与 `shieldDisables` 均大于零；
 5. 隔离运行器额外把世界设为困难、自然弩手基础概率设为 100%，通过真实 `NATURAL` 出生事件断言
    `naturalLoadoutInitializations=1` 与 `naturalCrossbows=1`；自测主动再初始化一次，计数仍为 1，证明 PDC 幂等；
 6. 任意 `Cannot load configuration from stream`、`InvalidConfigurationException` 或插件启用异常都会立即判失败；
 7. 执行 `stop`，确认插件 `onDisable`、世界保存和 Java 进程退出码 `0`。
 
-可复现隔离服务端位于 Gradle 已忽略的 `build/paper-smoke/`，Paper 本体、世界和日志不会进入发布 JAR
+可复现隔离服务端位于 Git 已忽略的 `.gradle/paper-smoke/`，Paper 本体、世界和日志不会进入发布 JAR
 或 Git。

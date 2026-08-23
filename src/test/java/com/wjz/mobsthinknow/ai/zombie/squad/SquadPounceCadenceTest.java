@@ -49,4 +49,13 @@ class SquadPounceCadenceTest {
 		assertFalse(cadence.tryReserve(11, 0, 100L, 8, 30));
 		assertFalse(cadence.isActive(100L));
 	}
+
+	@Test
+	void extremeTickValuesDoNotWrapCooldownsIntoThePast() {
+		SquadPounceCadence cadence = new SquadPounceCadence();
+		assertTrue(cadence.tryReserve(11, 90, Long.MAX_VALUE - 2L, 8, 30));
+		assertEquals(Long.MAX_VALUE, cadence.nextAvailableAt());
+		assertTrue(cadence.isActive(Long.MAX_VALUE - 1L));
+		assertFalse(cadence.isActive(Long.MAX_VALUE));
+	}
 }

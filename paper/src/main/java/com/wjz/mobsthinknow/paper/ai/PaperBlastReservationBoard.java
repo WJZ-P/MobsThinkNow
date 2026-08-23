@@ -47,7 +47,8 @@ public final class PaperBlastReservationBoard {
 			creeper.getUniqueId(),
 			toVector(predictedCenter),
 			predictedCenter.getWorld().getUID(),
-			predictedDetonationTick
+			predictedDetonationTick,
+			now
 		);
 	}
 
@@ -60,10 +61,24 @@ public final class PaperBlastReservationBoard {
 	) {
 		long now = Bukkit.getCurrentTick();
 		this.cleanupExpired(now);
+		PaperSettings config = this.settings.get();
+		if (!config.enabled()
+			|| !config.creeperTacticsEnabled()
+			|| !creeper.isValid()
+			|| creeper.isDead()
+			|| !target.isValid()
+			|| target.isDead()
+			|| predictedCenter.getWorld() == null
+			|| predictedCenter.getWorld() != creeper.getWorld()
+			|| target.getWorld() != creeper.getWorld()
+			|| !isFinite(predictedCenter)) {
+			this.release(creeper);
+			return false;
+		}
 		UUID ownerId = creeper.getUniqueId();
 		Vec3d center = toVector(predictedCenter);
 		UUID worldId = predictedCenter.getWorld().getUID();
-		Availability availability = this.findConflict(ownerId, center, worldId, predictedDetonationTick);
+		Availability availability = this.findConflict(ownerId, center, worldId, predictedDetonationTick, now);
 		if (!forced && availability != Availability.AVAILABLE) {
 			this.release(ownerId);
 			if (availability == Availability.SATURATED) {
@@ -74,8 +89,7 @@ public final class PaperBlastReservationBoard {
 			return false;
 		}
 
-		PaperSettings config = this.settings.get();
-		long expiresAt = now + config.creeperBlastReservationLeaseTicks();
+		long expiresAt = saturatingAdd(now, config.creeperBlastReservationLeaseTicks());
 		Reservation previous = this.byOwner.get(ownerId);
 		if (previous != null) {
 			this.removeFromCell(previous);
@@ -93,6 +107,7 @@ public final class PaperBlastReservationBoard {
 		this.byOwner.put(ownerId, replacement);
 		this.cells.computeIfAbsent(cell, ignored -> new HashSet<>()).add(ownerId);
 		this.expiries.add(new Expiry(ownerId, expiresAt));
+		this.compactExpiriesIfNeeded();
 		if (previous == null) {
 			this.metrics.blastReservationAcquired();
 		}
@@ -123,6 +138,7 @@ public final class PaperBlastReservationBoard {
 			this.removeFromCell(removed);
 			this.metrics.blastReservationReleased();
 		}
+		this.compactExpiriesIfNeeded();
 	}
 
 	public int activeCount() {
@@ -140,7 +156,8 @@ public final class PaperBlastReservationBoard {
 		final UUID ownerId,
 		final Vec3d center,
 		final UUID worldId,
-		final long detonationTick
+		final long detonationTick,
+		final long now
 	) {
 		PaperSettings config = this.settings.get();
 		double cellSize = config.creeperBlastConflictRadius();
@@ -156,11 +173,14 @@ public final class PaperBlastReservationBoard {
 					if (candidateId.equals(ownerId)) {
 						continue;
 					}
+					Reservation candidate = this.byOwner.get(candidateId);
+					if (candidate == null || candidate.expiresAt() <= now) {
+						continue;
+					}
 					if (++rawChecks > config.creeperBlastMaximumChecks()) {
 						return Availability.SATURATED;
 					}
-					Reservation candidate = this.byOwner.get(candidateId);
-					if (candidate != null && BlastReservationPlanner.conflicts(
+					if (BlastReservationPlanner.conflicts(
 						center,
 						detonationTick,
 						candidate.center(),
@@ -199,6 +219,27 @@ public final class PaperBlastReservationBoard {
 				this.cells.remove(reservation.cell());
 			}
 		}
+	}
+
+	private void compactExpiriesIfNeeded() {
+		int maximumBacklog = Math.max(128, this.byOwner.size() * 4);
+		if (this.expiries.size() <= maximumBacklog) {
+			return;
+		}
+		this.expiries.clear();
+		for (Reservation reservation : this.byOwner.values()) {
+			this.expiries.add(new Expiry(reservation.ownerId(), reservation.expiresAt()));
+		}
+	}
+
+	private static boolean isFinite(final Location location) {
+		return Double.isFinite(location.getX())
+			&& Double.isFinite(location.getY())
+			&& Double.isFinite(location.getZ());
+	}
+
+	private static long saturatingAdd(final long left, final long right) {
+		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
 	private static CellKey cellFor(final UUID worldId, final Vec3d center, final double cellSize) {

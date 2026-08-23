@@ -5,6 +5,7 @@ import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import com.wjz.mobsthinknow.shared.ai.ShieldCombatPlanner;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.server.level.ServerLevel;
@@ -83,7 +84,7 @@ public final class ZombieArmory {
 	}
 
 	/** 被斧击破盾的僵尸 → 恢复时间。原版盾牌禁用冷却只对玩家生效，这里给怪物补上对称机制。 */
-	private static final Map<Integer, Long> SHIELD_DISABLED_UNTIL = new HashMap<>();
+	private static final Map<UUID, Long> SHIELD_DISABLED_UNTIL = new HashMap<>();
 
 	/**
 	 * ALLOW_DAMAGE 入口：任何生物用斧头攻击举盾僵尸时，先打掉它的盾并进入禁用窗口，
@@ -105,7 +106,7 @@ public final class ZombieArmory {
 		zombie.stopUsingItem();
 		long now = zombie.level().getGameTime();
 		SHIELD_DISABLED_UNTIL.put(
-			zombie.getId(),
+			zombie.getUUID(),
 			ShieldCombatPlanner.disabledUntil(now, (long)(config.armedShieldBreakSeconds * 20.0))
 		);
 		if (SHIELD_DISABLED_UNTIL.size() > 256) {
@@ -115,11 +116,24 @@ public final class ZombieArmory {
 
 	/** 盾卫 AI 在禁用窗口内不允许重新举盾。 */
 	public static boolean isShieldDisabled(final Zombie zombie) {
-		Long until = SHIELD_DISABLED_UNTIL.get(zombie.getId());
-		return until != null && ShieldCombatPlanner.isDisabled(zombie.level().getGameTime(), until);
+		UUID id = zombie.getUUID();
+		Long until = SHIELD_DISABLED_UNTIL.get(id);
+		if (until == null) {
+			return false;
+		}
+		if (ShieldCombatPlanner.isDisabled(zombie.level().getGameTime(), until)) {
+			return true;
+		}
+		SHIELD_DISABLED_UNTIL.remove(id, until);
+		return false;
 	}
 
-	/** 服务器停止时清空禁用表，避免同一 JVM 内切换存档后实体 ID 撞车。 */
+	/** 死亡实体不再保留已无意义的短期窗口；UUID 键也避免运行期实体 ID 回卷误继承状态。 */
+	public static void discardShieldState(final Zombie zombie) {
+		SHIELD_DISABLED_UNTIL.remove(zombie.getUUID());
+	}
+
+	/** 服务器停止时清空禁用表，避免同一 JVM 内切换存档后保留跨世界短期状态。 */
 	public static void clearShieldState() {
 		SHIELD_DISABLED_UNTIL.clear();
 	}

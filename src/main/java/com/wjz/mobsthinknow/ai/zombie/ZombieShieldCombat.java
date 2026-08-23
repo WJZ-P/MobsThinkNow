@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie;
 import com.wjz.mobsthinknow.ai.zombie.squad.SquadShieldOrder;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import com.wjz.mobsthinknow.shared.ai.ShieldCombatPlanner;
+import java.util.UUID;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -35,7 +36,7 @@ final class ZombieShieldCombat {
 
 	private final Zombie zombie;
 	private Phase phase = Phase.INACTIVE;
-	private int targetId = Integer.MIN_VALUE;
+	private UUID targetId;
 	private long guardDeadline = Long.MIN_VALUE;
 	private long counterStrikeAt = Long.MIN_VALUE;
 	private long strikeDeadline = Long.MIN_VALUE;
@@ -73,9 +74,9 @@ final class ZombieShieldCombat {
 			return;
 		}
 
-		if (this.targetId != target.getId()) {
+		if (!target.getUUID().equals(this.targetId)) {
 			this.deactivate();
-			this.targetId = target.getId();
+			this.targetId = target.getUUID();
 		}
 
 		double distanceSquared = this.zombie.distanceToSqr(target);
@@ -206,7 +207,7 @@ final class ZombieShieldCombat {
 		long now = this.zombie.level().getGameTime();
 		// 独立记录盾卫的武器冷却；即使关闭通用武器战术，守势阶段暂停原版 Goal 也不会冻结 CD。
 		this.nextStrikeAt = now + ZombieWeaponCombat.attackCooldownTicks(this.zombie.getMainHandItem());
-		if (this.phase != Phase.STRIKING || target.getId() != this.targetId) {
+		if (this.phase != Phase.STRIKING || !target.getUUID().equals(this.targetId)) {
 			return;
 		}
 
@@ -261,7 +262,7 @@ final class ZombieShieldCombat {
 	) {
 		ZombieShieldMemory.BlockSignal signal = ZombieShieldMemory.consume(this.zombie);
 		if (signal == null
-			|| signal.attacker().getId() != target.getId()
+			|| signal.attacker() != target
 			|| !isFreshAttackSignal(now, signal.gameTime())) {
 			return;
 		}
@@ -417,7 +418,7 @@ final class ZombieShieldCombat {
 		ZombieBodyLanguage.stop(this.zombie, ZombieBodyAction.SHIELD_BASH);
 		this.lowerShield();
 		this.phase = Phase.INACTIVE;
-		this.targetId = Integer.MIN_VALUE;
+		this.targetId = null;
 		this.guardDeadline = Long.MIN_VALUE;
 		this.counterStrikeAt = Long.MIN_VALUE;
 		this.strikeDeadline = Long.MIN_VALUE;

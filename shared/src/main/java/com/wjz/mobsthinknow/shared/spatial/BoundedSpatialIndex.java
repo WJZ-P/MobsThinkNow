@@ -217,6 +217,12 @@ public final class BoundedSpatialIndex<G, T> {
 	}
 
 	public record ScanResult<T>(List<T> candidates, int rawChecks) {
+		public ScanResult {
+			candidates = List.copyOf(Objects.requireNonNull(candidates, "candidates"));
+			if (rawChecks < 0) {
+				throw new IllegalArgumentException("rawChecks must be non-negative");
+			}
+		}
 	}
 
 	private record CellKey(int x, int z) {

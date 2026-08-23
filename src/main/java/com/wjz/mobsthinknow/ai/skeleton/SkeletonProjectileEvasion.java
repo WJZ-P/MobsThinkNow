@@ -2,12 +2,16 @@ package com.wjz.mobsthinknow.ai.skeleton;
 
 import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner;
 import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner.ReactionProfile;
-import java.util.Comparator;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.Vec3;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 局部来箭感知。查询只覆盖骷髅周围七格的实体分区，并由 Goal 每三 tick 调用一次，
@@ -15,6 +19,7 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class SkeletonProjectileEvasion {
 	public static final double SCAN_RADIUS = 7.0;
+	private static final int MAXIMUM_ARROW_CHECKS = 32;
 
 	private SkeletonProjectileEvasion() {
 	}
@@ -24,19 +29,26 @@ public final class SkeletonProjectileEvasion {
 		final ReactionProfile reaction
 	) {
 		Vec3 center = skeleton.getBoundingBox().getCenter();
-		return skeleton.level()
-			.getEntitiesOfClass(
-				AbstractArrow.class,
-				skeleton.getBoundingBox().inflate(SCAN_RADIUS),
-				arrow -> arrow.isAlive() && arrow.getOwner() != skeleton
-			)
-			.stream()
-			.map(arrow -> classify(center, arrow, reaction))
-			.flatMap(Optional::stream)
-			.min(Comparator.comparingDouble(Threat::ticksUntilClosestApproach));
+		List<AbstractArrow> arrows = new ArrayList<>(MAXIMUM_ARROW_CHECKS);
+		skeleton.level().getEntities(
+			EntityTypeTest.<Entity, AbstractArrow>forClass(AbstractArrow.class),
+			skeleton.getBoundingBox().inflate(SCAN_RADIUS),
+			arrow -> arrow.isAlive() && arrow.getOwner() != skeleton,
+			arrows,
+			MAXIMUM_ARROW_CHECKS
+		);
+		@Nullable Threat nearest = null;
+		for (AbstractArrow arrow : arrows) {
+			Threat candidate = classify(center, arrow, reaction);
+			if (candidate != null
+				&& (nearest == null || candidate.ticksUntilClosestApproach() < nearest.ticksUntilClosestApproach())) {
+				nearest = candidate;
+			}
+		}
+		return Optional.ofNullable(nearest);
 	}
 
-	private static Optional<Threat> classify(
+	private static @Nullable Threat classify(
 		final Vec3 skeletonCenter,
 		final AbstractArrow arrow,
 		final ReactionProfile reaction
@@ -63,9 +75,9 @@ public final class SkeletonProjectileEvasion {
 				reaction.predictionHorizonTicks(),
 				reaction.safetyRadius()
 			)) {
-			return Optional.empty();
+			return null;
 		}
-		return Optional.of(new Threat(arrow, time));
+		return new Threat(arrow, time);
 	}
 
 	/**

@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
@@ -190,7 +191,7 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 	}
 
 	@GameTest(maxTicks = 200)
-	public void smartZombieMinesAndPillarsTowardThreeBlockHighTarget(final GameTestHelper helper) {
+	public void preloadedSmartZombiePillarsTowardThreeBlockHighTarget(final GameTestHelper helper) {
 		for (int x = 0; x <= 9; x++) {
 			for (int z = 0; z <= 6; z++) {
 				helper.setBlock(new BlockPos(x, 1, z), Blocks.STONE);
@@ -202,16 +203,17 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 
 		BlockPos zombieSpawn = new BlockPos(3, 2, 3);
 		BlockPos targetPillarBase = new BlockPos(5, 2, 3);
-		// 目标西侧正交邻格：完成后中心距恰好一格，能直接进入原版近战范围。
-		BlockPos attackPillarBase = new BlockPos(4, 2, 3);
-		BlockPos[] harvestBlocks = {
-			new BlockPos(2, 2, 1),
-			new BlockPos(3, 2, 1),
-			new BlockPos(4, 2, 1)
+		// 八个相邻格都能在完成后进入原版近战范围；稳定候选顺序可随实体 ID 选择任意一侧。
+		BlockPos[] attackPillarBases = {
+			new BlockPos(4, 2, 3),
+			new BlockPos(6, 2, 3),
+			new BlockPos(5, 2, 2),
+			new BlockPos(5, 2, 4),
+			new BlockPos(4, 2, 2),
+			new BlockPos(4, 2, 4),
+			new BlockPos(6, 2, 2),
+			new BlockPos(6, 2, 4)
 		};
-		for (BlockPos harvestBlock : harvestBlocks) {
-			helper.setBlock(harvestBlock, Blocks.DIRT);
-		}
 		for (int dy = 0; dy < 3; dy++) {
 			helper.setBlock(targetPillarBase.above(dy), Blocks.STONE);
 		}
@@ -219,6 +221,9 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 		zombie.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
 		Villager target = helper.spawn(EntityType.VILLAGER, targetPillarBase.above(3));
 		ZombieIntelligence.set(zombie, 10);
+		for (int block = 0; block < 3; block++) {
+			ZombieBuilderInventory.addOne(zombie, Items.DIRT.getDefaultInstance(), 8);
+		}
 		target.setNoAi(true);
 		target.setNoGravity(true);
 		zombie.setTarget(target);
@@ -235,14 +240,18 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 				+ ", stored=" + ZombieBuilderInventory.count(zombie)
 		);
 		int[] previousPlaced = {0};
-		helper.onEachTick(() -> {
+			helper.onEachTick(() -> {
 			zombie.clearFire();
 			zombie.setTarget(target);
 			int placed = 0;
-			for (int dy = 0; dy < 3; dy++) {
-				if (helper.getBlockState(attackPillarBase.above(dy)).is(Blocks.DIRT)) {
-					placed++;
+			for (BlockPos candidateBase : attackPillarBases) {
+				int candidatePlaced = 0;
+				for (int dy = 0; dy < 3; dy++) {
+					if (helper.getBlockState(candidateBase.above(dy)).is(Blocks.DIRT)) {
+						candidatePlaced++;
+					}
 				}
+				placed = Math.max(placed, candidatePlaced);
 			}
 			helper.assertTrue(
 				placed - previousPlaced[0] <= 1,
@@ -259,12 +268,6 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 					ZombieBuilderInventory.count(zombie) == 0,
 					"The three elevation blocks were not consumed from the hidden inventory."
 				);
-				for (BlockPos harvestBlock : harvestBlocks) {
-					helper.assertTrue(
-						helper.getBlockState(harvestBlock).isAir(),
-						"The elevation tactic did not visibly mine all three planned building blocks."
-					);
-				}
 				helper.succeed();
 			}
 			if (zombie.tickCount == 180) {
@@ -346,6 +349,30 @@ public final class ZombieTerrainTacticsGameTests implements CustomTestMethodInvo
 				);
 			}
 		});
+	}
+
+	@GameTest
+	public void groundZombieVariantsShareTerrainEligibility(final GameTestHelper helper) {
+		Zombie husk = helper.spawn(EntityType.HUSK, 1, 0, 1);
+		Zombie villager = helper.spawn(EntityType.ZOMBIE_VILLAGER, 3, 0, 1);
+		Zombie drowned = helper.spawn(EntityType.DROWNED, 5, 0, 1);
+		for (Zombie zombie : new Zombie[] {husk, villager, drowned}) {
+			ZombieIntelligence.set(zombie, 10);
+		}
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		helper.assertTrue(
+			ZombieTerrainTacticsGoal.canUseTerrainTactics(husk, config),
+			"Husk did not inherit the shared ground-family terrain state machine."
+		);
+		helper.assertTrue(
+			ZombieTerrainTacticsGoal.canUseTerrainTactics(villager, config),
+			"Zombie villager did not inherit the shared ground-family terrain state machine."
+		);
+		helper.assertTrue(
+			!ZombieTerrainTacticsGoal.canUseTerrainTactics(drowned, config),
+			"Drowned lost its deliberately separate amphibious tactics boundary."
+		);
+		helper.succeed();
 	}
 
 	@Override

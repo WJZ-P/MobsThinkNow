@@ -43,7 +43,7 @@ class SmokeFailure(RuntimeError):
 def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
-        description="Start pinned Paper, run /mtnpaper selftest, validate PASS, and stop cleanly."
+        description="Start pinned Paper, verify disable/enable reloads, run selftest, and stop cleanly."
     )
     parser.add_argument(
         "--plugin",
@@ -54,8 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--runtime",
         type=Path,
-        default=root / "build" / "paper-smoke",
-        help="Isolated Paper directory (defaults below the ignored build directory).",
+        default=root / ".gradle" / "paper-smoke",
+        help="Isolated Paper directory (defaults to the persistent ignored Gradle cache).",
     )
     parser.add_argument(
         "--paper-jar",
@@ -67,6 +67,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--keep-world", action="store_true", help="Reuse the previous isolated smoke-test world.")
     parser.add_argument("--startup-timeout", type=int, default=180)
     parser.add_argument("--selftest-timeout", type=int, default=90)
+    parser.add_argument(
+        "--selftest-runs",
+        type=int,
+        default=1,
+        help="Run the combat self-test repeatedly in the same Paper process (1-100).",
+    )
     return parser.parse_args()
 
 
@@ -86,6 +92,14 @@ def verify_paper(path: Path) -> None:
         )
 
 
+def validate_runtime(runtime: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    filesystem_root = Path(runtime.anchor).resolve()
+    forbidden = {filesystem_root, root.resolve(), Path.home().resolve()}
+    if runtime in forbidden:
+        raise SmokeFailure(f"refusing unsafe smoke runtime directory: {runtime}")
+
+
 def download_paper(destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".part")
@@ -103,6 +117,13 @@ def download_paper(destination: Path) -> None:
 
 
 def provision_paper(args: argparse.Namespace, runtime: Path) -> Path:
+    root = Path(__file__).resolve().parents[1]
+    default_runtime = (root / ".gradle" / "paper-smoke").resolve()
+    legacy_runtime = root / "build" / "paper-smoke"
+    if runtime == default_runtime and not runtime.exists() and legacy_runtime.is_dir():
+        runtime.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy_runtime), runtime)
+        print(f"[paper-smoke] migrated runtime cache from {legacy_runtime}")
     runtime.mkdir(parents=True, exist_ok=True)
     pinned = runtime / f"paper-{PAPER_VERSION}-{PAPER_BUILD}.jar"
     if args.paper_jar is not None:
@@ -148,6 +169,39 @@ def remove_previous_world(runtime: Path) -> None:
         shutil.rmtree(runtime / f"{WORLD_NAME}{suffix}", ignore_errors=True)
 
 
+def write_smoke_config(runtime: Path, enabled: bool) -> None:
+    plugin_data = runtime / "plugins" / "MobsThinkNowPaper"
+    plugin_data.mkdir(parents=True, exist_ok=True)
+    # Hard difficulty plus a 100% base crossbow chance makes every possible hard-mode IQ a
+    # deterministic success. The runtime self-test can therefore prove that a real NATURAL
+    # CreatureSpawnEvent is processed once, while normal installations retain the 18% default.
+    (plugin_data / "config.yml").write_text(
+        f"""enabled: {str(enabled).lower()}
+skeleton:
+  crossbow:
+    natural-loadout:
+      enabled: true
+      crossbow-chance: 1.0
+      firework-crossbow-chance: 1.0
+""",
+        encoding="utf-8",
+    )
+
+
+def write_malformed_smoke_config(runtime: Path) -> None:
+    (runtime / "plugins" / "MobsThinkNowPaper" / "config.yml").write_text(
+        "enabled: true\nspider: [unterminated\n",
+        encoding="utf-8",
+    )
+
+
+def write_duplicate_smoke_config(runtime: Path) -> None:
+    (runtime / "plugins" / "MobsThinkNowPaper" / "config.yml").write_text(
+        "enabled: true\nenabled: false\n",
+        encoding="utf-8",
+    )
+
+
 def prepare_runtime(args: argparse.Namespace, runtime: Path, paper: Path) -> Path:
     plugin = args.plugin.resolve()
     if not plugin.is_file():
@@ -159,21 +213,7 @@ def prepare_runtime(args: argparse.Namespace, runtime: Path, paper: Path) -> Pat
         remove_previous_world(runtime)
     plugin_data = runtime / "plugins" / "MobsThinkNowPaper"
     shutil.rmtree(plugin_data, ignore_errors=True)
-    plugin_data.mkdir(parents=True, exist_ok=True)
-    # Hard difficulty plus a 100% base crossbow chance makes every possible hard-mode IQ a
-    # deterministic success. The runtime self-test can therefore prove that a real NATURAL
-    # CreatureSpawnEvent is processed once, while normal installations retain the 18% default.
-    (plugin_data / "config.yml").write_text(
-        """enabled: true
-skeleton:
-  crossbow:
-    natural-loadout:
-      enabled: true
-      crossbow-chance: 1.0
-      firework-crossbow-chance: 1.0
-""",
-        encoding="utf-8",
-    )
+    write_smoke_config(runtime, True)
     shutil.copy2(plugin, runtime / "plugins" / PLUGIN_FILE_NAME)
     shutil.copy2(paper, runtime / "paper.jar")
     (runtime / "eula.txt").write_text("eula=true\n", encoding="utf-8")
@@ -215,9 +255,12 @@ def run_server(
     transcript_path: Path,
     startup_timeout: int,
     selftest_timeout: int,
+    selftest_runs: int,
 ) -> None:
     if startup_timeout < 30 or selftest_timeout < 30:
         raise SmokeFailure("startup and self-test timeouts must each be at least 30 seconds")
+    if selftest_runs < 1 or selftest_runs > 100:
+        raise SmokeFailure("self-test runs must be between 1 and 100")
     temporary = runtime / "tmp"
     environment = os.environ.copy()
     environment["TMP"] = str(temporary)
@@ -254,15 +297,22 @@ def run_server(
 
     threading.Thread(target=read_output, name="paper-smoke-output", daemon=True).start()
     enabled = False
+    stage = "startup"
+    invalid_reload_verified = False
+    duplicate_reload_verified = False
+    disabled_reload_verified = False
+    enabled_reload_verified = False
+    reloaded = False
     started = False
     passed = False
+    selftests_passed = 0
+    cleanup_status_checks = 0
     failed_detail: str | None = None
     stop_sent = False
     deadline = time.monotonic() + startup_timeout
     try:
         while process.poll() is None:
             if time.monotonic() >= deadline:
-                stage = "shutdown" if passed else ("self-test" if started else "startup")
                 failed_detail = f"{stage} timed out"
                 break
             try:
@@ -271,28 +321,143 @@ def run_server(
                 continue
             transcript.append(line)
             print(line, flush=True)
-            if any(marker in line for marker in (
+            startup_configuration_failure = stage == "startup" and any(marker in line for marker in (
                 "Cannot load configuration from stream",
                 "InvalidConfigurationException",
-                "Error occurred while enabling MobsThinkNowPaper",
-            )):
+            ))
+            if startup_configuration_failure or "Error occurred while enabling MobsThinkNowPaper" in line:
                 failed_detail = f"fatal plugin configuration/startup log: {line}"
                 break
             if "[MobsThinkNowPaper] Enabling MobsThinkNowPaper" in line:
                 enabled = True
-            if not started and "Done (" in line:
+            if stage == "startup" and "Done (" in line:
+                write_malformed_smoke_config(runtime)
+                stage = "invalid-reload"
+                deadline = time.monotonic() + selftest_timeout
+                send_command(process, "mtnpaper reload")
+            elif stage == "invalid-reload" and "configuration reload failed;" in line:
+                stage = "invalid-status"
+                send_command(process, "mtnpaper status")
+            elif stage == "invalid-status" and "Mobs Think Now Paper | enabled=true" in line:
+                expected = (
+                    "projectileSensorRunning=true",
+                    "webTrapSchedulerRunning=true",
+                    "fireworkSchedulerRunning=true",
+                    "squadSchedulerRunning=true",
+                )
+                missing = [marker for marker in expected if marker not in line]
+                if missing:
+                    failed_detail = "invalid reload changed runtime state: " + ", ".join(missing)
+                    break
+                invalid_reload_verified = True
+                write_duplicate_smoke_config(runtime)
+                stage = "duplicate-reload"
+                deadline = time.monotonic() + selftest_timeout
+                send_command(process, "mtnpaper reload")
+            elif stage == "duplicate-reload" and "configuration reload failed;" in line:
+                stage = "duplicate-status"
+                send_command(process, "mtnpaper status")
+            elif stage == "duplicate-status" and "Mobs Think Now Paper | enabled=true" in line:
+                expected = (
+                    "projectileSensorRunning=true",
+                    "webTrapSchedulerRunning=true",
+                    "fireworkSchedulerRunning=true",
+                    "squadSchedulerRunning=true",
+                )
+                missing = [marker for marker in expected if marker not in line]
+                if missing:
+                    failed_detail = "duplicate-key reload changed runtime state: " + ", ".join(missing)
+                    break
+                duplicate_reload_verified = True
+                write_smoke_config(runtime, False)
+                stage = "disable-reload"
+                deadline = time.monotonic() + selftest_timeout
+                send_command(process, "mtnpaper reload")
+            elif stage == "disable-reload" and "configuration reloaded." in line:
+                stage = "disable-status"
+                send_command(process, "mtnpaper status")
+            elif stage == "disable-status" and "Mobs Think Now Paper | enabled=false" in line:
+                expected = (
+                    "projectileSensorRunning=false",
+                    "webTrapSchedulerRunning=false",
+                    "fireworkSchedulerRunning=false",
+                    "squadSchedulerRunning=false",
+                )
+                missing = [marker for marker in expected if marker not in line]
+                if missing:
+                    failed_detail = "disabled reload left scheduler(s) active: " + ", ".join(missing)
+                    break
+                disabled_reload_verified = True
+                write_smoke_config(runtime, True)
+                stage = "enable-reload"
+                deadline = time.monotonic() + selftest_timeout
+                send_command(process, "mtnpaper reload")
+            elif stage == "enable-reload" and "configuration reloaded." in line:
+                stage = "enable-status"
+                send_command(process, "mtnpaper status")
+            elif stage == "enable-status" and "Mobs Think Now Paper | enabled=true" in line:
+                expected = (
+                    "projectileSensorRunning=true",
+                    "webTrapSchedulerRunning=true",
+                    "fireworkSchedulerRunning=true",
+                    "squadSchedulerRunning=true",
+                )
+                missing = [marker for marker in expected if marker not in line]
+                if missing:
+                    failed_detail = "enabled reload did not restart scheduler(s): " + ", ".join(missing)
+                    break
+                enabled_reload_verified = True
+                reloaded = True
                 started = True
+                stage = "self-test"
                 deadline = time.monotonic() + selftest_timeout
                 send_command(process, "mtnpaper selftest")
-            if started and "[MTN SELFTEST FAIL]" in line:
+            if stage == "self-test" and "[MTN SELFTEST FAIL]" in line:
                 failed_detail = line
                 break
-            if started and not passed and "[MTN SELFTEST PASS]" in line:
-                passed = True
+            if stage == "self-test" and "[MTN SELFTEST PASS]" in line:
+                selftests_passed += 1
+                cleanup_status_checks = 0
+                stage = "self-test-cleanup"
+                deadline = time.monotonic() + selftest_timeout
                 send_command(process, "mtnpaper status")
-                send_command(process, "stop")
-                stop_sent = True
-                deadline = time.monotonic() + 45
+            elif stage == "self-test-cleanup" and "Mobs Think Now Paper | enabled=true" in line:
+                cleanup_markers = (
+                    "loadedSupportedMobs=0",
+                    "trackedProjectiles=0",
+                    "activeFireworkBolts=0",
+                    "activeCreeperFeints=0",
+                    "coolingCreeperFeints=0",
+                    "activeBlastReservations=0",
+                    "activePounceReservations=0",
+                    "activeWebTraps=0",
+                    "activeSquads=0",
+                    "squadMembers=0",
+                    "pendingDamageMemories=0",
+                    "pendingShieldSignals=0",
+                    "disabledShieldGuards=0",
+                )
+                missing = [marker for marker in cleanup_markers if marker not in line]
+                if missing:
+                    cleanup_status_checks += 1
+                    if cleanup_status_checks >= 20:
+                        failed_detail = (
+                            f"self-test {selftests_passed} left runtime state active after "
+                            f"{cleanup_status_checks} checks: " + ", ".join(missing)
+                        )
+                        break
+                    send_command(process, "mtnpaper status")
+                    continue
+                if selftests_passed < selftest_runs:
+                    stage = "self-test"
+                    deadline = time.monotonic() + selftest_timeout
+                    send_command(process, "mtnpaper selftest")
+                else:
+                    passed = True
+                    send_command(process, "stop")
+                    stop_sent = True
+                    stage = "shutdown"
+                    deadline = time.monotonic() + 45
         if process.poll() is None and not stop_sent:
             try:
                 send_command(process, "stop")
@@ -322,9 +487,13 @@ def run_server(
         raise SmokeFailure(f"Paper exited with code {process.returncode}; transcript: {transcript_path}")
     if failed_detail is not None:
         raise SmokeFailure(f"{failed_detail}; transcript: {transcript_path}")
-    if not started or not enabled or not passed:
+    if not started or not enabled or not invalid_reload_verified or not duplicate_reload_verified or not disabled_reload_verified or not enabled_reload_verified or not reloaded or not passed:
         raise SmokeFailure(
-            f"missing marker(s): started={started}, pluginEnabled={enabled}, selftestPassed={passed}; "
+            f"missing marker(s): started={started}, pluginEnabled={enabled}, "
+            f"invalidReload={invalid_reload_verified}, duplicateReload={duplicate_reload_verified}, "
+            f"disabledReload={disabled_reload_verified}, "
+            f"enabledReload={enabled_reload_verified}, reloaded={reloaded}, "
+            f"selftests={selftests_passed}/{selftest_runs}, selftestPassed={passed}; "
             f"transcript: {transcript_path}"
         )
     print(f"[paper-smoke] PASS transcript={transcript_path}")
@@ -334,12 +503,24 @@ def main() -> int:
     args = parse_args()
     runtime = args.runtime.resolve()
     try:
+        validate_runtime(runtime)
+        if args.startup_timeout < 30 or args.selftest_timeout < 30:
+            raise SmokeFailure("startup and self-test timeouts must each be at least 30 seconds")
+        if args.selftest_runs < 1 or args.selftest_runs > 100:
+            raise SmokeFailure("self-test runs must be between 1 and 100")
         java = resolve_java(args.java)
         paper = provision_paper(args, runtime)
         transcript = prepare_runtime(args, runtime, paper)
         print(f"[paper-smoke] Paper={PAPER_VERSION}-{PAPER_BUILD} sha256={PAPER_SHA256}")
         print(f"[paper-smoke] plugin={args.plugin.resolve()}")
-        run_server(runtime, java, transcript, args.startup_timeout, args.selftest_timeout)
+        run_server(
+            runtime,
+            java,
+            transcript,
+            args.startup_timeout,
+            args.selftest_timeout,
+            args.selftest_runs,
+        )
         return 0
     except (SmokeFailure, OSError, urllib.error.URLError) as error:
         print(f"[paper-smoke] FAIL {error}", file=sys.stderr)

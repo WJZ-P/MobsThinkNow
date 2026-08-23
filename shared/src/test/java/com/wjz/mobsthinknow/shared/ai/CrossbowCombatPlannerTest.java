@@ -92,4 +92,29 @@ class CrossbowCombatPlannerTest {
 		assertTrue(result.clear());
 		assertEquals(1, result.checks());
 	}
+
+	@Test
+	void movingTargetSafetyUsesThePredictedImpactRatherThanItsOldPosition() {
+		Vec3d shooter = Vec3d.ZERO;
+		Vec3d currentTarget = new Vec3d(0.0, 0.0, 20.0);
+		CrossbowCombatPlanner.AimSolution aim = CrossbowCombatPlanner.intercept(
+			shooter,
+			currentTarget,
+			new Vec3d(0.35, 0.0, 0.0),
+			1.6,
+			0.0,
+			20.0
+		);
+		var ally = new CrossbowCombatPlanner.BlastAlly<>("future-ally", aim.aimPoint(), 0.5);
+
+		assertTrue(CrossbowCombatPlanner.assessBlast(
+			shooter, currentTarget, List.of(ally), 6.0, 30.0, 3.0, 20
+		).clear());
+		assertEquals(
+			CrossbowCombatPlanner.BlastStatus.ALLY_IN_BLAST,
+			CrossbowCombatPlanner.assessBlast(
+				shooter, aim.aimPoint(), List.of(ally), 6.0, 30.0, 3.0, 20
+			).status()
+		);
+	}
 }

@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
@@ -21,6 +22,9 @@ public final class SquadFiringLaneRegistry {
 		final long now,
 		final long lifetimeTicks
 	) {
+		if (!isFinite(start) || !isFinite(end)) {
+			return false;
+		}
 		return this.reserve(
 			shooterId,
 			targetId,
@@ -41,7 +45,10 @@ public final class SquadFiringLaneRegistry {
 		final long now,
 		final long lifetimeTicks
 	) {
-		if (trajectory.size() < 2) {
+		if (trajectory == null
+			|| trajectory.size() < 2
+			|| !Double.isFinite(clearance)
+			|| trajectory.stream().anyMatch(point -> !isFinite(point))) {
 			return false;
 		}
 		this.prune(now);
@@ -52,7 +59,7 @@ public final class SquadFiringLaneRegistry {
 			List.copyOf(trajectory),
 			Math.max(0.05, clearance),
 			explosive,
-			now + Math.max(1L, lifetimeTicks)
+			saturatingAdd(now, Math.max(1L, lifetimeTicks))
 		));
 		return created;
 	}
@@ -105,6 +112,17 @@ public final class SquadFiringLaneRegistry {
 		this.reservations.values().removeIf(reservation -> reservation.expiresAt < now);
 	}
 
+	private static boolean isFinite(final Vec3 point) {
+		return point != null
+			&& Double.isFinite(point.x)
+			&& Double.isFinite(point.y)
+			&& Double.isFinite(point.z);
+	}
+
+	private static long saturatingAdd(final long left, final long right) {
+		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
+	}
+
 	public record Reservation(
 		int shooterId,
 		int targetId,
@@ -113,6 +131,16 @@ public final class SquadFiringLaneRegistry {
 		boolean explosive,
 		long expiresAt
 	) {
+		public Reservation {
+			trajectory = List.copyOf(Objects.requireNonNull(trajectory, "trajectory"));
+			if (trajectory.size() < 2 || trajectory.stream().anyMatch(point -> !isFinite(point))) {
+				throw new IllegalArgumentException("trajectory must contain at least two finite points");
+			}
+			if (!Double.isFinite(clearance) || clearance < 0.0) {
+				throw new IllegalArgumentException("clearance must be finite and non-negative");
+			}
+		}
+
 		public Vec3 start() {
 			return this.trajectory.getFirst();
 		}

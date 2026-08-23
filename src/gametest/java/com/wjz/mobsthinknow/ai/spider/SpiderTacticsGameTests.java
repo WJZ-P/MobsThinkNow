@@ -15,6 +15,8 @@ import java.lang.reflect.Method;
 import java.util.UUID;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
@@ -25,9 +27,11 @@ import net.minecraft.world.entity.monster.skeleton.Skeleton;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.block.Blocks;
 
 /** 从真实实体、GoalSelector、骑乘关系和引信数据验证蜘蛛战术。 */
@@ -66,6 +70,20 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 		helper.assertTrue(helper.getLevel().getBlockState(absolute).is(Blocks.COBWEB), "Managed trap did not place cobweb.");
 		helper.assertTrue(SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute), "Placed web was not registered.");
 		helper.assertTrue(owner.equals(SpiderWebTrapRegistry.ownerAt(helper.getLevel(), absolute)), "Trap owner was not queryable.");
+		BlockPos diagonal = relative.offset(1, 0, 1);
+		BlockPos twoBlocksAway = relative.offset(2, 0, 0);
+		helper.setBlock(diagonal.below(), Blocks.STONE);
+		helper.setBlock(diagonal, Blocks.AIR);
+		helper.setBlock(twoBlocksAway.below(), Blocks.STONE);
+		helper.setBlock(twoBlocksAway, Blocks.AIR);
+		helper.assertTrue(
+			!SpiderWebTrapRegistry.canPlace(helper.getLevel(), helper.absolutePos(diagonal)),
+			"A diagonal neighbor bypassed the fixed 3x3 reservation spacing."
+		);
+		helper.assertTrue(
+			SpiderWebTrapRegistry.canPlace(helper.getLevel(), helper.absolutePos(twoBlocksAway)),
+			"A trap two horizontal blocks away was rejected by an oversized reservation window."
+		);
 		int[] elapsed = {0};
 		helper.onEachTick(() -> {
 			elapsed[0]++;
@@ -94,6 +112,14 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 			"Replacement-preservation fixture could not place its managed web."
 		);
 		helper.setBlock(relative, Blocks.OAK_PLANKS);
+		helper.assertTrue(
+			!SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute),
+			"A player-replaced web kept its reservation until the original expiry."
+		);
+		helper.assertTrue(
+			SpiderWebTrapRegistry.ownerAt(helper.getLevel(), absolute) == null,
+			"A replaced web still exposed its former spider owner."
+		);
 		int[] elapsed = {0};
 		helper.onEachTick(() -> {
 			elapsed[0]++;
@@ -110,6 +136,143 @@ public final class SpiderTacticsGameTests implements CustomTestMethodInvoker {
 			);
 			helper.succeed();
 		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 90, padding = 4)
+	public void playerBreakThenSameTypeReplacementCannotBeClaimedByOldTrap(final GameTestHelper helper) {
+		BlockPos relative = new BlockPos(8, 2, 2);
+		helper.setBlock(relative.below(), Blocks.STONE);
+		helper.setBlock(relative, Blocks.AIR);
+		BlockPos absolute = helper.absolutePos(relative);
+		UUID owner = UUID.randomUUID();
+		helper.assertTrue(
+			SpiderWebTrapRegistry.tryPlace(helper.getLevel(), absolute, owner, helper.getLevel().getGameTime(), 40),
+			"Same-type replacement fixture could not place its managed web."
+		);
+
+		Player player = helper.makeMockPlayer(net.minecraft.world.level.GameType.SURVIVAL);
+		helper.getLevel().addFreshEntity(player);
+		helper.setBlock(relative, Blocks.AIR);
+		PlayerBlockBreakEvents.AFTER.invoker().afterBlockBreak(
+			helper.getLevel(),
+			player,
+			absolute,
+			Blocks.COBWEB.defaultBlockState(),
+			null
+		);
+		helper.setBlock(relative, Blocks.COBWEB);
+		helper.assertTrue(
+			!SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute),
+			"A successfully broken trap kept ownership before the player's replacement."
+		);
+
+		int[] elapsed = {0};
+		helper.onEachTick(() -> {
+			if (++elapsed[0] < 45) {
+				return;
+			}
+			helper.assertTrue(
+				helper.getLevel().getBlockState(absolute).is(Blocks.COBWEB),
+				"The old trap expiry overwrote the player's same-type cobweb replacement."
+			);
+			player.discard();
+			helper.succeed();
+		});
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void disablingMobGriefingImmediatelyRestoresManagedWebs(final GameTestHelper helper) {
+		BlockPos relative = new BlockPos(7, 2, 2);
+		helper.setBlock(relative.below(), Blocks.STONE);
+		helper.setBlock(relative, Blocks.AIR);
+		BlockPos absolute = helper.absolutePos(relative);
+		var rules = helper.getLevel().getGameRules();
+		boolean original = rules.get(GameRules.MOB_GRIEFING);
+		try {
+			rules.set(GameRules.MOB_GRIEFING, true, helper.getLevel().getServer());
+			helper.assertTrue(
+				SpiderWebTrapRegistry.tryPlace(
+					helper.getLevel(), absolute, UUID.randomUUID(), helper.getLevel().getGameTime(), 80
+				),
+				"Game-rule cleanup fixture could not place its managed web."
+			);
+			rules.set(GameRules.MOB_GRIEFING, false, helper.getLevel().getServer());
+			SpiderWebTrapRegistry.tickLevel(helper.getLevel());
+			helper.assertTrue(
+				helper.getLevel().getBlockState(absolute).isAir(),
+				"Disabling mobGriefing left a managed web in the world."
+			);
+			helper.assertTrue(
+				!SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute),
+				"Disabling mobGriefing left a stale managed-web entry."
+			);
+		} finally {
+			rules.set(GameRules.MOB_GRIEFING, original, helper.getLevel().getServer());
+		}
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void disablingWebFeatureImmediatelyRestoresManagedWebs(final GameTestHelper helper) {
+		BlockPos relative = new BlockPos(9, 2, 2);
+		helper.setBlock(relative.below(), Blocks.STONE);
+		helper.setBlock(relative, Blocks.AIR);
+		BlockPos absolute = helper.absolutePos(relative);
+		boolean original = ConfigManager.get().spiderWebTraps;
+		try {
+			helper.assertTrue(
+				ConfigManager.update(config -> config.spiderWebTraps = true),
+				"Feature-toggle cleanup fixture could not enable web traps for setup."
+			);
+			helper.assertTrue(
+				SpiderWebTrapRegistry.tryPlace(
+					helper.getLevel(), absolute, UUID.randomUUID(), helper.getLevel().getGameTime(), 80
+				),
+				"Feature-toggle cleanup fixture could not place its managed web."
+			);
+			helper.assertTrue(
+				ConfigManager.update(config -> config.spiderWebTraps = false),
+				"Feature-toggle cleanup fixture could not disable web traps."
+			);
+			SpiderWebTrapRegistry.tickLevel(helper.getLevel());
+			helper.assertTrue(
+				helper.getLevel().getBlockState(absolute).isAir(),
+				"Disabling spiderWebTraps left a managed web in the world."
+			);
+			helper.assertTrue(
+				!SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute),
+				"Disabling spiderWebTraps left a stale managed-web entry."
+			);
+		} finally {
+			ConfigManager.update(config -> config.spiderWebTraps = original);
+		}
+		helper.succeed();
+	}
+
+	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)
+	public void chunkUnloadCallbackRestoresManagedWebBeforeChunkLeavesLevel(final GameTestHelper helper) {
+		BlockPos relative = new BlockPos(10, 2, 2);
+		helper.setBlock(relative.below(), Blocks.STONE);
+		helper.setBlock(relative, Blocks.AIR);
+		BlockPos absolute = helper.absolutePos(relative);
+		helper.assertTrue(
+			SpiderWebTrapRegistry.tryPlace(
+				helper.getLevel(), absolute, UUID.randomUUID(), helper.getLevel().getGameTime(), 80
+			),
+			"Chunk-unload cleanup fixture could not place its managed web."
+		);
+
+		ServerChunkEvents.CHUNK_UNLOAD.invoker().onChunkUnload(
+			helper.getLevel(),
+			helper.getLevel().getChunkAt(absolute)
+		);
+
+		helper.assertTrue(helper.getLevel().getBlockState(absolute).isAir(), "Chunk unload left a managed web behind.");
+		helper.assertTrue(
+			!SpiderWebTrapRegistry.isOwnedTrap(helper.getLevel(), absolute),
+			"Chunk unload left a managed-web registry entry."
+		);
+		helper.succeed();
 	}
 
 	@GameTest(structure = "mobsthinknow-gametest:air_assault_arena", maxTicks = 20, padding = 4)

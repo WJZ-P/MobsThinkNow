@@ -8,6 +8,7 @@ import com.wjz.mobsthinknow.ai.zombie.squad.SquadState;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
@@ -36,7 +37,7 @@ final class ZombieTacticalController {
 	private long lastSeenAt = Long.MIN_VALUE;
 	private @Nullable Vec3 destination;
 	private @Nullable SquadDirective squadDirective;
-	private int observedTargetId = Integer.MIN_VALUE;
+	private UUID observedTargetId;
 	private long nextDecisionAt;
 	private long nextPathUpdateAt;
 	private long nextProgressCheckAt;
@@ -55,9 +56,9 @@ final class ZombieTacticalController {
 	 * 协调器共享的是最后目击位置，而不是无条件读取墙后目标的实时坐标。
 	 */
 	void observe(final LivingEntity target) {
-		if (this.observedTargetId != target.getId()) {
+		if (!target.getUUID().equals(this.observedTargetId)) {
 			// 换目标时不能把上一名玩家的最后目击位置错误地套到新目标身上。
-			this.observedTargetId = target.getId();
+			this.observedTargetId = target.getUUID();
 			this.lastSeenPosition = null;
 			this.lastSeenAt = Long.MIN_VALUE;
 		}

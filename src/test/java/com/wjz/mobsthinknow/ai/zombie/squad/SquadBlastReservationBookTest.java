@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.ai.zombie.squad;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import net.minecraft.world.phys.Vec3;
@@ -45,5 +46,22 @@ class SquadBlastReservationBookTest {
 
 		assertFalse(book.renew(2, new Vec3(2.0, 0.0, 0.0), 1L, 8L));
 		assertTrue(book.renew(2, new Vec3(18.0, 0.0, 0.0), 1L, 8L));
+	}
+
+	@Test
+	void rejectsInvalidGeometryAndSaturatesExpiry() {
+		SquadBlastReservationBook book = new SquadBlastReservationBook();
+		assertFalse(book.canReserve(0, 1, Vec3.ZERO, 6.0, 0L));
+		assertFalse(book.canReserve(1, 1, new Vec3(Double.NaN, 0.0, 0.0), 6.0, 0L));
+		assertFalse(book.canReserve(1, 1, Vec3.ZERO, Double.NaN, 0L));
+		assertEquals(
+			SquadBlastReservationBook.Decision.CONFLICT,
+			book.reserve(1, 1, Vec3.ZERO, Double.NaN, false, 0L, 10L)
+		);
+		book.reserve(1, 1, Vec3.ZERO, 6.0, false, Long.MAX_VALUE - 2L, 10L);
+		assertEquals(Long.MAX_VALUE, book.reservationFor(1, Long.MAX_VALUE - 1L).expiresAt());
+		assertThrows(IllegalArgumentException.class, () -> new SquadBlastReservationBook.Reservation(
+			1, 1, null, 6.0, false, 10L
+		));
 	}
 }

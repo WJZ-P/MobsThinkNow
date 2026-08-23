@@ -59,6 +59,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 
 	private LivingEntity target;
 	private Plan plan;
+	private CoverPositionPlanner.Probe geometryProbe;
 	private Pathfinder.PathResult pendingPath;
 	private Location targetAnchor;
 	private Phase phase = Phase.INACTIVE;
@@ -120,6 +121,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 		}
 
 		this.metrics.skeletonCoverSearch();
+		CoverPositionPlanner.Probe candidateProbe = this.probe(candidateTarget);
 		var result = CoverPositionPlanner.findPlans(
 			toGrid(this.skeleton.getLocation()),
 			toShared(this.skeleton.getLocation()),
@@ -127,7 +129,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 			root.skeletonPreferredRange(),
 			this.stableOrder + this.cycleSequence,
 			config.searchLimits(),
-			this.probe(candidateTarget)
+			candidateProbe
 		);
 		this.metrics.skeletonCoverCandidatesChecked(result.rawChecks());
 		this.metrics.skeletonCoverPlansFound(result.plans().size());
@@ -138,6 +140,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 			if (path != null) {
 				this.target = candidateTarget;
 				this.plan = candidate;
+				this.geometryProbe = candidateProbe;
 				this.pendingPath = path;
 				this.targetAnchor = candidateTarget.getLocation().clone();
 				return true;
@@ -186,7 +189,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	@Override
 	public void tick() {
 		LivingEntity current = this.target;
-		if (!PaperThreats.isLiveFor(this.skeleton, current) || this.plan == null) {
+		if (!PaperThreats.isLiveFor(this.skeleton, current) || this.plan == null || this.geometryProbe == null) {
 			this.abort();
 			return;
 		}
@@ -218,6 +221,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 		this.cycleSequence++;
 		this.target = null;
 		this.plan = null;
+		this.geometryProbe = null;
 		this.pendingPath = null;
 		this.targetAnchor = null;
 		this.phase = Phase.INACTIVE;
@@ -249,7 +253,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 		this.skeleton.clearActiveItem();
 		if (this.reached(this.plan.hide())) {
 			this.skeleton.getPathfinder().stopPathfinding();
-			if (!this.probe(this.target).isHidden(this.plan.hide())) {
+			if (!this.geometryProbe.isHidden(this.plan.hide())) {
 				this.abort();
 				return;
 			}
@@ -267,14 +271,14 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	private void tickHidden(final long now) {
 		this.skeleton.clearActiveItem();
 		this.skeleton.getPathfinder().stopPathfinding();
-		if (!this.probe(this.target).isHidden(this.plan.hide())) {
+		if (!this.geometryProbe.isHidden(this.plan.hide())) {
 			this.abort();
 			return;
 		}
 		if (now - this.phaseStartedAt < this.hiddenWaitTicks) {
 			return;
 		}
-		if (!this.probe(this.target).hasClearShot(this.plan.peek())
+		if (!this.geometryProbe.hasClearShot(this.plan.peek())
 			|| !this.moveTo(this.plan.peek(), this.coverSettings.get().movementSpeed(), now)) {
 			this.abort();
 			return;
@@ -285,7 +289,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	private void tickMovingToPeek(final long now) {
 		if (this.reached(this.plan.peek())) {
 			this.skeleton.getPathfinder().stopPathfinding();
-			if (!this.probe(this.target).hasClearShot(this.plan.peek())) {
+			if (!this.geometryProbe.hasClearShot(this.plan.peek())) {
 				this.beginReturn(now);
 				return;
 			}
@@ -301,7 +305,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	}
 
 	private void tickDrawing(final long now) {
-		if (!this.probe(this.target).hasClearShot(this.plan.peek())) {
+		if (!this.geometryProbe.hasClearShot(this.plan.peek())) {
 			this.skeleton.clearActiveItem();
 			this.beginReturn(now);
 			return;

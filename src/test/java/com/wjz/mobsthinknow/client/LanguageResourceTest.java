@@ -7,10 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.wjz.mobsthinknow.ai.zombie.squad.SquadRole;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
 /** 资源级回归测试：防止 Windows 工具链把新增中文静默替换成问号。 */
@@ -31,6 +33,15 @@ class LanguageResourceTest {
 		));
 		assertEquals("预判式临时蛛网", chinese.get("mobsthinknow.config.spider_web_traps").getAsString());
 		assertEquals("战地伤员掩护撤离", chinese.get("mobsthinknow.config.squad_casualty_extraction").getAsString());
+	}
+
+	@Test
+	void everyDynamicallyComposedSquadRoleHasATranslation() throws IOException {
+		JsonObject english = readLanguage("en_us.json");
+		for (SquadRole role : SquadRole.values()) {
+			String key = "mobsthinknow.role." + role.name().toLowerCase(Locale.ROOT);
+			assertTrue(english.has(key), () -> "Missing dynamic squad role translation: " + key);
+		}
 	}
 
 	private static JsonObject readLanguage(final String fileName) throws IOException {

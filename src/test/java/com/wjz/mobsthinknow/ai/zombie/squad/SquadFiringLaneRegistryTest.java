@@ -1,10 +1,13 @@
 package com.wjz.mobsthinknow.ai.zombie.squad;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -52,5 +55,20 @@ class SquadFiringLaneRegistryTest {
 			4,
 			registry.blockingLane(8, new AABB(9.5, -0.5, 2.5, 10.5, 0.5, 3.5), 0L).shooterId()
 		);
+	}
+
+	@Test
+	void rejectsNonFiniteInputsAndReservationDefensivelyCopiesTrajectory() {
+		SquadFiringLaneRegistry registry = new SquadFiringLaneRegistry();
+		assertFalse(registry.reserve(1, 2, Vec3.ZERO, new Vec3(Double.NaN, 0.0, 1.0), 0.2, false, 0L, 5L));
+		assertFalse(registry.reserve(1, 2, Vec3.ZERO, new Vec3(1.0, 0.0, 0.0), Double.NaN, false, 0L, 5L));
+
+		List<Vec3> mutable = new ArrayList<>(List.of(Vec3.ZERO, new Vec3(1.0, 0.0, 0.0)));
+		var reservation = new SquadFiringLaneRegistry.Reservation(1, 2, mutable, 0.2, false, 5L);
+		mutable.clear();
+		assertEquals(2, reservation.trajectory().size());
+		assertThrows(IllegalArgumentException.class, () -> new SquadFiringLaneRegistry.Reservation(
+			1, 2, List.of(Vec3.ZERO), 0.2, false, 5L
+		));
 	}
 }

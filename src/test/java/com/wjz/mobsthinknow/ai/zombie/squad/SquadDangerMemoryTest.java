@@ -40,4 +40,13 @@ class SquadDangerMemoryTest {
 		assertFalse(memory.isDangerousNear(shortLived, 0, 0, 1L));
 		assertTrue(memory.isDangerousNear(replacement, 0, 0, 1L));
 	}
+
+	@Test
+	void expirySaturatesInsteadOfWrappingIntoThePast() {
+		SquadDangerMemory memory = new SquadDangerMemory(1);
+		BlockPos position = new BlockPos(0, 64, 0);
+		memory.report(position, SquadDangerKind.ROUTE_BLOCKED, 1, Long.MAX_VALUE - 2L, 20L);
+		assertEquals(Long.MAX_VALUE, memory.snapshot(Long.MAX_VALUE - 1L).getFirst().expiresAt());
+		assertEquals(1, memory.activeEntryCount(Long.MAX_VALUE));
+	}
 }

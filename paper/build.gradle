@@ -25,17 +25,19 @@ dependencies {
 tasks.withType(JavaCompile).configureEach {
 	options.release = 25
 	options.encoding = "UTF-8"
-	options.compilerArgs.add("-Xlint:deprecation")
+	options.compilerArgs.addAll(["-Xlint:all", "-Xlint:-processing", "-Xlint:-serial", "-Xlint:-classfile", "-Werror"])
 }
 
 tasks.withType(Test).configureEach {
 	useJUnitPlatform()
 }
 
+def resourceVersion = project.version
+
 processResources {
-	inputs.property "version", project.version
+	inputs.property "version", resourceVersion
 	filesMatching("plugin.yml") {
-		expand "version": project.version
+		expand "version": resourceVersion
 	}
 }
 
@@ -50,11 +52,232 @@ base {
 	archivesName = "mobsthinknow-paper"
 }
 
+def rootProjectName = rootProject.name
+
 jar {
 	// Paper 不会自动加载普通依赖 JAR；把无第三方依赖的共享内核直接合入插件产物。
 	from(project(":shared").sourceSets.main.output)
-	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	duplicatesStrategy = DuplicatesStrategy.FAIL
 	from(rootProject.file("LICENSE")) {
-		rename { "${it}_${rootProject.name}-Paper" }
+		rename { "${it}_${rootProjectName}-Paper" }
 	}
+}
+
+tasks.named("sourcesJar", Jar) {
+	duplicatesStrategy = DuplicatesStrategy.FAIL
+	from(project(":shared").sourceSets.main.allSource)
+	from(rootProject.file("LICENSE")) {
+		rename { "${it}_${rootProjectName}-Paper" }
+	}
+}
+
+def paperJar = tasks.named("jar", Jar).flatMap { it.archiveFile }
+def sharedBinaryJar = project(":shared").tasks.named("jar", Jar).flatMap { it.archiveFile }
+def paperSourcesJar = tasks.named("sourcesJar", Jar).flatMap { it.archiveFile }
+def sharedSourcesJar = project(":shared").tasks.named("sourcesJar", Jar).flatMap { it.archiveFile }
+def rootLicense = rootProject.file("LICENSE")
+def expectedPaperApiVersion = rootProject.minecraft_version.toString().split("\\.")[0..1].join(".")
+tasks.register("verifyBundledSharedClasses") {
+	group = "verification"
+	description = "Verify the distributable Paper archives contain the platform-neutral shared kernel."
+	dependsOn(tasks.named("jar"))
+	dependsOn(tasks.named("sourcesJar"))
+	dependsOn(project(":shared").tasks.named("jar"))
+	dependsOn(project(":shared").tasks.named("sourcesJar"))
+	inputs.file(paperJar)
+	inputs.file(sharedBinaryJar)
+	inputs.file(paperSourcesJar)
+	inputs.file(sharedSourcesJar)
+	inputs.file(rootLicense)
+	doLast {
+		new java.util.zip.ZipFile(sharedBinaryJar.get().asFile).withCloseable { sharedArchive ->
+			def required = sharedArchive.entries().findAll {
+				!it.directory && it.name.startsWith("com/wjz/mobsthinknow/shared/") && it.name.endsWith(".class")
+			}*.name
+			if (required.isEmpty()) {
+				throw new GradleException("Shared binary jar contains no shared classes")
+			}
+			new java.util.zip.ZipFile(paperJar.get().asFile).withCloseable { archive ->
+				required.addAll([
+					"plugin.yml",
+					"config.yml",
+					"LICENSE_MobsThinkNow-Paper",
+					"com/wjz/mobsthinknow/paper/MobsThinkNowPaperPlugin.class"
+				])
+				def missing = required.findAll { archive.getEntry(it) == null }
+				if (!missing.isEmpty()) {
+					throw new GradleException("Paper jar is missing required release entries: ${missing.join(', ')}")
+				}
+				def names = archive.entries().findAll { !it.directory }*.name
+				if (names.size() != names.toSet().size()) {
+					throw new GradleException("Paper jar contains duplicate ZIP entries")
+				}
+				if (!java.util.Arrays.equals(
+					archive.getInputStream(archive.getEntry("LICENSE_MobsThinkNow-Paper")).bytes,
+					rootLicense.bytes
+				)) {
+					throw new GradleException("Paper jar license content differs from repository LICENSE")
+				}
+				def pluginText = archive.getInputStream(archive.getEntry("plugin.yml")).getText("UTF-8")
+				def mainMatch = pluginText =~ /(?m)^main:\s+['"]?([^'"\s]+)['"]?\s*$/
+				if (!mainMatch.find() || archive.getEntry(mainMatch.group(1).replace('.', '/') + ".class") == null) {
+					throw new GradleException("plugin.yml main class is missing from the Paper jar")
+				}
+				def versionMatch = pluginText =~ /(?m)^version:\s+['"]?([^'"\s]+)['"]?\s*$/
+				if (!versionMatch.find() || versionMatch.group(1) != resourceVersion.toString()) {
+					throw new GradleException("plugin.yml version does not match project version ${resourceVersion}")
+				}
+				def apiMatch = pluginText =~ /(?m)^api-version:\s+['"]?([^'"\s]+)['"]?\s*$/
+				if (!apiMatch.find() || apiMatch.group(1) != expectedPaperApiVersion) {
+					throw new GradleException("plugin.yml api-version does not match Minecraft ${expectedPaperApiVersion}")
+				}
+				if (!(pluginText =~ /(?m)^\s{2}mtnpaper:\s*$/).find()
+					|| !(pluginText =~ /(?m)^\s{2}mobsthinknow\.admin:\s*$/).find()) {
+					throw new GradleException("plugin.yml is missing the mtnpaper command or admin permission")
+				}
+				def forbidden = archive.entries().find {
+					it.name.startsWith("org/bukkit/")
+						|| it.name.startsWith("io/papermc/")
+						|| it.name.startsWith("com/wjz/mobsthinknow/mixin/")
+						|| it.name.startsWith("com/wjz/mobsthinknow/client/")
+						|| it.name.startsWith("com/wjz/mobsthinknow/ai/")
+						|| it.name == "com/wjz/mobsthinknow/MobsThinkNow.class"
+				}
+				if (forbidden != null) {
+					throw new GradleException("Paper jar unexpectedly bundles server API class: ${forbidden.name}")
+				}
+			}
+		}
+		new java.util.zip.ZipFile(sharedSourcesJar.get().asFile).withCloseable { sharedArchive ->
+			def required = sharedArchive.entries().findAll {
+				!it.directory && it.name.startsWith("com/wjz/mobsthinknow/shared/") && it.name.endsWith(".java")
+			}*.name
+			if (required.isEmpty()) {
+				throw new GradleException("Shared sources jar contains no shared sources")
+			}
+			new java.util.zip.ZipFile(paperSourcesJar.get().asFile).withCloseable { archive ->
+				required.add("LICENSE_MobsThinkNow-Paper")
+				def missing = required.findAll { archive.getEntry(it) == null }
+				if (!missing.isEmpty()) {
+					throw new GradleException("Paper sources jar is missing shared sources: ${missing.join(', ')}")
+				}
+				def names = archive.entries().findAll { !it.directory }*.name
+				if (names.size() != names.toSet().size()) {
+					throw new GradleException("Paper sources jar contains duplicate ZIP entries")
+				}
+				if (!java.util.Arrays.equals(
+					archive.getInputStream(archive.getEntry("LICENSE_MobsThinkNow-Paper")).bytes,
+					rootLicense.bytes
+				)) {
+					throw new GradleException("Paper sources jar license differs from repository LICENSE")
+				}
+			}
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyBundledSharedClasses"))
+}
+
+def paperConfigSources = fileTree("src/main/java") { include("**/*.java") }
+def defaultConfig = file("src/main/resources/config.yml")
+def paperGuide = rootProject.file("docs/PAPER_PLUGIN.md")
+tasks.register("verifyDefaultConfigCoverage") {
+	group = "verification"
+	description = "Verify every Paper configuration read has one matching bundled YAML default."
+	inputs.files(paperConfigSources, defaultConfig, paperGuide)
+	doLast {
+		def sourceText = paperConfigSources.files.collect { it.getText("UTF-8") }.join("\n")
+		def matcher = sourceText =~ /(?s)get(?:Boolean|Int|Double)\(\s*"([^"]+)"/
+		def readKeys = matcher.collect { it[1] } as Set
+		def stack = []
+		def yamlLeaves = [:]
+		def duplicateLeaves = []
+		defaultConfig.readLines("UTF-8").each { raw ->
+			def line = raw.split("#", 2)[0].replaceFirst(/\s+$/, "")
+			if (!line.trim().isEmpty() && line.contains(":")) {
+				def indent = line.length() - line.stripLeading().length()
+				def separator = line.indexOf(":")
+				def key = line.substring(0, separator).trim()
+				def value = line.substring(separator + 1).trim()
+				while (!stack.isEmpty() && stack.last()[0] >= indent) {
+					stack.removeLast()
+				}
+				def path = (stack.collect { it[1] } + key).join(".")
+				if (value.isEmpty()) {
+					stack.add([indent, key])
+				} else {
+					if (yamlLeaves.containsKey(path)) {
+						duplicateLeaves.add(path)
+					}
+					yamlLeaves[path] = value
+				}
+			}
+		}
+		def yamlKeys = yamlLeaves.keySet() as Set
+		def missing = (readKeys - yamlKeys).sort()
+		def unused = (yamlKeys - readKeys).sort()
+		if (!duplicateLeaves.isEmpty() || !missing.isEmpty() || !unused.isEmpty()) {
+			throw new GradleException(
+				"Paper config key mismatch: duplicates=${duplicateLeaves.sort()}, missing=${missing}, unused=${unused}"
+			)
+		}
+		def guideMatch = paperGuide.getText("UTF-8") =~ /(?s)## 配置.*?```yaml\s*\R(.*?)\R```/
+		if (!guideMatch.find()) {
+			throw new GradleException("Paper guide is missing its YAML configuration block")
+		}
+		def documentedLeaves = [:]
+		stack.clear()
+		guideMatch.group(1).readLines().each { raw ->
+			def line = raw.split("#", 2)[0].replaceFirst(/\s+$/, "")
+			if (!line.trim().isEmpty() && line.contains(":")) {
+				def indent = line.length() - line.stripLeading().length()
+				def separator = line.indexOf(":")
+				def key = line.substring(0, separator).trim()
+				def value = line.substring(separator + 1).trim()
+				while (!stack.isEmpty() && stack.last()[0] >= indent) {
+					stack.removeLast()
+				}
+				def path = (stack.collect { it[1] } + key).join(".")
+				if (value.isEmpty()) {
+					stack.add([indent, key])
+				} else {
+					documentedLeaves[path] = value
+				}
+			}
+		}
+		if (documentedLeaves != yamlLeaves) {
+			def missingFromGuide = (yamlLeaves.keySet() - documentedLeaves.keySet()).sort()
+			def extraInGuide = (documentedLeaves.keySet() - yamlLeaves.keySet()).sort()
+			def valueDrift = (yamlLeaves.keySet().intersect(documentedLeaves.keySet()) as Set)
+				.findAll { yamlLeaves[it] != documentedLeaves[it] }
+				.sort()
+			throw new GradleException(
+				"Paper guide config differs from config.yml: missing=${missingFromGuide}, extra=${extraInGuide}, values=${valueDrift}"
+			)
+		}
+		def literalMatcher = sourceText =~ /(?s)get(Boolean|Int|Double)\(\s*"([^"]+)"\s*,\s*(true|false|-?\d+(?:\.\d+)?)\s*\)/
+		def fallbackMismatches = literalMatcher.findAll { match ->
+			def type = match[1]
+			def key = match[2]
+			def fallback = match[3]
+			def yaml = yamlLeaves[key]
+			if (type == "Boolean") {
+				return !yaml.equalsIgnoreCase(fallback)
+			}
+			try {
+				return new BigDecimal(yaml).compareTo(new BigDecimal(fallback)) != 0
+			} catch (NumberFormatException ignored) {
+				return true
+			}
+		}.collect { it[2] }.sort()
+		if (!fallbackMismatches.isEmpty()) {
+			throw new GradleException("Paper code fallbacks disagree with bundled YAML: ${fallbackMismatches}")
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(tasks.named("verifyDefaultConfigCoverage"))
 }

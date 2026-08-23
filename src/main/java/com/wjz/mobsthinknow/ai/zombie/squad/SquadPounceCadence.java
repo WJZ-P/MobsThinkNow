@@ -37,8 +37,8 @@ final class SquadPounceCadence {
 		}
 		this.ownerId = candidateId;
 		this.targetId = requestedTargetId;
-		this.reservationEndsAt = now + Math.max(1, maximumAirborneTicks);
-		this.nextAvailableAt = now + Math.max(1, minimumIntervalTicks);
+		this.reservationEndsAt = saturatingAdd(now, Math.max(1, maximumAirborneTicks));
+		this.nextAvailableAt = saturatingAdd(now, Math.max(1, minimumIntervalTicks));
 		return true;
 	}
 
@@ -72,5 +72,9 @@ final class SquadPounceCadence {
 			this.targetId = 0;
 			this.reservationEndsAt = Long.MIN_VALUE;
 		}
+	}
+
+	private static long saturatingAdd(final long left, final long right) {
+		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 }

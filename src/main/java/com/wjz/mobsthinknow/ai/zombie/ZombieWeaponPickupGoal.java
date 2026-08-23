@@ -3,12 +3,14 @@ package com.wjz.mobsthinknow.ai.zombie;
 import com.wjz.mobsthinknow.ai.zombie.squad.WeaponClass;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.ItemTags;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -19,6 +21,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
 import org.jspecify.annotations.Nullable;
@@ -44,6 +47,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 	private static final int SEARCH_TIMEOUT_TICKS = 200;
 	private static final int PATH_REFRESH_TICKS = 10;
 	private static final int MAXIMUM_PATH_CANDIDATES = 4;
+	private static final int MAXIMUM_RAW_CANDIDATES = 64;
 
 	private final Zombie zombie;
 	private Phase phase = Phase.IDLE;
@@ -199,13 +203,16 @@ public final class ZombieWeaponPickupGoal extends Goal {
 	private @Nullable SearchTarget findReachableWeapon(final ServerLevel level, final long now) {
 		ItemStack current = this.zombie.getMainHandItem();
 		AABB searchBox = this.zombie.getBoundingBox().inflate(SEARCH_RADIUS, SEARCH_VERTICAL_RADIUS, SEARCH_RADIUS);
-		List<ItemEntity> weapons = level.getEntitiesOfClass(
-			ItemEntity.class,
+		List<ItemEntity> weapons = new ArrayList<>(MAXIMUM_RAW_CANDIDATES);
+		level.getEntities(
+			EntityTypeTest.<Entity, ItemEntity>forClass(ItemEntity.class),
 			searchBox,
 			entity -> isAvailableWeaponEntity(entity)
 				&& this.zombie.distanceToSqr(entity) <= SEARCH_RADIUS * SEARCH_RADIUS
 				&& ZombieGroundItemReservations.isAvailableTo(entity, this.zombie, now)
-				&& canReplaceMainHand(current, entity.getItem())
+				&& canReplaceMainHand(current, entity.getItem()),
+			weapons,
+			MAXIMUM_RAW_CANDIDATES
 		);
 		weapons.sort((first, second) -> {
 			int quality = compareWeaponQuality(second.getItem(), first.getItem());
@@ -241,7 +248,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 
 	/** 阻止原版随机 looting 抢先处理武器；选择、比较和换装统一由本 Goal 完成。 */
 	public static boolean managesWeapon(final Zombie zombie, final ItemStack stack, final MobsThinkNowConfig config) {
-		return zombie.getType() == EntityType.ZOMBIE
+		return OverworldUndeadFamilies.usesGroundZombieTactics(zombie.getType())
 			&& config.enabled
 			&& config.zombieAiEnabled
 			&& isMeleeWeapon(stack);
@@ -291,7 +298,7 @@ public final class ZombieWeaponPickupGoal extends Goal {
 	}
 
 	private static boolean isEnabled(final Zombie zombie, final MobsThinkNowConfig config) {
-		return zombie.getType() == EntityType.ZOMBIE
+		return OverworldUndeadFamilies.usesGroundZombieTactics(zombie.getType())
 			&& zombie.isAlive()
 			&& config.enabled
 			&& config.zombieAiEnabled;

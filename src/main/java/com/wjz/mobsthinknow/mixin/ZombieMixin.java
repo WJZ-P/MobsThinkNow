@@ -296,6 +296,9 @@ public abstract class ZombieMixin extends Monster implements
 		if (!OverworldUndeadFamilies.isZombieFamily(zombie)) {
 			return;
 		}
+		// Conversion copies visible hand equipment into the replacement. Restore a real weapon first;
+		// otherwise a zombie converting mid-bite can turn its temporary one-serving food into permanent gear.
+		ZombieFoodEquipment.restore(zombie, true);
 		ZombieEngineerEquipment.restore(zombie, false);
 		SquadTheatrics.stripLeftoverRoleTag(zombie);
 		ZombieIntelligenceName.removeSyntheticMarker(zombie);

@@ -47,6 +47,26 @@ class EndermanCreeperDeliveryGoalTest {
 
 		assertTrue(front.dot(look) > 0.0, "Front candidate crossed behind the player's look plane.");
 		assertTrue(rear.dot(look) < 0.0, "Rear candidate crossed in front of the player's look plane.");
+		assertTrue(
+			!EndermanCreeperDeliveryGoal.isOnDeliverySide(
+				look,
+				new Vec3(-1.0, 0.0, 2.0),
+				EndermanCreeperDeliveryGoal.DeliverySide.REAR,
+				0.70,
+				-0.50
+			),
+			"A block-center snap outside the committed rear cone was accepted."
+		);
+		assertTrue(
+			EndermanCreeperDeliveryGoal.isOnDeliverySide(
+				look,
+				new Vec3(-2.0, 0.0, 1.0),
+				EndermanCreeperDeliveryGoal.DeliverySide.REAR,
+				0.70,
+				-0.50
+			),
+			"A valid snapped rear drop was rejected."
+		);
 		// Vec3#yRot 接收 float 角度，长度会带入约 1e-4 的单精度三角函数误差。
 		assertEquals(2.64, front.length(), 2.0E-4);
 		assertEquals(3.36, rear.length(), 2.0E-4);

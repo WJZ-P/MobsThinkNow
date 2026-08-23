@@ -39,6 +39,13 @@ public final class TacticalActivityLease {
 		}
 	}
 
+	/** Drop all short-lived ownership when an integrated or dedicated server stops in this JVM. */
+	public static void clear() {
+		synchronized (ACTIVE) {
+			ACTIVE.clear();
+		}
+	}
+
 	private static Lease liveLease(final Mob mob, final long now) {
 		Lease current = ACTIVE.get(mob);
 		if (current != null && current.expiresAt < now) {

@@ -7,6 +7,7 @@ import com.wjz.mobsthinknow.ai.creeper.CreeperIntelligence;
 import com.wjz.mobsthinknow.ai.zombie.squad.ZombieSquadCoordinator;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -25,6 +26,7 @@ import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -292,10 +294,13 @@ public final class SpiderCreeperCarrierGoal extends Goal {
 		MobsThinkNowConfig config = ConfigManager.get();
 		double radius = config.spiderCreeperSearchRadius;
 		AABB searchBox = this.spider.getBoundingBox().inflate(radius, Math.min(5.0, radius), radius);
-		List<Creeper> nearby = this.spider.level().getEntitiesOfClass(
-			Creeper.class,
+		List<Creeper> nearby = new ArrayList<>(MAXIMUM_CANDIDATE_CHECKS_PER_SEARCH);
+		this.spider.level().getEntities(
+			EntityTypeTest.forClass(Creeper.class),
 			searchBox,
-			candidate -> candidate.getType() == EntityType.CREEPER && candidate.isAlive()
+			candidate -> candidate.getType() == EntityType.CREEPER && candidate.isAlive(),
+			nearby,
+			MAXIMUM_CANDIDATE_CHECKS_PER_SEARCH
 		);
 		SmartSpiderMetrics.carrierSearch();
 		LivingEntity spiderTarget = validOrNull(this.spider.getTarget());

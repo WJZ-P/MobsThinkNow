@@ -9,11 +9,12 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.AbstractSkeleton;
@@ -33,36 +34,39 @@ import org.bukkit.plugin.Plugin;
 public final class PaperProjectileThreatBoard {
 	private static final double CELL_SIZE = 12.0;
 
+	private final BooleanSupplier globallyEnabled;
 	private final Supplier<PaperProjectileEvasionSettings> settings;
 	private final PaperMetrics metrics;
 	private final LinkedHashMap<UUID, TrackedArrow> tracked = new LinkedHashMap<>();
 	private final Map<UUID, Map<CellKey, LinkedHashSet<UUID>>> cellsByWorld = new HashMap<>();
+	private Plugin plugin;
 	private BukkitTask task;
 
 	public PaperProjectileThreatBoard(
+		final BooleanSupplier globallyEnabled,
 		final Supplier<PaperProjectileEvasionSettings> settings,
 		final PaperMetrics metrics
 	) {
+		this.globallyEnabled = globallyEnabled;
 		this.settings = settings;
 		this.metrics = metrics;
 	}
 
 	public void start(final Plugin plugin) {
-		this.stop();
-		for (World world : Bukkit.getWorlds()) {
-			for (AbstractArrow arrow : world.getEntitiesByClass(AbstractArrow.class)) {
-				this.track(arrow);
-			}
+		this.plugin = Objects.requireNonNull(plugin, "plugin");
+		this.stopTask();
+		this.clear();
+		if (!this.enabled()) {
+			return;
 		}
-		this.task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
+		this.trackLoadedArrows();
+		this.startTask();
 	}
 
 	public void stop() {
-		if (this.task != null) {
-			this.task.cancel();
-			this.task = null;
-		}
+		this.stopTask();
 		this.clear();
+		this.plugin = null;
 	}
 
 	public void clear() {
@@ -72,7 +76,8 @@ public final class PaperProjectileThreatBoard {
 
 	public void reconfigure() {
 		PaperProjectileEvasionSettings config = this.settings.get();
-		if (!config.enabled()) {
+		if (!this.enabled()) {
+			this.stopTask();
 			this.clear();
 			return;
 		}
@@ -80,11 +85,8 @@ public final class PaperProjectileThreatBoard {
 			UUID oldest = this.tracked.keySet().iterator().next();
 			this.remove(oldest);
 		}
-		for (World world : Bukkit.getWorlds()) {
-			for (AbstractArrow arrow : world.getEntitiesByClass(AbstractArrow.class)) {
-				this.track(arrow);
-			}
-		}
+		this.trackLoadedArrows();
+		this.startTask();
 	}
 
 	public void observeAdded(final Entity entity) {
@@ -105,10 +107,10 @@ public final class PaperProjectileThreatBoard {
 		final double scanRadius,
 		final int maximumChecks
 	) {
-		this.metrics.projectileThreatQuery();
-		if (!skeleton.isValid() || reaction == null || !Double.isFinite(scanRadius) || scanRadius <= 0.0) {
+		if (!this.enabled() || !skeleton.isValid() || reaction == null || !Double.isFinite(scanRadius) || scanRadius <= 0.0) {
 			return Optional.empty();
 		}
+		this.metrics.projectileThreatQuery();
 
 		Vector center = skeleton.getBoundingBox().getCenter();
 		CellKey centerCell = CellKey.at(center);
@@ -140,15 +142,17 @@ public final class PaperProjectileThreatBoard {
 							|| shotBy(entry.arrow(), skeleton)) {
 							continue;
 						}
-						Location projectile = entry.arrow().getLocation();
-						if (projectile.toVector().distanceSquared(center) > radiusSquared) {
+						double relativeX = center.getX() - entry.arrow().getX();
+						double relativeY = center.getY() - entry.arrow().getY();
+						double relativeZ = center.getZ() - entry.arrow().getZ();
+						if (relativeX * relativeX + relativeY * relativeY + relativeZ * relativeZ > radiusSquared) {
 							continue;
 						}
 						Vector velocity = entry.arrow().getVelocity();
 						double time = ProjectileEvasionPlanner.closestApproachTicks(
-							center.getX() - projectile.getX(),
-							center.getY() - projectile.getY(),
-							center.getZ() - projectile.getZ(),
+							relativeX,
+							relativeY,
+							relativeZ,
 							velocity.getX(),
 							velocity.getY(),
 							velocity.getZ(),
@@ -156,9 +160,9 @@ public final class PaperProjectileThreatBoard {
 						);
 						if (!Double.isFinite(time)
 							|| !ProjectileEvasionPlanner.isIncoming(
-								center.getX() - projectile.getX(),
-								center.getY() - projectile.getY(),
-								center.getZ() - projectile.getZ(),
+								relativeX,
+								relativeY,
+								relativeZ,
 								velocity.getX(),
 								velocity.getY(),
 								velocity.getZ(),
@@ -185,23 +189,48 @@ public final class PaperProjectileThreatBoard {
 		return this.tracked.size();
 	}
 
+	public boolean isRunning() {
+		return this.task != null;
+	}
+
+	private void trackLoadedArrows() {
+		for (World world : Bukkit.getWorlds()) {
+			for (AbstractArrow arrow : world.getEntitiesByClass(AbstractArrow.class)) {
+				this.track(arrow);
+			}
+		}
+	}
+
+	private void startTask() {
+		if (this.task == null && this.plugin != null) {
+			this.task = Bukkit.getScheduler().runTaskTimer(this.plugin, this::tick, 1L, 1L);
+		}
+	}
+
+	private void stopTask() {
+		if (this.task != null) {
+			this.task.cancel();
+			this.task = null;
+		}
+	}
+
 	private void track(final AbstractArrow arrow) {
 		PaperProjectileEvasionSettings config = this.settings.get();
-		if (!config.enabled() || arrow.isInBlock() || this.tracked.containsKey(arrow.getUniqueId())) {
+		if (!this.enabled() || arrow.isInBlock() || this.tracked.containsKey(arrow.getUniqueId())) {
 			return;
 		}
 		if (this.tracked.size() >= config.maximumTrackedProjectiles()) {
 			this.metrics.projectileTrackingCapacityRejected();
 			return;
 		}
-		CellKey cell = CellKey.at(arrow.getLocation().toVector());
+		CellKey cell = CellKey.at(arrow.getX(), arrow.getY(), arrow.getZ());
 		TrackedArrow entry = new TrackedArrow(arrow, arrow.getWorld().getUID(), cell);
 		this.tracked.put(arrow.getUniqueId(), entry);
 		this.bucket(entry.worldId(), cell).add(arrow.getUniqueId());
 	}
 
 	private void tick() {
-		if (!this.settings.get().enabled()) {
+		if (!this.enabled()) {
 			if (!this.tracked.isEmpty()) {
 				this.clear();
 			}
@@ -218,7 +247,7 @@ public final class PaperProjectileThreatBoard {
 				continue;
 			}
 			UUID worldId = arrow.getWorld().getUID();
-			CellKey nextCell = CellKey.at(arrow.getLocation().toVector());
+			CellKey nextCell = CellKey.at(arrow.getX(), arrow.getY(), arrow.getZ());
 			if (worldId.equals(entry.worldId()) && nextCell.equals(entry.cell())) {
 				continue;
 			}
@@ -260,12 +289,20 @@ public final class PaperProjectileThreatBoard {
 		return source instanceof Entity entity && entity.getUniqueId().equals(skeleton.getUniqueId());
 	}
 
+	private boolean enabled() {
+		return this.globallyEnabled.getAsBoolean() && this.settings.get().enabled();
+	}
+
 	private record TrackedArrow(AbstractArrow arrow, UUID worldId, CellKey cell) {
 	}
 
 	private record CellKey(int x, int y, int z) {
 		static CellKey at(final Vector point) {
-			return new CellKey(cell(point.getX()), cell(point.getY()), cell(point.getZ()));
+			return at(point.getX(), point.getY(), point.getZ());
+		}
+
+		static CellKey at(final double x, final double y, final double z) {
+			return new CellKey(cell(x), cell(y), cell(z));
 		}
 
 		CellKey offset(final int dx, final int dy, final int dz) {

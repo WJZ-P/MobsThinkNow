@@ -1,5 +1,7 @@
 package com.wjz.mobsthinknow.ai.spider;
 
+import com.wjz.mobsthinknow.config.ConfigManager;
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
@@ -28,14 +30,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class SpiderWebTrapRegistry {
 	private static final int MAXIMUM_ACTIVE_TRAPS_PER_LEVEL = 128;
-	private static final int MINIMUM_HORIZONTAL_SPACING_SQUARED = 2;
 	private static final Map<ServerLevel, LinkedHashMap<BlockPos, Trap>> ACTIVE = new IdentityHashMap<>();
 
 	private SpiderWebTrapRegistry() {
 	}
 
 	public static synchronized boolean canPlace(final ServerLevel level, final BlockPos pos) {
-		if (!level.getGameRules().get(GameRules.MOB_GRIEFING)) {
+		if (!featureEnabled() || !level.getGameRules().get(GameRules.MOB_GRIEFING)) {
 			return false;
 		}
 		BlockState current = level.getBlockState(pos);
@@ -50,13 +51,24 @@ public final class SpiderWebTrapRegistry {
 		if (traps == null || traps.isEmpty()) {
 			return true;
 		}
-		for (BlockPos reserved : traps.keySet()) {
-			int dx = reserved.getX() - pos.getX();
-			int dz = reserved.getZ() - pos.getZ();
-			if (Math.abs(reserved.getY() - pos.getY()) <= 1
-				&& dx * dx + dz * dz <= MINIMUM_HORIZONTAL_SPACING_SQUARED) {
-				return false;
+		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+		for (int yOffset = -1; yOffset <= 1; yOffset++) {
+			for (int zOffset = -1; zOffset <= 1; zOffset++) {
+				for (int xOffset = -1; xOffset <= 1; xOffset++) {
+					cursor.setWithOffset(pos, xOffset, yOffset, zOffset);
+					if (!traps.containsKey(cursor)) {
+						continue;
+					}
+					if (!level.getBlockState(cursor).is(Blocks.COBWEB)) {
+						traps.remove(cursor);
+						continue;
+					}
+					return false;
+				}
 			}
+		}
+		if (traps.isEmpty()) {
+			ACTIVE.remove(level);
 		}
 		return true;
 	}
@@ -69,19 +81,26 @@ public final class SpiderWebTrapRegistry {
 		final int lifetimeTicks
 	) {
 		tickLevel(level);
-		LinkedHashMap<BlockPos, Trap> traps = ACTIVE.computeIfAbsent(level, ignored -> new LinkedHashMap<>());
-		if (traps.size() >= MAXIMUM_ACTIVE_TRAPS_PER_LEVEL || !canPlace(level, pos)) {
+		LinkedHashMap<BlockPos, Trap> traps = ACTIVE.get(level);
+		if (traps != null && traps.size() >= MAXIMUM_ACTIVE_TRAPS_PER_LEVEL) {
+			auditOwnership(level, traps);
+			if (traps.size() >= MAXIMUM_ACTIVE_TRAPS_PER_LEVEL) {
+				return false;
+			}
+		}
+		if (!canPlace(level, pos)) {
+			return false;
+		}
+		traps = ACTIVE.computeIfAbsent(level, ignored -> new LinkedHashMap<>());
+		BlockState previous = level.getBlockState(pos);
+		BlockState web = Blocks.COBWEB.defaultBlockState();
+		if (!level.setBlock(pos, web, Block.UPDATE_ALL)) {
 			if (traps.isEmpty()) {
 				ACTIVE.remove(level);
 			}
 			return false;
 		}
-		BlockState previous = level.getBlockState(pos);
-		BlockState web = Blocks.COBWEB.defaultBlockState();
-		if (!level.setBlock(pos, web, Block.UPDATE_ALL)) {
-			return false;
-		}
-		traps.put(pos.immutable(), new Trap(owner, previous, now + Math.max(40, lifetimeTicks)));
+		traps.put(pos.immutable(), new Trap(owner, previous, saturatingAdd(now, Math.max(40, lifetimeTicks))));
 		playPlacementFeedback(level, pos, web);
 		SmartSpiderMetrics.webTrapPlaced();
 		return true;
@@ -91,6 +110,10 @@ public final class SpiderWebTrapRegistry {
 	public static synchronized void tickLevel(final ServerLevel level) {
 		LinkedHashMap<BlockPos, Trap> traps = ACTIVE.get(level);
 		if (traps == null) {
+			return;
+		}
+		if (!featureEnabled() || !level.getGameRules().get(GameRules.MOB_GRIEFING)) {
+			unloadLevel(level);
 			return;
 		}
 		long now = level.getGameTime();
@@ -118,6 +141,26 @@ public final class SpiderWebTrapRegistry {
 		}
 	}
 
+	/** Fabric fires this while the LevelChunk is still present, so rollback never reloads an inaccessible chunk. */
+	public static synchronized void unloadChunk(final ServerLevel level, final int chunkX, final int chunkZ) {
+		LinkedHashMap<BlockPos, Trap> traps = ACTIVE.get(level);
+		if (traps == null) {
+			return;
+		}
+		Iterator<Map.Entry<BlockPos, Trap>> iterator = traps.entrySet().iterator();
+		while (iterator.hasNext()) {
+			Map.Entry<BlockPos, Trap> entry = iterator.next();
+			BlockPos pos = entry.getKey();
+			if (pos.getX() >> 4 == chunkX && pos.getZ() >> 4 == chunkZ) {
+				restoreIfStillOwned(level, pos, entry.getValue(), false);
+				iterator.remove();
+			}
+		}
+		if (traps.isEmpty()) {
+			ACTIVE.remove(level);
+		}
+	}
+
 	/** SERVER_STOPPING 时世界仍可写，必须在最后一次保存前撤掉所有临时蛛网。 */
 	public static synchronized void restoreAll() {
 		for (Map.Entry<ServerLevel, LinkedHashMap<BlockPos, Trap>> levelEntry : new ArrayList<>(ACTIVE.entrySet())) {
@@ -134,19 +177,50 @@ public final class SpiderWebTrapRegistry {
 	}
 
 	public static synchronized int activeCount() {
+		for (Map.Entry<ServerLevel, LinkedHashMap<BlockPos, Trap>> entry : new ArrayList<>(ACTIVE.entrySet())) {
+			auditOwnership(entry.getKey(), entry.getValue());
+		}
 		return ACTIVE.values().stream().mapToInt(Map::size).sum();
 	}
 
 	public static synchronized boolean isOwnedTrap(final ServerLevel level, final BlockPos pos) {
-		Map<BlockPos, Trap> traps = ACTIVE.get(level);
-		return traps != null && traps.containsKey(pos);
+		return ownerAt(level, pos) != null;
+	}
+
+	/** Player break callbacks call this after the world accepted the edit, before a same-type replacement can occur. */
+	public static synchronized boolean discardOwnership(final ServerLevel level, final BlockPos pos) {
+		LinkedHashMap<BlockPos, Trap> traps = ACTIVE.get(level);
+		if (traps == null || traps.remove(pos) == null) {
+			return false;
+		}
+		if (traps.isEmpty()) {
+			ACTIVE.remove(level);
+		}
+		return true;
 	}
 
 	/** O(1) 所有权查询；协调器只有在目标脚下命中登记项后才会扫描对应小队确认成员关系。 */
 	public static synchronized @Nullable UUID ownerAt(final ServerLevel level, final BlockPos pos) {
-		Map<BlockPos, Trap> traps = ACTIVE.get(level);
+		LinkedHashMap<BlockPos, Trap> traps = ACTIVE.get(level);
 		Trap trap = traps == null ? null : traps.get(pos);
-		return trap == null || !level.getBlockState(pos).is(Blocks.COBWEB) ? null : trap.owner();
+		if (trap == null) {
+			return null;
+		}
+		if (level.getBlockState(pos).is(Blocks.COBWEB)) {
+			return trap.owner();
+		}
+		traps.remove(pos);
+		if (traps.isEmpty()) {
+			ACTIVE.remove(level);
+		}
+		return null;
+	}
+
+	private static void auditOwnership(final ServerLevel level, final LinkedHashMap<BlockPos, Trap> traps) {
+		traps.keySet().removeIf(pos -> !level.getBlockState(pos).is(Blocks.COBWEB));
+		if (traps.isEmpty()) {
+			ACTIVE.remove(level);
+		}
 	}
 
 	private static void restoreIfStillOwned(
@@ -201,6 +275,15 @@ public final class SpiderWebTrapRegistry {
 			0.30,
 			0.03
 		);
+	}
+
+	private static long saturatingAdd(final long left, final long right) {
+		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
+	}
+
+	private static boolean featureEnabled() {
+		MobsThinkNowConfig config = ConfigManager.get();
+		return config.enabled && config.spiderAiEnabled && config.spiderWebTraps;
 	}
 
 	private record Trap(UUID owner, BlockState previousState, long expiresAt) {

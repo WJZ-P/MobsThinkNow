@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.ai.zombie;
 
+import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
 import java.lang.reflect.Method;
 import java.util.List;
 import net.fabricmc.fabric.api.gametest.v1.CustomTestMethodInvoker;
@@ -53,6 +54,28 @@ public final class ZombieWeaponPickupGameTests implements CustomTestMethodInvoke
 		helper.assertTrue(second.getMainHandItem().is(Items.STONE_SWORD), "Both zombies chased the iron sword instead of splitting up.");
 		firstGoal.stop();
 		secondGoal.stop();
+		helper.succeed();
+	}
+
+	@GameTest
+	public void groundZombieVariantsShareManagedWeaponPickup(final GameTestHelper helper) {
+		Zombie husk = helper.spawn(EntityType.HUSK, 1, 0, 1);
+		Zombie villager = helper.spawn(EntityType.ZOMBIE_VILLAGER, 3, 0, 1);
+		Zombie drowned = helper.spawn(EntityType.DROWNED, 5, 0, 1);
+		ItemStack sword = new ItemStack(Items.IRON_SWORD);
+		MobsThinkNowConfig config = new MobsThinkNowConfig();
+		helper.assertTrue(
+			ZombieWeaponPickupGoal.managesWeapon(husk, sword, config),
+			"Husk weapon pickup bypassed the shared upgrade transaction."
+		);
+		helper.assertTrue(
+			ZombieWeaponPickupGoal.managesWeapon(villager, sword, config),
+			"Zombie villager weapon pickup bypassed the shared upgrade transaction."
+		);
+		helper.assertTrue(
+			!ZombieWeaponPickupGoal.managesWeapon(drowned, sword, config),
+			"Drowned lost its separate amphibious equipment boundary."
+		);
 		helper.succeed();
 	}
 

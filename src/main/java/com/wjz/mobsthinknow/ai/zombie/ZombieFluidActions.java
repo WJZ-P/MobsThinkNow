@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.BucketItem;
@@ -12,6 +13,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -141,11 +143,11 @@ final class ZombieFluidActions {
 		final Zombie source
 	) {
 		AABB danger = new AABB(pos).inflate(0.15, 0.25, 0.15);
-		return !level.getEntitiesOfClass(
-			Zombie.class,
+		return level.hasEntities(
+			EntityTypeTest.<Entity, Zombie>forClass(Zombie.class),
 			danger,
 			zombie -> zombie != source && zombie.isAlive()
-		).isEmpty();
+		);
 	}
 
 	private static Direction horizontalDirection(final Vec3 origin, final Vec3 destination) {

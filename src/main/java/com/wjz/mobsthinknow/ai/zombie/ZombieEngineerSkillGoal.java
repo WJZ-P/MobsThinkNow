@@ -5,6 +5,7 @@ import com.wjz.mobsthinknow.ai.activity.TacticalActivityLease;
 import com.wjz.mobsthinknow.ai.zombie.squad.UtilityClass;
 import com.wjz.mobsthinknow.config.ConfigManager;
 import com.wjz.mobsthinknow.config.MobsThinkNowConfig;
+import com.wjz.mobsthinknow.ai.utility.OverworldUndeadFamilies;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -17,7 +18,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.util.LandRandomPos;
@@ -34,6 +35,7 @@ import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -723,14 +725,18 @@ public final class ZombieEngineerSkillGoal extends Goal {
 			|| !level.getBlockState(support).isFaceSturdy(level, support, Direction.UP)) {
 			return false;
 		}
-		if (!level.getEntitiesOfClass(LivingEntity.class, new AABB(pos), LivingEntity::isAlive).isEmpty()) {
+		if (level.hasEntities(
+			EntityTypeTest.<Entity, LivingEntity>forClass(LivingEntity.class),
+			new AABB(pos),
+			LivingEntity::isAlive
+		)) {
 			return false;
 		}
-		return level.getEntitiesOfClass(
-			Zombie.class,
+		return !level.hasEntities(
+			EntityTypeTest.<Entity, Zombie>forClass(Zombie.class),
 			new AABB(pos).inflate(TNT_ALLY_SAFETY_RADIUS, 1.5, TNT_ALLY_SAFETY_RADIUS),
 			candidate -> candidate != this.zombie && candidate.isAlive()
-		).isEmpty();
+		);
 	}
 
 	private boolean isValidFluidSite(
@@ -932,11 +938,11 @@ public final class ZombieEngineerSkillGoal extends Goal {
 			|| stack.is(Items.BUCKET);
 	}
 
-	private static boolean isEnabled(final Zombie zombie, final MobsThinkNowConfig config) {
+	static boolean isEnabled(final Zombie zombie, final MobsThinkNowConfig config) {
 		return config.enabled
 			&& config.zombieAiEnabled
 			&& config.engineerSkills
-			&& zombie.getType() == EntityType.ZOMBIE
+			&& OverworldUndeadFamilies.usesGroundZombieTactics(zombie.getType())
 			&& zombie.isAlive()
 			&& !zombie.isBaby()
 			&& ZombieEngineerProfile.isEngineer(zombie)
