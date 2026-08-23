@@ -62,6 +62,7 @@ public final class PaperRuntimeSelfTest {
 	private static final int COMBAT_VALIDATION_DELAY_TICKS = 420;
 	private static final int COMBAT_PROBE_SEARCH_RADIUS = 32;
 	private static final int WEB_TRAP_FALLBACK_DELAY_TICKS = 160;
+	private static final int MAXIMUM_FIREWORK_SETTLE_CHECKS = 60;
 	private static final int[] COMBAT_PROBE_TARGET_OFFSETS = {2, 3};
 	private static final int[] FIREWORK_PROBE_TARGET_OFFSETS = {12, 10, 8};
 	private static final int[][] CARDINAL_DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
@@ -129,6 +130,7 @@ public final class PaperRuntimeSelfTest {
 	private boolean creeperFeintCompletionObserved;
 	private boolean creeperFeintCooledAtCompletion;
 	private boolean creeperFeintMemoryReleased;
+	private int fireworkSettleChecks;
 
 	public PaperRuntimeSelfTest(
 		final Plugin plugin,
@@ -326,6 +328,7 @@ public final class PaperRuntimeSelfTest {
 		final PaperMetrics.Snapshot baseline
 	) {
 		this.validationTask = null;
+		boolean deferred = false;
 		try {
 			List<PaperSquadDirective> directives = mobs.stream()
 				.filter(Entity::isValid)
@@ -345,6 +348,26 @@ public final class PaperRuntimeSelfTest {
 				&& this.fireworkProbeShooter.isValid()
 				&& this.fireworkProbeShooter.getEquipment().getItemInOffHand().getAmount() < 4;
 			int activeFireworkBolts = this.fireworkBolts.activeCount();
+			if (activeFireworkBolts > 0 && this.fireworkSettleChecks < MAXIMUM_FIREWORK_SETTLE_CHECKS) {
+				if (this.fireworkSettleChecks == 0) {
+					mobs.stream()
+						.filter(AbstractSkeleton.class::isInstance)
+						.map(AbstractSkeleton.class::cast)
+						.filter(Entity::isValid)
+						.forEach(skeleton -> this.intelligence.set(skeleton, 1));
+					if (this.fireworkProbeShooter != null && this.fireworkProbeShooter.isValid()) {
+						this.intelligence.set(this.fireworkProbeShooter, 1);
+					}
+				}
+				this.fireworkSettleChecks++;
+				this.validationTask = Bukkit.getScheduler().runTaskLater(
+					this.plugin,
+					() -> this.validateCombat(sender, mobs, baseline),
+					1L
+				);
+				deferred = true;
+				return;
+			}
 			long naturalLoadoutInitializations = current.naturalSkeletonLoadoutInitializations()
 				- baseline.naturalSkeletonLoadoutInitializations();
 			long naturalCrossbows = current.naturalCrossbowsEquipped() - baseline.naturalCrossbowsEquipped();
@@ -432,6 +455,7 @@ public final class PaperRuntimeSelfTest {
 						+ ", fireworkDetonations=" + fireworkDetonations
 						+ ", fireworkAmmoConsumed=" + fireworkAmmoConsumed
 						+ ", activeFireworkBolts=" + activeFireworkBolts
+						+ ", fireworkSettleChecks=" + this.fireworkSettleChecks
 						+ ", naturalProbeExpected=" + this.naturalLoadoutProbeExpected
 						+ ", naturalLoadoutInitializations=" + naturalLoadoutInitializations
 						+ ", naturalCrossbows=" + naturalCrossbows
@@ -497,6 +521,7 @@ public final class PaperRuntimeSelfTest {
 					+ ", fireworkDetonations=" + fireworkDetonations
 					+ ", fireworkAmmoConsumed=" + fireworkAmmoConsumed
 					+ ", activeFireworkBolts=" + activeFireworkBolts
+					+ ", fireworkSettleChecks=" + this.fireworkSettleChecks
 					+ ", naturalProbeExpected=" + this.naturalLoadoutProbeExpected
 					+ ", naturalLoadoutInitializations=" + naturalLoadoutInitializations
 					+ ", naturalCrossbows=" + naturalCrossbows
@@ -530,7 +555,9 @@ public final class PaperRuntimeSelfTest {
 		} catch (RuntimeException exception) {
 			this.report(sender, false, exception.getClass().getSimpleName() + ": " + exception.getMessage());
 		} finally {
-			this.cleanup();
+			if (!deferred) {
+				this.cleanup();
+			}
 		}
 	}
 
@@ -576,6 +603,7 @@ public final class PaperRuntimeSelfTest {
 		this.creeperFeintCompletionObserved = false;
 		this.creeperFeintCooledAtCompletion = false;
 		this.creeperFeintMemoryReleased = false;
+		this.fireworkSettleChecks = 0;
 		this.projectileEvasionProbe = null;
 		this.projectileEvasionTarget = null;
 		this.projectileEvasionStart = null;

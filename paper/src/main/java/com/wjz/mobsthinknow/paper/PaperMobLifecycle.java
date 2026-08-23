@@ -383,11 +383,14 @@ public final class PaperMobLifecycle implements Listener {
 		final LivingEntity source,
 		final double minimumDot
 	) {
-		org.bukkit.util.Vector facing = zombie.getEyeLocation().getDirection();
+		double yaw = Math.toRadians(zombie.getYaw());
+		double horizontalScale = Math.cos(Math.toRadians(zombie.getPitch()));
+		double facingX = -horizontalScale * Math.sin(yaw);
+		double facingZ = horizontalScale * Math.cos(yaw);
 		double sourceX = source.getX() - zombie.getX();
 		double sourceZ = source.getZ() - zombie.getZ();
 		return ShieldCombatPlanner.canGuardDirection(
-			facing.getX(), facing.getZ(), sourceX, sourceZ, minimumDot
+			facingX, facingZ, sourceX, sourceZ, minimumDot
 		);
 	}
 
