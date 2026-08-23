@@ -113,10 +113,12 @@ public final class PaperProjectileThreatBoard {
 		}
 		this.metrics.projectileThreatQuery();
 
-		Vector center = skeleton.getBoundingBox().getCenter();
-		int centerCellX = cell(center.getX());
-		int centerCellY = cell(center.getY());
-		int centerCellZ = cell(center.getZ());
+		double centerX = skeleton.getX();
+		double centerY = skeleton.getY() + skeleton.getHeight() * 0.5;
+		double centerZ = skeleton.getZ();
+		int centerCellX = cell(centerX);
+		int centerCellY = cell(centerY);
+		int centerCellZ = cell(centerZ);
 		Long2ObjectOpenHashMap<LinkedHashSet<UUID>> worldCells = this.cellsByWorld.get(
 			skeleton.getWorld().getUID()
 		);
@@ -125,6 +127,7 @@ public final class PaperProjectileThreatBoard {
 		}
 
 		double radiusSquared = scanRadius * scanRadius;
+		long now = Bukkit.getCurrentTick();
 		Threat best = null;
 		int checks = 0;
 		outer:
@@ -149,20 +152,20 @@ public final class PaperProjectileThreatBoard {
 							|| shotBy(entry.arrow(), skeleton)) {
 							continue;
 						}
-						double relativeX = center.getX() - entry.arrow().getX();
-						double relativeY = center.getY() - entry.arrow().getY();
-						double relativeZ = center.getZ() - entry.arrow().getZ();
+						double relativeX = centerX - entry.arrow().getX();
+						double relativeY = centerY - entry.arrow().getY();
+						double relativeZ = centerZ - entry.arrow().getZ();
 						if (relativeX * relativeX + relativeY * relativeY + relativeZ * relativeZ > radiusSquared) {
 							continue;
 						}
-						Vector velocity = entry.arrow().getVelocity();
+						entry.refreshVelocity(now);
 						double time = ProjectileEvasionPlanner.closestApproachTicks(
 							relativeX,
 							relativeY,
 							relativeZ,
-							velocity.getX(),
-							velocity.getY(),
-							velocity.getZ(),
+							entry.velocityX,
+							entry.velocityY,
+							entry.velocityZ,
 							reaction.predictionHorizonTicks()
 						);
 						if (!Double.isFinite(time)
@@ -170,9 +173,9 @@ public final class PaperProjectileThreatBoard {
 								relativeX,
 								relativeY,
 								relativeZ,
-								velocity.getX(),
-								velocity.getY(),
-								velocity.getZ(),
+								entry.velocityX,
+								entry.velocityY,
+								entry.velocityZ,
 								reaction.predictionHorizonTicks(),
 								reaction.safetyRadius()
 							)) {
@@ -260,7 +263,8 @@ public final class PaperProjectileThreatBoard {
 			}
 			this.removeFromBucket(mapEntry.getKey(), entry.worldId(), entry.cell());
 			this.bucket(worldId, nextCell).add(mapEntry.getKey());
-			mapEntry.setValue(new TrackedArrow(arrow, worldId, nextCell));
+			entry.worldId = worldId;
+			entry.cell = nextCell;
 		}
 	}
 
@@ -307,7 +311,43 @@ public final class PaperProjectileThreatBoard {
 		return this.globallyEnabled.getAsBoolean() && this.settings.get().enabled();
 	}
 
-	private record TrackedArrow(AbstractArrow arrow, UUID worldId, long cell) {
+	private static final class TrackedArrow {
+		private final AbstractArrow arrow;
+		private UUID worldId;
+		private long cell;
+		private long velocityTick = Long.MIN_VALUE;
+		private double velocityX;
+		private double velocityY;
+		private double velocityZ;
+
+		private TrackedArrow(final AbstractArrow arrow, final UUID worldId, final long cell) {
+			this.arrow = arrow;
+			this.worldId = worldId;
+			this.cell = cell;
+		}
+
+		private AbstractArrow arrow() {
+			return this.arrow;
+		}
+
+		private UUID worldId() {
+			return this.worldId;
+		}
+
+		private long cell() {
+			return this.cell;
+		}
+
+		private void refreshVelocity(final long now) {
+			if (this.velocityTick == now) {
+				return;
+			}
+			Vector velocity = this.arrow.getVelocity();
+			this.velocityX = velocity.getX();
+			this.velocityY = velocity.getY();
+			this.velocityZ = velocity.getZ();
+			this.velocityTick = now;
+		}
 	}
 
 	private static long packedCell(final double x, final double y, final double z) {

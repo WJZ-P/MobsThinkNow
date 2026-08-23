@@ -37,7 +37,8 @@ GoalSelector 行为，而不是每 tick 强制传送实体：
 - IQ 至少 4 的 Paper 持弓/弩骷髅会读取共享 `ProjectileEvasionPlanner`：IQ 越高，扫描间隔从 6 tick 缩短到
   2 tick，预判窗口、安全边界和侧闪持续时间同步提高。全服唯一 `PaperProjectileThreatBoard` 每 tick 只搬运
   最多 256 枚箭在 12 格空间桶中的位置；桶坐标使用无装箱 packed-long 键，单只骷髅访问相邻 27 桶时不再创建
-  临时键对象，并最多检查 24 个原始候选。命中轨迹后
+  临时键对象，并最多检查 24 个原始候选。同一箭的速度按 tick 懒缓存为三个标量，骷髅中心也直接由
+  实体 XYZ/高度计算，多个感知者不会重复创建速度向量或碰撞盒。命中轨迹后
   用优先级 0 的短 Goal 放下武器、沿远离预测落点的一侧横移，失败才使用有界速度兜底；
 - IQ 至少 5 的 Paper 持弓骷髅会把 Fabric 的掩体战术降级为纯服务端状态机：共享
   `CoverPositionPlanner` 每次最多读取四格内 96 个几何候选，只将评分最高的 4 个位置交给 Paper

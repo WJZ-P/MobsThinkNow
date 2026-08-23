@@ -97,7 +97,8 @@ MobsThinkNow/
 - Paper 不让每只骷髅调用全世界实体扫描。`PaperProjectileThreatBoard` 通过实体装载/移除事件登记箭，全服
   唯一主线程任务每 tick 更新最多 `maximum-tracked-projectiles`（默认 256）枚箭的 12 格三维桶。三轴桶坐标
   压入 fastutil primitive-long 键；每次感知只访问中心及相邻 26 桶，不创建 27 个临时键对象，并在
-  `maximum-candidate-checks`（默认 24）个原始候选后硬停止；
+  `maximum-candidate-checks`（默认 24）个原始候选后硬停止。同一箭的速度在该 tick 首次查询时缓存为
+  三个 primitive 标量，骷髅中心直接由 XYZ/高度计算，因此多个感知者不重复创建 Vector/BoundingBox；
 - IQ 至少 4 的持弓/弩骷髅才激活优先级 0 闪避 Goal。IQ 1～10 的共享反应曲线把扫描间隔从 6 tick 缩至
   2 tick、预测窗口从 4.5 tick 拉到 8 tick，同时增加安全余量与动作时长；命中判定后先取消蓄力，再沿
   远离预测落点的可达侧横移，首选侧无路时尝试另一侧，两侧均失败才施加小幅有界横向速度；
