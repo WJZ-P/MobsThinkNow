@@ -13,13 +13,34 @@ public final class SpiderTacticalPlanner {
 	}
 
 	public static boolean isTargetWatching(final Vec3d targetLook, final Vec3d targetToSpider) {
-		Vec3d look = targetLook.horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		Vec3d towardSpider = targetToSpider.horizontal();
-		if (towardSpider.horizontalLengthSquared() <= EPSILON) {
+		return isTargetWatching(targetLook.x(), targetLook.z(), targetToSpider.x(), targetToSpider.z());
+	}
+
+	public static boolean isTargetWatching(
+		final double targetLookX,
+		final double targetLookZ,
+		final double targetToSpiderX,
+		final double targetToSpiderZ
+	) {
+		double lookX = targetLookX;
+		double lookZ = targetLookZ;
+		double lookLengthSquared = lookX * lookX + lookZ * lookZ;
+		if (lookLengthSquared < 1.0E-9) {
+			lookX = 0.0;
+			lookZ = 1.0;
+		} else {
+			double inverseLookLength = 1.0 / Math.sqrt(lookLengthSquared);
+			lookX *= inverseLookLength;
+			lookZ *= inverseLookLength;
+		}
+		double towardLengthSquared = targetToSpiderX * targetToSpiderX
+			+ targetToSpiderZ * targetToSpiderZ;
+		if (towardLengthSquared <= EPSILON) {
 			return false;
 		}
-		towardSpider = towardSpider.horizontalUnitOr(Vec3d.ZERO);
-		return look.x() * towardSpider.x() + look.z() * towardSpider.z() >= 0.72;
+		double inverseTowardLength = 1.0 / Math.sqrt(towardLengthSquared);
+		return lookX * targetToSpiderX * inverseTowardLength
+			+ lookZ * targetToSpiderZ * inverseTowardLength >= 0.72;
 	}
 
 	public static ApproachMode chooseApproach(
@@ -49,15 +70,29 @@ public final class SpiderTacticalPlanner {
 		final int intelligence
 	) {
 		int iq = IntelligenceDistribution.clamp(intelligence);
-		Vec3d forward = targetLook.horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		Vec3d right = new Vec3d(-forward.z(), 0.0, forward.x());
+		if (mode == ApproachMode.DIRECT) {
+			return targetPosition;
+		}
+		if (mode == ApproachMode.INTERCEPT) {
+			return leadPosition(targetPosition, targetVelocity, 0.38, 3.0 + iq * 0.45);
+		}
+		double forwardX = targetLook.x();
+		double forwardZ = targetLook.z();
+		double forwardLengthSquared = forwardX * forwardX + forwardZ * forwardZ;
+		if (forwardLengthSquared < 1.0E-9) {
+			forwardX = 0.0;
+			forwardZ = 1.0;
+		} else {
+			double inverseForwardLength = 1.0 / Math.sqrt(forwardLengthSquared);
+			forwardX *= inverseForwardLength;
+			forwardZ *= inverseForwardLength;
+		}
 		return switch (mode) {
-			case DIRECT -> targetPosition;
-			case INTERCEPT -> targetPosition.add(cappedHorizontal(targetVelocity, 0.38).scale(3.0 + iq * 0.45));
-			case FLANK_LEFT -> targetPosition.subtract(forward.scale(2.1)).subtract(right.scale(2.35));
-			case FLANK_RIGHT -> targetPosition.subtract(forward.scale(2.1)).add(right.scale(2.35));
-			case REPOSITION_LEFT -> targetPosition.subtract(forward.scale(3.35)).subtract(right.scale(3.0));
-			case REPOSITION_RIGHT -> targetPosition.subtract(forward.scale(3.35)).add(right.scale(3.0));
+			case DIRECT, INTERCEPT -> throw new IllegalStateException("non-positional mode reached geometry switch");
+			case FLANK_LEFT -> offset(targetPosition, forwardX, forwardZ, -2.1, -2.35);
+			case FLANK_RIGHT -> offset(targetPosition, forwardX, forwardZ, -2.1, 2.35);
+			case REPOSITION_LEFT -> offset(targetPosition, forwardX, forwardZ, -3.35, -3.0);
+			case REPOSITION_RIGHT -> offset(targetPosition, forwardX, forwardZ, -3.35, 3.0);
 		};
 	}
 
@@ -81,7 +116,7 @@ public final class SpiderTacticalPlanner {
 		final int intelligence
 	) {
 		int iq = IntelligenceDistribution.clamp(intelligence);
-		return targetPosition.add(cappedHorizontal(targetVelocity, 0.38).scale(2.5 + iq * 0.35));
+		return leadPosition(targetPosition, targetVelocity, 0.38, 2.5 + iq * 0.35);
 	}
 
 	public static Vec3d pounceVelocity(
@@ -94,7 +129,17 @@ public final class SpiderTacticalPlanner {
 	) {
 		int iq = IntelligenceDistribution.clamp(intelligence);
 		Vec3d predictedTarget = predictedPounceLanding(targetPosition, targetVelocity, iq);
-		Vec3d horizontal = predictedTarget.subtract(spiderPosition).horizontalUnitOr(Vec3d.ZERO);
+		double directionX = predictedTarget.x() - spiderPosition.x();
+		double directionZ = predictedTarget.z() - spiderPosition.z();
+		double directionLengthSquared = directionX * directionX + directionZ * directionZ;
+		if (directionLengthSquared < 1.0E-9) {
+			directionX = 1.0;
+			directionZ = 0.0;
+		} else {
+			double inverseDirectionLength = 1.0 / Math.sqrt(directionLengthSquared);
+			directionX *= inverseDirectionLength;
+			directionZ *= inverseDirectionLength;
+		}
 		double difficultyId = switch (difficulty) {
 			case PEACEFUL -> 0.0;
 			case EASY -> 1.0;
@@ -103,15 +148,15 @@ public final class SpiderTacticalPlanner {
 		};
 		double horizontalSpeed = Math.clamp(0.40 + iq * 0.014 + difficultyId * 0.012, 0.44, 0.60);
 		double verticalSpeed = Math.clamp(0.38 + iq * 0.007, 0.40, 0.46);
-		Vec3d blended = cappedHorizontal(
-			horizontal.scale(horizontalSpeed).add(new Vec3d(
-				currentMovement.x() * 0.12,
-				0.0,
-				currentMovement.z() * 0.12
-			)),
-			0.60
-		);
-		return new Vec3d(blended.x(), verticalSpeed, blended.z());
+		double blendedX = directionX * horizontalSpeed + currentMovement.x() * 0.12;
+		double blendedZ = directionZ * horizontalSpeed + currentMovement.z() * 0.12;
+		double blendedLengthSquared = blendedX * blendedX + blendedZ * blendedZ;
+		if (blendedLengthSquared > 0.60 * 0.60) {
+			double scale = 0.60 / Math.sqrt(blendedLengthSquared);
+			blendedX *= scale;
+			blendedZ *= scale;
+		}
+		return new Vec3d(blendedX, verticalSpeed, blendedZ);
 	}
 
 	public static int pounceCooldownTicks(final int intelligence, final double unitSample) {
@@ -143,9 +188,11 @@ public final class SpiderTacticalPlanner {
 		final Vec3d targetVelocity,
 		final int combinedIntelligence
 	) {
-		return targetPosition.add(
-			cappedHorizontal(targetVelocity, 0.42)
-				.scale(3.0 + IntelligenceDistribution.clamp(combinedIntelligence) * 0.45)
+		return leadPosition(
+			targetPosition,
+			targetVelocity,
+			0.42,
+			3.0 + IntelligenceDistribution.clamp(combinedIntelligence) * 0.45
 		);
 	}
 
@@ -179,19 +226,44 @@ public final class SpiderTacticalPlanner {
 	}
 
 	public static Vec3d boardingLeapVelocity(final Vec3d payloadPosition, final Vec3d spiderPosition) {
-		Vec3d offset = spiderPosition.subtract(payloadPosition).horizontal();
-		double distance = Math.sqrt(offset.horizontalLengthSquared());
-		Vec3d direction = distance > EPSILON ? offset.scale(1.0 / distance) : Vec3d.ZERO;
+		double offsetX = spiderPosition.x() - payloadPosition.x();
+		double offsetZ = spiderPosition.z() - payloadPosition.z();
+		double distance = Math.hypot(offsetX, offsetZ);
+		double directionX = distance > EPSILON ? offsetX / distance : 0.0;
+		double directionZ = distance > EPSILON ? offsetZ / distance : 0.0;
 		double horizontalSpeed = Math.clamp(distance * 0.13, 0.20, 0.34);
-		return new Vec3d(direction.x() * horizontalSpeed, 0.38, direction.z() * horizontalSpeed);
+		return new Vec3d(directionX * horizontalSpeed, 0.38, directionZ * horizontalSpeed);
 	}
 
-	private static Vec3d cappedHorizontal(final Vec3d vector, final double maximumLength) {
-		Vec3d horizontal = vector.horizontal();
-		double lengthSquared = horizontal.horizontalLengthSquared();
-		return lengthSquared <= maximumLength * maximumLength
-			? horizontal
-			: horizontal.scale(maximumLength / Math.sqrt(lengthSquared));
+	private static Vec3d leadPosition(
+		final Vec3d origin,
+		final Vec3d velocity,
+		final double maximumVelocity,
+		final double ticks
+	) {
+		double velocityX = velocity.x();
+		double velocityZ = velocity.z();
+		double lengthSquared = velocityX * velocityX + velocityZ * velocityZ;
+		if (lengthSquared > maximumVelocity * maximumVelocity) {
+			double scale = maximumVelocity / Math.sqrt(lengthSquared);
+			velocityX *= scale;
+			velocityZ *= scale;
+		}
+		return new Vec3d(origin.x() + velocityX * ticks, origin.y(), origin.z() + velocityZ * ticks);
+	}
+
+	private static Vec3d offset(
+		final Vec3d origin,
+		final double forwardX,
+		final double forwardZ,
+		final double forwardDistance,
+		final double lateralDistance
+	) {
+		return new Vec3d(
+			origin.x() + forwardX * forwardDistance - forwardZ * lateralDistance,
+			origin.y(),
+			origin.z() + forwardZ * forwardDistance + forwardX * lateralDistance
+		);
 	}
 
 	public enum ApproachMode {

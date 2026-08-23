@@ -98,9 +98,15 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 
 		int iq = this.intelligence.get(this.spider);
 		boolean visible = this.spider.hasLineOfSight(target);
+		double yaw = Math.toRadians(target.getYaw());
+		double horizontalScale = Math.cos(Math.toRadians(target.getPitch()));
+		double lookX = -horizontalScale * Math.sin(yaw);
+		double lookZ = horizontalScale * Math.cos(yaw);
 		boolean watching = visible && SpiderTacticalPlanner.isTargetWatching(
-			toVector(target.getLocation().getDirection()),
-			toVector(this.spider.getLocation()).subtract(toVector(target.getLocation()))
+			lookX,
+			lookZ,
+			this.spider.getX() - target.getX(),
+			this.spider.getZ() - target.getZ()
 		);
 		boolean blocking = target instanceof Player player && player.isBlocking();
 		SpiderTacticalPlanner.ApproachMode mode = SpiderTacticalPlanner.chooseApproach(
@@ -111,11 +117,18 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 			this.repositionTicks,
 			this.stableSide
 		);
+		Vec3d targetPosition = new Vec3d(target.getX(), target.getY(), target.getZ());
+		Vec3d targetVelocity = mode == SpiderTacticalPlanner.ApproachMode.INTERCEPT
+			? toVector(target.getVelocity())
+			: Vec3d.ZERO;
+		Vec3d targetLook = mode.isFlank() || mode.isReposition()
+			? new Vec3d(lookX, 0.0, lookZ)
+			: Vec3d.ZERO;
 		Vec3d destination = SpiderTacticalPlanner.approachDestination(
 			mode,
-			toVector(target.getLocation()),
-			toVector(target.getVelocity()),
-			toVector(target.getLocation().getDirection()),
+			targetPosition,
+			targetVelocity,
+			targetLook,
 			iq
 		);
 		double speed = SpiderTacticalPlanner.approachSpeed(
@@ -125,7 +138,7 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 		Pathfinder pathfinder = this.spider.getPathfinder();
 		if (!moveTo(pathfinder, toLocation(destination), speed) && mode != SpiderTacticalPlanner.ApproachMode.DIRECT) {
 			mode = SpiderTacticalPlanner.ApproachMode.DIRECT;
-			moveTo(pathfinder, target.getLocation(), speed);
+			pathfinder.moveTo(target, speed);
 		}
 		if (mode != this.lastMode) {
 			this.lastMode = mode;
@@ -155,7 +168,10 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 
 	private boolean inMeleeRange(final LivingEntity target) {
 		double reach = this.spider.getWidth() * 0.5 + target.getWidth() * 0.5 + 0.9;
-		return this.spider.getLocation().distanceSquared(target.getLocation()) <= reach * reach;
+		double x = this.spider.getX() - target.getX();
+		double y = this.spider.getY() - target.getY();
+		double z = this.spider.getZ() - target.getZ();
+		return x * x + y * y + z * z <= reach * reach;
 	}
 
 	private boolean enabled(final PaperSettings config) {
@@ -169,10 +185,6 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 	private static boolean moveTo(final Pathfinder pathfinder, final Location destination, final double speed) {
 		Pathfinder.PathResult path = pathfinder.findPath(destination);
 		return path != null && pathfinder.moveTo(path, speed);
-	}
-
-	private static Vec3d toVector(final Location location) {
-		return new Vec3d(location.getX(), location.getY(), location.getZ());
 	}
 
 	private static Vec3d toVector(final org.bukkit.util.Vector vector) {
