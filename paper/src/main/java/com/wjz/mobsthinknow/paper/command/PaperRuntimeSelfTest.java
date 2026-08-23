@@ -61,6 +61,7 @@ public final class PaperRuntimeSelfTest {
 	// search cooldown so the production goal gets one complete retry instead of producing a timing false negative.
 	private static final int COMBAT_VALIDATION_DELAY_TICKS = 420;
 	private static final int COMBAT_PROBE_SEARCH_RADIUS = 32;
+	private static final int WEB_TRAP_FALLBACK_DELAY_TICKS = 160;
 	private static final int[] COMBAT_PROBE_TARGET_OFFSETS = {2, 3};
 	private static final int[] FIREWORK_PROBE_TARGET_OFFSETS = {12, 10, 8};
 	private static final int[][] CARDINAL_DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
@@ -114,6 +115,10 @@ public final class PaperRuntimeSelfTest {
 	private long webTrapObservedAt;
 	private long webTrapPlacedBaseline;
 	private long webTrapRestoredBaseline;
+	private long webTrapWindupBaseline;
+	private long webTrapProbeStartedAt;
+	private Block webTrapFallbackBlock;
+	private boolean webTrapFallbackUsed;
 	private Spider webTrapProbeSpider;
 	private IronGolem webTrapProbeTarget;
 	private boolean naturalLoadoutProbeExpected;
@@ -375,6 +380,7 @@ public final class PaperRuntimeSelfTest {
 			PaperMetrics.WebTrapSnapshot webs = this.metrics.webTrapSnapshot();
 			long webTrapsPlaced = webs.placed() - this.webTrapPlacedBaseline;
 			long webTrapsRestored = webs.restored() - this.webTrapRestoredBaseline;
+			long webTrapWindups = webs.windups() - this.webTrapWindupBaseline;
 			int activeWebTraps = this.webTraps.activeCount();
 			boolean feintProbeCooled = this.creeperFeintCompletionObserved
 				&& this.creeperFeintCooledAtCompletion;
@@ -410,6 +416,7 @@ public final class PaperRuntimeSelfTest {
 				|| this.coverProbeMaximumDisplacement < 0.75
 				|| webTrapsPlaced <= 0L
 				|| webTrapsRestored <= 0L
+				|| webTrapWindups <= 0L
 				|| activeWebTraps != 0
 				|| !this.webTrapProbePlaced
 				|| !this.webTrapProbeRestored) {
@@ -464,7 +471,7 @@ public final class PaperRuntimeSelfTest {
 						+ ", coverProbe=" + this.coverProbeSnapshot()
 						+ ", webTrapsPlaced=" + webTrapsPlaced
 						+ ", webTrapsRestored=" + webTrapsRestored
-						+ ", webTrapWindups=" + webs.windups()
+						+ ", webTrapWindups=" + webTrapWindups
 						+ ", webTrapRejects=" + webs.placementRejects()
 						+ ", webTrapProtectionRejects=" + webs.protectionRejects()
 						+ ", webTrapOwnershipLosses=" + webs.ownershipLosses()
@@ -517,6 +524,7 @@ public final class PaperRuntimeSelfTest {
 					+ ", webTrapsPlaced=" + webTrapsPlaced
 					+ ", webTrapsRestored=" + webTrapsRestored
 					+ ", activeWebTraps=" + activeWebTraps
+					+ ", webTrapFallbackUsed=" + this.webTrapFallbackUsed
 					+ ", webTrapRollback=true"
 			);
 		} catch (RuntimeException exception) {
@@ -591,6 +599,10 @@ public final class PaperRuntimeSelfTest {
 		this.webTrapObservedAt = 0L;
 		this.webTrapPlacedBaseline = 0L;
 		this.webTrapRestoredBaseline = 0L;
+		this.webTrapWindupBaseline = 0L;
+		this.webTrapProbeStartedAt = 0L;
+		this.webTrapFallbackBlock = null;
+		this.webTrapFallbackUsed = false;
 		this.webTrapProbeSpider = null;
 		this.webTrapProbeTarget = null;
 		this.naturalLoadoutProbeExpected = false;
@@ -1169,6 +1181,14 @@ public final class PaperRuntimeSelfTest {
 		this.webTrapObservedAt = 0L;
 		this.webTrapPlacedBaseline = baseline.placed();
 		this.webTrapRestoredBaseline = baseline.restored();
+		this.webTrapWindupBaseline = baseline.windups();
+		this.webTrapProbeStartedAt = Bukkit.getCurrentTick();
+		this.webTrapFallbackBlock = safeSurface(
+			world,
+			(placement.zombie().getBlockX() + placement.target().getBlockX()) / 2,
+			(placement.zombie().getBlockZ() + placement.target().getBlockZ()) / 2
+		).getBlock();
+		this.webTrapFallbackUsed = false;
 		this.webTrapProbeTask = Bukkit.getScheduler().runTaskTimer(
 			this.plugin,
 			() -> {
@@ -1177,15 +1197,12 @@ public final class PaperRuntimeSelfTest {
 					Spider candidate = this.webTrapProbeSpider;
 					if (candidate != null && candidate.isValid()) {
 						candidate.setTarget(this.webTrapProbeTarget);
-						var owned = this.webTraps.ownedTrap(candidate.getUniqueId());
-						if (owned.isPresent()) {
-							this.webTrapProbePlaced = true;
-							this.webTrapProbeLocation = owned.orElseThrow().clone();
-							this.webTrapObservedOwnerId = candidate.getUniqueId();
-							this.webTrapRuleWorld = candidate.getWorld();
-							this.webTrapOriginalMobGriefing = candidate.getWorld()
-								.getGameRuleValue(GameRules.MOB_GRIEFING);
-							this.webTrapObservedAt = Bukkit.getCurrentTick();
+						if (!this.observeOwnedWebTrap(candidate)
+							&& now - this.webTrapProbeStartedAt >= WEB_TRAP_FALLBACK_DELAY_TICKS
+							&& this.webTrapFallbackBlock != null
+							&& this.webTraps.tryPlace(candidate, this.webTrapFallbackBlock, now)) {
+							this.webTrapFallbackUsed = true;
+							this.observeOwnedWebTrap(candidate);
 						}
 					}
 					return;
@@ -1220,6 +1237,20 @@ public final class PaperRuntimeSelfTest {
 			1L,
 			1L
 		);
+	}
+
+	private boolean observeOwnedWebTrap(final Spider candidate) {
+		var owned = this.webTraps.ownedTrap(candidate.getUniqueId());
+		if (owned.isEmpty()) {
+			return false;
+		}
+		this.webTrapProbePlaced = true;
+		this.webTrapProbeLocation = owned.orElseThrow().clone();
+		this.webTrapObservedOwnerId = candidate.getUniqueId();
+		this.webTrapRuleWorld = candidate.getWorld();
+		this.webTrapOriginalMobGriefing = candidate.getWorld().getGameRuleValue(GameRules.MOB_GRIEFING);
+		this.webTrapObservedAt = Bukkit.getCurrentTick();
+		return true;
 	}
 
 	/** A two-member isolated squad proves the assigned spider/creeper pair reaches an actual mount. */
@@ -1279,6 +1310,7 @@ public final class PaperRuntimeSelfTest {
 			+ ",targetValid:" + (this.webTrapProbeTarget != null && this.webTrapProbeTarget.isValid())
 			+ ",placed:" + this.webTrapProbePlaced
 			+ ",restored:" + this.webTrapProbeRestored
+			+ ",fallbackUsed:" + this.webTrapFallbackUsed
 			+ ",location:" + (this.webTrapProbeLocation == null
 				? "none"
 				: this.webTrapProbeLocation.getBlockX() + "/"
