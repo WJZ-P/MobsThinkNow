@@ -3,6 +3,8 @@ package com.wjz.mobsthinknow.paper.ai;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
 import com.wjz.mobsthinknow.shared.ai.IntelligenceDistribution;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
@@ -21,6 +23,9 @@ public final class PaperIntelligenceService {
 	private final NamespacedKey ownedNameKey;
 	private final Supplier<PaperSettings> settings;
 	private final PaperMetrics metrics;
+	private final Map<Mob, Integer> runtimeCache = new IdentityHashMap<>();
+	private long runtimeCacheHits;
+	private long persistentReads;
 
 	public PaperIntelligenceService(
 		final Plugin plugin,
@@ -57,6 +62,7 @@ public final class PaperIntelligenceService {
 			return IntelligenceDistribution.MINIMUM;
 		}
 		PersistentDataContainer data = mob.getPersistentDataContainer();
+		this.persistentReads++;
 		Integer stored = data.get(this.intelligenceKey, PersistentDataType.INTEGER);
 		PaperSettings config = this.settings.get();
 		if (!config.enabled()) {
@@ -64,7 +70,7 @@ public final class PaperIntelligenceService {
 				? IntelligenceDistribution.MINIMUM
 				: IntelligenceDistribution.clamp(stored);
 			this.clearOwnedName(mob, data, fallback);
-			return fallback;
+			return this.cache(mob, fallback);
 		}
 		int intelligence;
 		if (stored == null) {
@@ -81,13 +87,19 @@ public final class PaperIntelligenceService {
 			}
 		}
 		this.refreshOwnedName(mob, intelligence, config);
-		return intelligence;
+		return this.cache(mob, intelligence);
 	}
 
 	public int get(final Mob mob) {
 		if (!this.supports(mob)) {
 			return IntelligenceDistribution.MINIMUM;
 		}
+		Integer cached = this.runtimeCache.get(mob);
+		if (cached != null) {
+			this.runtimeCacheHits++;
+			return cached;
+		}
+		this.persistentReads++;
 		Integer stored = mob.getPersistentDataContainer().get(this.intelligenceKey, PersistentDataType.INTEGER);
 		if (stored == null) {
 			return this.ensure(mob);
@@ -96,7 +108,7 @@ public final class PaperIntelligenceService {
 		if (stored != clamped) {
 			return this.ensure(mob);
 		}
-		return clamped;
+		return this.cache(mob, clamped);
 	}
 
 	public void set(final Mob mob, final int intelligence) {
@@ -106,6 +118,34 @@ public final class PaperIntelligenceService {
 		int clamped = IntelligenceDistribution.clamp(intelligence);
 		mob.getPersistentDataContainer().set(this.intelligenceKey, PersistentDataType.INTEGER, clamped);
 		this.refreshOwnedName(mob, clamped, this.settings.get());
+		this.cache(mob, clamped);
+	}
+
+	/** 实体离开世界时释放强身份键；PDC 仍是下次装载的持久事实来源。 */
+	public void forget(final Mob mob) {
+		this.runtimeCache.remove(mob);
+	}
+
+	/** 配置重载和插件停用边界会先清空，再通过 ensure 重新校准当前已装载实体。 */
+	public void clearRuntimeCache() {
+		this.runtimeCache.clear();
+	}
+
+	public int runtimeCacheSize() {
+		return this.runtimeCache.size();
+	}
+
+	public long runtimeCacheHits() {
+		return this.runtimeCacheHits;
+	}
+
+	public long persistentReads() {
+		return this.persistentReads;
+	}
+
+	private int cache(final Mob mob, final int intelligence) {
+		this.runtimeCache.put(mob, intelligence);
+		return intelligence;
 	}
 
 	private void refreshOwnedName(final Mob mob, final int intelligence, final PaperSettings config) {

@@ -29,6 +29,9 @@ MobsThinkNow/
 - 类型边界按 `EntityType` 白名单判断；Bukkit API 中继承 `Zombie` 的僵尸猪灵，以及洞穴蜘蛛等近似类型不会因 Java 继承关系误入主世界混编小队；
 - 简单难度范围 `1～7`、普通 `2～9`、困难 `4～10`，与 Fabric 的对应怪物分布共用
   `IntelligenceDistribution`；
+- 每次实体装载或配置重载只从 PDC 校准一次，随后同一实体对象的 Goal 读取运行时快照，避免每 tick
+  重复解析持久键；`setiq` 会同步更新 PDC 与快照，移出世界/插件停用会释放身份缓存。状态命令公开
+  `cachedIntelligence`、`intelligencePersistentReads` 和 `intelligenceCacheHits` 便于验证命中与清理；
 - 插件只为原本没有自定义名字的实体添加 IQ，且通过第二个 PDC 标记确认名字所有权。命名牌或其他插件
   的名字不会被覆盖；关闭名字显示时也只清除本插件拥有的名字。
 

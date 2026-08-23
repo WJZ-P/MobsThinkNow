@@ -425,6 +425,7 @@ def run_server(
             elif stage == "self-test-cleanup" and "Mobs Think Now Paper | enabled=true" in line:
                 cleanup_markers = (
                     "loadedSupportedMobs=0",
+                    "cachedIntelligence=0",
                     "trackedProjectiles=0",
                     "activeFireworkBolts=0",
                     "activeCreeperFeints=0",
@@ -440,7 +441,8 @@ def run_server(
                     "disabledShieldGuards=0",
                 )
                 missing = [marker for marker in cleanup_markers if marker not in line]
-                for metric in ("directiveComputations", "directiveCacheHits"):
+                for metric in ("intelligencePersistentReads", "intelligenceCacheHits",
+                               "directiveComputations", "directiveCacheHits"):
                     match = re.search(rf"(?:^|, ){metric}=(\d+)(?:,|$)", line)
                     if match is None or int(match.group(1)) <= 0:
                         missing.append(metric + ">0")

@@ -168,9 +168,12 @@ public final class MtnPaperCommand implements TabExecutor {
 		PaperMetrics.CoverSnapshot cover = this.metrics.coverSnapshot();
 		PaperMetrics.WebTrapSnapshot webs = this.metrics.webTrapSnapshot();
 		PaperSquadMetrics.Snapshot squads = this.squadCoordinator.metrics().snapshot();
-		sender.sendMessage(Component.text(
+			sender.sendMessage(Component.text(
 			"Mobs Think Now Paper | enabled=" + this.plugin.settings().enabled()
 				+ ", loadedSupportedMobs=" + this.lifecycle.loadedSupportedMobCount()
+				+ ", cachedIntelligence=" + this.intelligence.runtimeCacheSize()
+				+ ", intelligencePersistentReads=" + this.intelligence.persistentReads()
+				+ ", intelligenceCacheHits=" + this.intelligence.runtimeCacheHits()
 				+ ", projectileSensorRunning=" + this.projectileThreats.isRunning()
 				+ ", webTrapSchedulerRunning=" + this.webTraps.isRunning()
 				+ ", fireworkSchedulerRunning=" + this.fireworkBolts.isRunning()

@@ -231,6 +231,7 @@ public final class PaperMobLifecycle implements Listener {
 			this.pounceCoordinator.release(spider, false);
 		}
 		if (event.getEntity() instanceof Mob mob) {
+			this.intelligence.forget(mob);
 			this.squadCoordinator.untrack(mob);
 		}
 	}
@@ -409,6 +410,7 @@ public final class PaperMobLifecycle implements Listener {
 	}
 
 	public void installLoadedEntities() {
+		this.intelligence.clearRuntimeCache();
 		this.loadedSupportedMobs.clear();
 		for (World world : Bukkit.getWorlds()) {
 			for (Entity entity : supportedEntities(world)) {
@@ -486,6 +488,7 @@ public final class PaperMobLifecycle implements Listener {
 				}
 			}
 		}
+		this.intelligence.clearRuntimeCache();
 		this.loadedSupportedMobs.clear();
 	}
 
