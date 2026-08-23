@@ -65,4 +65,60 @@ class FiringLanePlannerTest {
 		assertEquals(left.z(), right.z(), 1.0E-9);
 		assertTrue(left.z() < 0.0);
 	}
+
+	@Test
+	void allocationReducedLateralMathMatchesTheOriginalVectorFormula() {
+		Vec3d[] shooters = {
+			Vec3d.ZERO,
+			new Vec3d(4.25, -2.0, 8.5),
+			new Vec3d(-17.0, 64.0, 3.0)
+		};
+		Vec3d[] targets = {
+			new Vec3d(0.0, 7.0, 12.0),
+			new Vec3d(-8.0, 3.0, 5.0),
+			new Vec3d(-17.0, 100.0, 3.0)
+		};
+		double[] distances = {-5.0, 1.0, 2.75, 6.0, 99.0, Double.NaN};
+		for (int index = 0; index < shooters.length; index++) {
+			for (int side : new int[] {-1, 0, 1}) {
+				for (double distance : distances) {
+					Vec3d actual = FiringLanePlanner.lateralReposition(
+						shooters[index],
+						targets[index],
+						side,
+						distance
+					);
+					Vec3d expected = legacyLateralReposition(
+						shooters[index],
+						targets[index],
+						side,
+						distance
+					);
+					assertVectorEquals(expected, actual);
+				}
+		}	}
+	}
+
+	private static Vec3d legacyLateralReposition(
+		final Vec3d shooter,
+		final Vec3d target,
+		final int stableSide,
+		final double configuredDistance
+	) {
+		Vec3d forward = target.subtract(shooter).horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
+		Vec3d right = new Vec3d(-forward.z(), 0.0, forward.x());
+		double side = stableSide < 0 ? -1.0 : 1.0;
+		double distance = Double.isFinite(configuredDistance)
+			? Math.clamp(configuredDistance, 1.0, 6.0)
+			: 3.0;
+		return shooter
+			.add(right.scale(side * distance))
+			.subtract(forward.scale(Math.min(1.5, distance * 0.30)));
+	}
+
+	private static void assertVectorEquals(final Vec3d expected, final Vec3d actual) {
+		assertEquals(expected.x(), actual.x(), 1.0E-12);
+		assertEquals(expected.y(), actual.y(), 1.0E-12);
+		assertEquals(expected.z(), actual.z(), 1.0E-12);
+	}
 }

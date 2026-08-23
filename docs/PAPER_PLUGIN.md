@@ -238,7 +238,8 @@ MobsThinkNow/
   访问中心及周围八个桶，默认单次最多检查 64 个原始候选、接收 20 人，因此不存在全服成员两两互扫；
 - 同一成员的武器、盾牌、远程、载具和通用命令 Goal 会在一个 tick 内多次读取命令。协调器按
   `tick + squad revision + shared-target flag` 缓存不可变 `PaperSquadDirective`；成员对象替换、结构/阶段
-  变化或下一 tick 都会失效，避免重复构造 Bukkit `Location` 和战术 `Vec3d`；
+  变化或下一 tick 都会失效。缓存未命中时直接读取实体 XYZ/yaw，远程射界的线段投影和最近点也改用
+  primitive 标量运算，仅在真实 Pathfinder、音效或弹体 API 边界创建 Bukkit `Location`；
 - 同队成员互相设为目标时事件会被取消；可配置阻止普通近战和弹射物误伤。苦力怕的实体爆炸伤害特意
   保留，避免混编小队获得无提示免伤，也要求爆破兵继续遵守已有爆点预约；
 - `/mtnpaper inspect` 会显示最近怪物的小队 ID、任期、首领、阶段、方案和职责；若最近目标是蜘蛛还会

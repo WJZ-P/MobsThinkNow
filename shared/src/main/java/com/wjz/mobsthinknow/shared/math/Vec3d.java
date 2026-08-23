@@ -46,13 +46,14 @@ public record Vec3d(double x, double y, double z) {
 	public Vec3d horizontalUnitOr(final Vec3d fallback) {
 		double lengthSquared = this.horizontalLengthSquared();
 		if (lengthSquared < MINIMUM_LENGTH_SQUARED) {
-			Vec3d horizontalFallback = fallback.horizontal();
-			double fallbackLengthSquared = horizontalFallback.horizontalLengthSquared();
+			double fallbackLengthSquared = fallback.x * fallback.x + fallback.z * fallback.z;
 			if (fallbackLengthSquared < MINIMUM_LENGTH_SQUARED) {
 				return new Vec3d(1.0, 0.0, 0.0);
 			}
-			return horizontalFallback.scale(1.0 / Math.sqrt(fallbackLengthSquared));
+			double inverseLength = 1.0 / Math.sqrt(fallbackLengthSquared);
+			return new Vec3d(fallback.x * inverseLength, 0.0, fallback.z * inverseLength);
 		}
-		return this.horizontal().scale(1.0 / Math.sqrt(lengthSquared));
+		double inverseLength = 1.0 / Math.sqrt(lengthSquared);
+		return new Vec3d(this.x * inverseLength, 0.0, this.z * inverseLength);
 	}
 }

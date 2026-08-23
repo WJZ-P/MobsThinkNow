@@ -21,8 +21,10 @@ public final class FiringLanePlanner {
 		Objects.requireNonNull(target, "target");
 		Objects.requireNonNull(allies, "allies");
 		int limit = Math.max(0, maximumChecks);
-		Vec3d segment = target.subtract(origin);
-		double lengthSquared = squaredLength(segment);
+		double segmentX = target.x() - origin.x();
+		double segmentY = target.y() - origin.y();
+		double segmentZ = target.z() - origin.z();
+		double lengthSquared = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
 		if (lengthSquared < 1.0E-9 || limit == 0) {
 			return new Result<>(true, null, 0);
 		}
@@ -35,13 +37,25 @@ public final class FiringLanePlanner {
 				break;
 			}
 			checks++;
-			Vec3d relative = ally.position().subtract(origin);
-			double projection = dot(relative, segment) / lengthSquared;
+			double relativeX = ally.position().x() - origin.x();
+			double relativeY = ally.position().y() - origin.y();
+			double relativeZ = ally.position().z() - origin.z();
+			double projection = (
+				relativeX * segmentX + relativeY * segmentY + relativeZ * segmentZ
+			) / lengthSquared;
 			if (projection <= ENDPOINT_MARGIN || projection >= 1.0 - ENDPOINT_MARGIN) {
 				continue;
 			}
-			Vec3d closest = origin.add(segment.scale(projection));
-			if (closest.distanceSquared(ally.position()) <= ally.radius() * ally.radius()
+			double closestX = origin.x() + segmentX * projection;
+			double closestY = origin.y() + segmentY * projection;
+			double closestZ = origin.z() + segmentZ * projection;
+			double separationX = closestX - ally.position().x();
+			double separationY = closestY - ally.position().y();
+			double separationZ = closestZ - ally.position().z();
+			double separationSquared = separationX * separationX
+				+ separationY * separationY
+				+ separationZ * separationZ;
+			if (separationSquared <= ally.radius() * ally.radius()
 				&& projection < nearestProjection) {
 				blocker = ally.id();
 				nearestProjection = projection;
@@ -57,23 +71,27 @@ public final class FiringLanePlanner {
 		final int stableSide,
 		final double configuredDistance
 	) {
-		Vec3d forward = target.subtract(shooter).horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		Vec3d right = new Vec3d(-forward.z(), 0.0, forward.x());
+		double forwardX = target.x() - shooter.x();
+		double forwardZ = target.z() - shooter.z();
+		double lengthSquared = forwardX * forwardX + forwardZ * forwardZ;
+		if (lengthSquared < 1.0E-9) {
+			forwardX = 0.0;
+			forwardZ = 1.0;
+		} else {
+			double inverseLength = 1.0 / Math.sqrt(lengthSquared);
+			forwardX *= inverseLength;
+			forwardZ *= inverseLength;
+		}
 		double side = stableSide < 0 ? -1.0 : 1.0;
 		double distance = Double.isFinite(configuredDistance)
 			? Math.clamp(configuredDistance, 1.0, 6.0)
 			: 3.0;
-		return shooter
-			.add(right.scale(side * distance))
-			.subtract(forward.scale(Math.min(1.5, distance * 0.30)));
-	}
-
-	private static double dot(final Vec3d first, final Vec3d second) {
-		return first.x() * second.x() + first.y() * second.y() + first.z() * second.z();
-	}
-
-	private static double squaredLength(final Vec3d vector) {
-		return dot(vector, vector);
+		double retreat = Math.min(1.5, distance * 0.30);
+		return new Vec3d(
+			shooter.x() - forwardZ * side * distance - forwardX * retreat,
+			shooter.y(),
+			shooter.z() + forwardX * side * distance - forwardZ * retreat
+		);
 	}
 
 	public record Ally<K>(K id, Vec3d position, double radius) {

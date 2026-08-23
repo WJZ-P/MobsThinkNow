@@ -28,6 +28,7 @@ import org.bukkit.Sound;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.AbstractSkeleton;
 import org.bukkit.entity.Arrow;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.inventory.EquipmentSlot;
@@ -131,13 +132,13 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		}
 		this.skeleton.lookAt(target, 50.0F, 45.0F);
 		PaperSettings config = this.settings.get();
-		double distanceSquared = this.skeleton.getLocation().distanceSquared(target.getLocation());
+		double distanceSquared = distanceSquared(this.skeleton, target);
 		boolean visible = this.skeleton.hasLineOfSight(target);
 		if (!visible || distanceSquared > config.skeletonCoordinatedFireMaximumRange()
 			* config.skeletonCoordinatedFireMaximumRange()) {
 			this.cancelCharge();
 			if (directive == null) {
-				this.moveTo(target.getLocation(), 1.08, Bukkit.getCurrentTick());
+				this.moveTo(target, 1.08, Bukkit.getCurrentTick());
 			} else {
 				this.moveToDirective(directive);
 			}
@@ -151,9 +152,9 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 			return;
 		}
 		this.lastBlocker = null;
-		Location assigned = directive == null ? null : toLocation(this.skeleton, directive.destination());
+		Vec3d assigned = directive == null ? null : directive.destination();
 		if (assigned != null
-			&& this.skeleton.getLocation().distanceSquared(assigned) > POSITION_REACHED_DISTANCE_SQUARED
+			&& distanceSquared(this.skeleton, assigned) > POSITION_REACHED_DISTANCE_SQUARED
 			&& now < this.positionFallbackAt) {
 			this.cancelCharge();
 			this.moveTo(assigned, 1.08, now);
@@ -257,12 +258,11 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		PaperSettings config = this.settings.get();
 		List<FiringLanePlanner.Ally<UUID>> allies = new ArrayList<>();
 		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
-			Location location = ally.getLocation().add(0.0, ally.getHeight() * 0.55, 0.0);
 			double radius = Math.max(config.skeletonFriendlyLaneRadius(), ally.getWidth() * 0.65);
-			allies.add(new FiringLanePlanner.Ally<>(ally.getUniqueId(), toVector(location), radius));
+			allies.add(new FiringLanePlanner.Ally<>(ally.getUniqueId(), bodyCenter(ally, 0.55), radius));
 		}
 		this.cachedLane = FiringLanePlanner.check(
-			toVector(this.skeleton.getEyeLocation()),
+			eyePosition(this.skeleton),
 			this.firingEndpoint(target),
 			allies,
 			config.skeletonFriendlyLaneMaximumChecks()
@@ -273,14 +273,14 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 
 	private Vec3d firingEndpoint(final LivingEntity target) {
 		if (!this.holdsCrossbow()) {
-			return toVector(target.getEyeLocation());
+			return eyePosition(target);
 		}
 		PaperCrossbowSettings config = this.settings.get().skeletonCrossbowTactics();
 		boolean firework = this.crossbowPayload == CrossbowPayload.FIREWORK;
 		return CrossbowCombatPlanner.intercept(
-			toVector(this.skeleton.getEyeLocation()),
-			toVector(target.getEyeLocation()),
-			toVector(target.getVelocity()),
+			eyePosition(this.skeleton),
+			eyePosition(target),
+			velocityOf(target),
 			firework ? config.firework().projectileSpeed() : config.projectileSpeed(),
 			firework ? 0.0 : config.gravityPerTickSquared(),
 			config.maximumLeadTicks()
@@ -305,19 +305,19 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 			? ((this.stableOrder & 1) == 0 ? -1 : 1)
 			: directive.role() == MixedSquadRole.RANGED_LEFT ? -1 : 1;
 		Vec3d reposition = FiringLanePlanner.lateralReposition(
-			toVector(this.skeleton.getLocation()),
-			toVector(target.getLocation()),
+			positionOf(this.skeleton),
+			positionOf(target),
 			side,
 			this.settings.get().skeletonLaneRepositionDistance()
 		);
-		if (this.moveTo(toLocation(this.skeleton, reposition), 1.12, now)) {
+		if (this.moveTo(reposition, 1.12, now)) {
 			this.metrics.firingLaneReposition();
 		} else {
 			this.nextRepathAt = now;
 			if (directive == null) {
-				this.moveTo(target.getLocation(), 1.08, now);
+				this.moveTo(target, 1.08, now);
 			} else {
-				this.moveTo(toLocation(this.skeleton, directive.destination()), 1.08, now);
+				this.moveTo(directive.destination(), 1.08, now);
 			}
 		}
 		int interval = SquadVolleyPlanner.shotIntervalTicks(
@@ -333,21 +333,35 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 	}
 
 	private void moveToDirective(final PaperSquadDirective directive) {
-		this.moveTo(toLocation(this.skeleton, directive.destination()), 1.10, Bukkit.getCurrentTick());
+		this.moveTo(directive.destination(), 1.10, Bukkit.getCurrentTick());
 	}
 
-	private boolean moveTo(final Location destination, final double speed, final long now) {
+	private boolean moveTo(final Entity destination, final double speed, final long now) {
 		if (now < this.nextRepathAt) {
 			return this.skeleton.getPathfinder().hasPath();
 		}
 		Pathfinder pathfinder = this.skeleton.getPathfinder();
-		Pathfinder.PathResult path = pathfinder.findPath(destination);
+		boolean moving = pathfinder.moveTo(destination, speed);
+		this.finishRepath(now, moving);
+		return moving;
+	}
+
+	private boolean moveTo(final Vec3d destination, final double speed, final long now) {
+		if (now < this.nextRepathAt) {
+			return this.skeleton.getPathfinder().hasPath();
+		}
+		Pathfinder pathfinder = this.skeleton.getPathfinder();
+		Pathfinder.PathResult path = pathfinder.findPath(toLocation(this.skeleton, destination));
 		boolean moving = path != null && pathfinder.moveTo(path, speed);
+		this.finishRepath(now, moving);
+		return moving;
+	}
+
+	private void finishRepath(final long now, final boolean moving) {
 		this.nextRepathAt = now + REPATH_TICKS;
 		if (!moving) {
 			this.metrics.firingLanePathFailed();
 		}
-		return moving;
 	}
 
 	private void cancelCharge() {
@@ -477,9 +491,9 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 			? 0.0
 			: config.gravityPerTickSquared();
 		CrossbowCombatPlanner.AimSolution aim = CrossbowCombatPlanner.intercept(
-			toVector(this.skeleton.getEyeLocation()),
-			toVector(target.getEyeLocation()),
-			new Vec3d(target.getVelocity().getX(), target.getVelocity().getY(), target.getVelocity().getZ()),
+			eyePosition(this.skeleton),
+			eyePosition(target),
+			velocityOf(target),
 			speed,
 			gravity,
 			config.maximumLeadTicks()
@@ -535,19 +549,18 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		PaperFireworkSettings config = crossbow.firework();
 		List<CrossbowCombatPlanner.BlastAlly<UUID>> allies = new ArrayList<>();
 		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
-			Location center = ally.getLocation().add(0.0, ally.getHeight() * 0.5, 0.0);
 			allies.add(new CrossbowCombatPlanner.BlastAlly<>(
 				ally.getUniqueId(),
-				toVector(center),
+				bodyCenter(ally, 0.5),
 				ally.getWidth() * 0.65
 			));
 		}
-		Vec3d shooter = toVector(this.skeleton.getEyeLocation());
-		Vec3d targetCenter = toVector(target.getEyeLocation());
+		Vec3d shooter = eyePosition(this.skeleton);
+		Vec3d targetCenter = eyePosition(target);
 		Vec3d predictedImpact = CrossbowCombatPlanner.intercept(
 			shooter,
 			targetCenter,
-			toVector(target.getVelocity()),
+			velocityOf(target),
 			config.projectileSpeed(),
 			0.0,
 			crossbow.maximumLeadTicks()
@@ -589,12 +602,38 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		return new Location(mob.getWorld(), vector.x(), vector.y(), vector.z());
 	}
 
-	private static Vec3d toVector(final Location location) {
-		return new Vec3d(location.getX(), location.getY(), location.getZ());
+	private static Vec3d positionOf(final Entity entity) {
+		return new Vec3d(entity.getX(), entity.getY(), entity.getZ());
+	}
+
+	private static Vec3d eyePosition(final LivingEntity entity) {
+		return new Vec3d(entity.getX(), entity.getY() + entity.getEyeHeight(), entity.getZ());
+	}
+
+	private static Vec3d bodyCenter(final LivingEntity entity, final double heightFactor) {
+		return new Vec3d(entity.getX(), entity.getY() + entity.getHeight() * heightFactor, entity.getZ());
+	}
+
+	private static double distanceSquared(final Entity first, final Entity second) {
+		double x = first.getX() - second.getX();
+		double y = first.getY() - second.getY();
+		double z = first.getZ() - second.getZ();
+		return x * x + y * y + z * z;
+	}
+
+	private static double distanceSquared(final Entity entity, final Vec3d point) {
+		double x = entity.getX() - point.x();
+		double y = entity.getY() - point.y();
+		double z = entity.getZ() - point.z();
+		return x * x + y * y + z * z;
 	}
 
 	private static Vec3d toVector(final Vector vector) {
 		return new Vec3d(vector.getX(), vector.getY(), vector.getZ());
+	}
+
+	private static Vec3d velocityOf(final Entity entity) {
+		return toVector(entity.getVelocity());
 	}
 
 	private enum CrossbowPhase {

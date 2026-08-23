@@ -4,6 +4,8 @@ import com.wjz.mobsthinknow.shared.math.Vec3d;
 
 /** 跨端集结圆阵与交战阵位的纯向量数学；真实可达性仍由各平台导航验证。 */
 public final class MixedSquadGeometry {
+	private static final double MINIMUM_HORIZONTAL_LENGTH_SQUARED = 1.0E-9;
+
 	private MixedSquadGeometry() {
 	}
 
@@ -13,19 +15,34 @@ public final class MixedSquadGeometry {
 		final MixedSquadRole role,
 		final int stableOrdinal
 	) {
-		Vec3d forward = targetPosition.subtract(leaderPosition).horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		Vec3d right = new Vec3d(-forward.z(), 0.0, forward.x());
+		double forwardX = targetPosition.x() - leaderPosition.x();
+		double forwardZ = targetPosition.z() - leaderPosition.z();
+		double lengthSquared = forwardX * forwardX + forwardZ * forwardZ;
+		if (lengthSquared < MINIMUM_HORIZONTAL_LENGTH_SQUARED) {
+			forwardX = 0.0;
+			forwardZ = 1.0;
+		} else {
+			double inverseLength = 1.0 / Math.sqrt(lengthSquared);
+			forwardX *= inverseLength;
+			forwardZ *= inverseLength;
+		}
 		double jitter = Math.floorMod(stableOrdinal, 3) * 0.35;
 		return switch (role) {
 			case LEADER -> leaderPosition;
-			case FRONTLINE -> leaderPosition.add(forward.scale(2.0 + jitter));
-			case FLANK_LEFT -> leaderPosition.subtract(right.scale(2.5 + jitter));
-			case FLANK_RIGHT -> leaderPosition.add(right.scale(2.5 + jitter));
-			case RANGED_LEFT -> leaderPosition.subtract(forward.scale(2.0)).subtract(right.scale(2.0 + jitter));
-			case RANGED_RIGHT -> leaderPosition.subtract(forward.scale(2.0)).add(right.scale(2.0 + jitter));
-			case BREACHER -> leaderPosition.subtract(forward.scale(1.4 + jitter));
-			case CARRIER -> leaderPosition.subtract(forward.scale(2.6)).add(right.scale((stableOrdinal & 1) == 0 ? 2.4 : -2.4));
-			case SUPPORT -> leaderPosition.subtract(forward.scale(2.8 + jitter));
+			case FRONTLINE -> offset(leaderPosition, forwardX, forwardZ, 2.0 + jitter, 0.0);
+			case FLANK_LEFT -> offset(leaderPosition, forwardX, forwardZ, 0.0, -(2.5 + jitter));
+			case FLANK_RIGHT -> offset(leaderPosition, forwardX, forwardZ, 0.0, 2.5 + jitter);
+			case RANGED_LEFT -> offset(leaderPosition, forwardX, forwardZ, -2.0, -(2.0 + jitter));
+			case RANGED_RIGHT -> offset(leaderPosition, forwardX, forwardZ, -2.0, 2.0 + jitter);
+			case BREACHER -> offset(leaderPosition, forwardX, forwardZ, -(1.4 + jitter), 0.0);
+			case CARRIER -> offset(
+				leaderPosition,
+				forwardX,
+				forwardZ,
+				-2.6,
+				(stableOrdinal & 1) == 0 ? 2.4 : -2.4
+			);
+			case SUPPORT -> offset(leaderPosition, forwardX, forwardZ, -(2.8 + jitter), 0.0);
 		};
 	}
 
@@ -37,31 +54,61 @@ public final class MixedSquadGeometry {
 		final int stableOrdinal,
 		final double rangedDistance
 	) {
-		Vec3d forward = targetLook.horizontalUnitOr(fallbackDirection);
-		Vec3d right = new Vec3d(-forward.z(), 0.0, forward.x());
+		double forwardX = targetLook.x();
+		double forwardZ = targetLook.z();
+		double lengthSquared = forwardX * forwardX + forwardZ * forwardZ;
+		if (lengthSquared < MINIMUM_HORIZONTAL_LENGTH_SQUARED) {
+			forwardX = fallbackDirection.x();
+			forwardZ = fallbackDirection.z();
+			lengthSquared = forwardX * forwardX + forwardZ * forwardZ;
+		}
+		if (lengthSquared < MINIMUM_HORIZONTAL_LENGTH_SQUARED) {
+			forwardX = 1.0;
+			forwardZ = 0.0;
+		} else {
+			double inverseLength = 1.0 / Math.sqrt(lengthSquared);
+			forwardX *= inverseLength;
+			forwardZ *= inverseLength;
+		}
 		double side = (stableOrdinal & 1) == 0 ? 1.0 : -1.0;
 		double range = Math.max(6.0, rangedDistance);
 		return switch (role) {
-			case LEADER, FRONTLINE -> targetPosition.add(forward.scale(2.2));
-			case FLANK_LEFT -> targetPosition.subtract(forward.scale(1.5)).subtract(right.scale(4.0));
-			case FLANK_RIGHT -> targetPosition.subtract(forward.scale(1.5)).add(right.scale(4.0));
-			case RANGED_LEFT -> crossfire(targetPosition, forward, right, range, -1.0);
-			case RANGED_RIGHT -> crossfire(targetPosition, forward, right, range, 1.0);
-			case BREACHER -> targetPosition.subtract(forward.scale(4.5)).add(right.scale(3.2 * side));
-			case CARRIER -> targetPosition.subtract(forward.scale(5.5)).add(right.scale(4.0 * side));
-			case SUPPORT -> targetPosition.add(forward.scale(6.0)).add(right.scale(2.5 * side));
+			case LEADER, FRONTLINE -> offset(targetPosition, forwardX, forwardZ, 2.2, 0.0);
+			case FLANK_LEFT -> offset(targetPosition, forwardX, forwardZ, -1.5, -4.0);
+			case FLANK_RIGHT -> offset(targetPosition, forwardX, forwardZ, -1.5, 4.0);
+			case RANGED_LEFT -> crossfire(targetPosition, forwardX, forwardZ, range, -1.0);
+			case RANGED_RIGHT -> crossfire(targetPosition, forwardX, forwardZ, range, 1.0);
+			case BREACHER -> offset(targetPosition, forwardX, forwardZ, -4.5, 3.2 * side);
+			case CARRIER -> offset(targetPosition, forwardX, forwardZ, -5.5, 4.0 * side);
+			case SUPPORT -> offset(targetPosition, forwardX, forwardZ, 6.0, 2.5 * side);
 		};
 	}
 
 	private static Vec3d crossfire(
 		final Vec3d target,
-		final Vec3d forward,
-		final Vec3d right,
+		final double forwardX,
+		final double forwardZ,
 		final double range,
 		final double side
 	) {
 		double forwardDistance = range * 0.42;
 		double lateralDistance = Math.sqrt(Math.max(0.0, range * range - forwardDistance * forwardDistance));
-		return target.add(forward.scale(forwardDistance)).add(right.scale(lateralDistance * side));
+		return offset(target, forwardX, forwardZ, forwardDistance, lateralDistance * side);
+	}
+
+	private static Vec3d offset(
+		final Vec3d origin,
+		final double forwardX,
+		final double forwardZ,
+		final double forwardDistance,
+		final double lateralDistance
+	) {
+		double rightX = -forwardZ;
+		double rightZ = forwardX;
+		return new Vec3d(
+			origin.x() + forwardX * forwardDistance + rightX * lateralDistance,
+			origin.y(),
+			origin.z() + forwardZ * forwardDistance + rightZ * lateralDistance
+		);
 	}
 }

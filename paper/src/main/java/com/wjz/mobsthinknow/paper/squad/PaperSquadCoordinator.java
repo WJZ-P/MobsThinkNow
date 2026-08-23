@@ -29,6 +29,7 @@ import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
 import org.bukkit.entity.AbstractSkeleton;
 import org.bukkit.entity.Creeper;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Spider;
@@ -182,7 +183,7 @@ public final class PaperSquadCoordinator {
 			return member.cachedDirective;
 		}
 		Vec3d focus = squad.target != null && squad.target.isValid()
-			? toVector(squad.target.getLocation())
+			? positionOf(squad.target)
 			: squad.lastTargetPosition;
 		MixedSquadRole role = squad.roles.getOrDefault(mob.getUniqueId(), MixedSquadRole.FRONTLINE);
 		Vec3d destination = this.destinationFor(squad, member, leader, focus, role);
@@ -423,7 +424,7 @@ public final class PaperSquadCoordinator {
 				LivingEntity ownTarget = this.targetFor(candidate, now);
 				return ownTarget == null || ownTarget == sharedTarget;
 			},
-			(first, second) -> first.mob.getLocation().distanceSquared(second.mob.getLocation()),
+			(first, second) -> distanceSquared(first.mob, second.mob),
 			radiusSquared,
 			config.maximumMembers(),
 			config.rawScanLimit(),
@@ -435,18 +436,20 @@ public final class PaperSquadCoordinator {
 
 	private boolean pruneSquadMembers(final Squad squad, final PaperSquadSettings config) {
 		MemberRecord leader = this.members.get(squad.leaderId);
-		Location anchor = leader == null ? null : leader.mob.getLocation();
 		double maximumSquared = config.maximumSeparation() * config.maximumSeparation();
 		Iterator<UUID> iterator = squad.memberIds.iterator();
 		boolean changed = false;
 		while (iterator.hasNext()) {
 			UUID memberId = iterator.next();
 			MemberRecord member = this.members.get(memberId);
-			boolean tooFar = anchor != null
+			boolean wrongWorld = leader != null
 				&& member != null
-				&& member.mob.getWorld() == anchor.getWorld()
-				&& member.mob.getLocation().distanceSquared(anchor) > maximumSquared;
-			if (member == null || tooFar || member.mob.getWorld() != (anchor == null ? member.mob.getWorld() : anchor.getWorld())) {
+				&& member.mob.getWorld() != leader.mob.getWorld();
+			boolean tooFar = leader != null
+				&& member != null
+				&& !wrongWorld
+				&& distanceSquared(member.mob, leader.mob) > maximumSquared;
+			if (member == null || wrongWorld || tooFar) {
 				iterator.remove();
 				this.squadByMember.remove(memberId, squad.id);
 				changed = true;
@@ -526,7 +529,7 @@ public final class PaperSquadCoordinator {
 	private void resolveTarget(final Squad squad, final long now) {
 		if (squad.target != null && this.isValidForAnyMember(squad, squad.target)) {
 			squad.targetId = squad.target.getUniqueId();
-			squad.lastTargetPosition = toVector(squad.target.getLocation());
+			squad.lastTargetPosition = positionOf(squad.target);
 			squad.lastTargetSeenAt = now;
 			return;
 		}
@@ -537,7 +540,7 @@ public final class PaperSquadCoordinator {
 				&& !(candidate instanceof Mob mob && this.areSquadmates(member.mob, mob))) {
 				squad.target = candidate;
 				squad.targetId = candidate.getUniqueId();
-				squad.lastTargetPosition = toVector(candidate.getLocation());
+				squad.lastTargetPosition = positionOf(candidate);
 				squad.lastTargetSeenAt = now;
 				return;
 			}
@@ -611,7 +614,7 @@ public final class PaperSquadCoordinator {
 		boolean emergency = leader != null
 			&& squad.target != null
 			&& leader.mob.getWorld() == squad.target.getWorld()
-			&& leader.mob.getLocation().distanceSquared(squad.target.getLocation())
+			&& distanceSquared(leader.mob, squad.target)
 				<= config.emergencyDistance() * config.emergencyDistance();
 		boolean quorum = this.hasQuorum(squad);
 		MixedSquadState next = MixedSquadPhasePlanner.next(
@@ -641,7 +644,7 @@ public final class PaperSquadCoordinator {
 		if (leader == null || squad.memberIds.isEmpty()) {
 			return false;
 		}
-		Vec3d focus = squad.target != null ? toVector(squad.target.getLocation()) : squad.lastTargetPosition;
+		Vec3d focus = squad.target != null ? positionOf(squad.target) : squad.lastTargetPosition;
 		int ready = 0;
 		int total = 0;
 		for (UUID memberId : squad.memberIds) {
@@ -652,7 +655,7 @@ public final class PaperSquadCoordinator {
 			total++;
 			MixedSquadRole role = squad.roles.getOrDefault(memberId, MixedSquadRole.FRONTLINE);
 			Vec3d destination = this.destinationFor(squad, member, leader, focus, role);
-			if (toVector(member.mob.getLocation()).distanceSquared(destination) <= DESTINATION_QUORUM_DISTANCE_SQUARED) {
+			if (distanceSquared(member.mob, destination) <= DESTINATION_QUORUM_DISTANCE_SQUARED) {
 				ready++;
 			}
 		}
@@ -666,21 +669,23 @@ public final class PaperSquadCoordinator {
 		final Vec3d focus,
 		final MixedSquadRole role
 	) {
+		Vec3d leaderPosition = positionOf(leader.mob);
 		if (squad.state == MixedSquadState.DEPLOYING || squad.state == MixedSquadState.ENGAGING) {
+			Vec3d targetFromLeader = focus.subtract(leaderPosition);
 			Vec3d targetLook = squad.target == null
-				? focus.subtract(toVector(leader.mob.getLocation()))
-				: toVector(squad.target.getLocation().getDirection());
+				? targetFromLeader
+				: horizontalLook(squad.target);
 			return MixedSquadGeometry.combatPosition(
 				focus,
 				targetLook,
-				focus.subtract(toVector(leader.mob.getLocation())),
+				targetFromLeader,
 				role,
 				member.stableOrder,
 				10.0
 			);
 		}
 		return MixedSquadGeometry.rallyPosition(
-			toVector(leader.mob.getLocation()),
+			leaderPosition,
 			focus,
 			role,
 			member.stableOrder
@@ -756,8 +761,8 @@ public final class PaperSquadCoordinator {
 		return new BoundedSpatialIndex<>(
 			cellSize,
 			member -> member.mob.getWorld().getUID(),
-			member -> member.mob.getLocation().getX(),
-			member -> member.mob.getLocation().getZ()
+			member -> member.mob.getX(),
+			member -> member.mob.getZ()
 		);
 	}
 
@@ -819,12 +824,32 @@ public final class PaperSquadCoordinator {
 		return id.getMostSignificantBits() ^ Long.rotateLeft(id.getLeastSignificantBits(), 23);
 	}
 
-	private static Vec3d toVector(final Location location) {
-		return new Vec3d(location.getX(), location.getY(), location.getZ());
+	private static Vec3d positionOf(final Entity entity) {
+		return new Vec3d(entity.getX(), entity.getY(), entity.getZ());
 	}
 
-	private static Vec3d toVector(final org.bukkit.util.Vector vector) {
-		return new Vec3d(vector.getX(), vector.getY(), vector.getZ());
+	private static Vec3d horizontalLook(final Entity entity) {
+		double yaw = Math.toRadians(entity.getYaw());
+		double horizontalScale = Math.cos(Math.toRadians(entity.getPitch()));
+		return new Vec3d(
+			-horizontalScale * Math.sin(yaw),
+			0.0,
+			horizontalScale * Math.cos(yaw)
+		);
+	}
+
+	private static double distanceSquared(final Entity first, final Entity second) {
+		double x = first.getX() - second.getX();
+		double y = first.getY() - second.getY();
+		double z = first.getZ() - second.getZ();
+		return x * x + y * y + z * z;
+	}
+
+	private static double distanceSquared(final Entity entity, final Vec3d point) {
+		double x = entity.getX() - point.x();
+		double y = entity.getY() - point.y();
+		double z = entity.getZ() - point.z();
+		return x * x + y * y + z * z;
 	}
 
 	private static final class MemberRecord {
@@ -872,7 +897,7 @@ public final class PaperSquadCoordinator {
 			this.id = id;
 			this.target = target;
 			this.targetId = target.getUniqueId();
-			this.lastTargetPosition = toVector(target.getLocation());
+			this.lastTargetPosition = positionOf(target);
 			this.lastTargetSeenAt = now;
 			this.stateEnteredAt = now;
 		}
