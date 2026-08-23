@@ -55,6 +55,8 @@ public final class PaperSquadCoordinator {
 	private final Map<UUID, Long> squadByMember = new HashMap<>();
 	private BoundedSpatialIndex<UUID, MemberRecord> spatialIndex;
 	private long nextSquadId = 1L;
+	private long directiveCacheHits;
+	private long directiveComputations;
 	private BukkitTask task;
 
 	public PaperSquadCoordinator(
@@ -110,6 +112,9 @@ public final class PaperSquadCoordinator {
 			mob.getUniqueId(),
 			ignored -> new MemberRecord(mob, stableOrder(mob.getUniqueId()))
 		);
+		if (record.mob != mob) {
+			record.clearDirectiveCache();
+		}
 		record.mob = mob;
 		this.spatialIndex.upsert(record);
 	}
@@ -167,13 +172,21 @@ public final class PaperSquadCoordinator {
 		if (member == null || leader == null) {
 			return null;
 		}
+		long now = Bukkit.getCurrentTick();
+		boolean sharedMemory = squad.target != null && mob.getTarget() != squad.target;
+		if (member.cachedDirective != null
+			&& member.directiveCachedAt == now
+			&& member.cachedDirectiveRevision == squad.directiveRevision
+			&& member.cachedSharedMemory == sharedMemory) {
+			this.directiveCacheHits++;
+			return member.cachedDirective;
+		}
 		Vec3d focus = squad.target != null && squad.target.isValid()
 			? toVector(squad.target.getLocation())
 			: squad.lastTargetPosition;
 		MixedSquadRole role = squad.roles.getOrDefault(mob.getUniqueId(), MixedSquadRole.FRONTLINE);
 		Vec3d destination = this.destinationFor(squad, member, leader, focus, role);
-		boolean sharedMemory = squad.target != null && mob.getTarget() != squad.target;
-		return new PaperSquadDirective(
+		PaperSquadDirective directive = new PaperSquadDirective(
 			squad.id,
 			squad.term,
 			squad.state,
@@ -185,6 +198,12 @@ public final class PaperSquadCoordinator {
 			squad.targetId,
 			sharedMemory
 		);
+		member.cachedDirective = directive;
+		member.directiveCachedAt = now;
+		member.cachedDirectiveRevision = squad.directiveRevision;
+		member.cachedSharedMemory = sharedMemory;
+		this.directiveComputations++;
+		return directive;
 	}
 
 	public LivingEntity sharedTargetFor(final Mob mob) {
@@ -247,6 +266,14 @@ public final class PaperSquadCoordinator {
 		return this.members.size();
 	}
 
+	public long directiveCacheHits() {
+		return this.directiveCacheHits;
+	}
+
+	public long directiveComputations() {
+		return this.directiveComputations;
+	}
+
 	public PaperSquadMetrics metrics() {
 		return this.metrics;
 	}
@@ -288,6 +315,7 @@ public final class PaperSquadCoordinator {
 		Iterator<Squad> iterator = this.squads.values().iterator();
 		while (iterator.hasNext()) {
 			Squad squad = iterator.next();
+			squad.directiveRevision++;
 			boolean pruned = this.pruneSquadMembers(squad, config);
 			if (squad.memberIds.size() < config.minimumMembers()) {
 				this.releaseSquadMembers(squad);
@@ -444,6 +472,7 @@ public final class PaperSquadCoordinator {
 	}
 
 	private void rebuildTactics(final Squad squad) {
+		squad.directiveRevision++;
 		List<MixedSquadPlanner.Member<UUID>> snapshots = this.snapshots(squad);
 		MixedSquadPlanner.Composition composition = MixedSquadPlanner.composition(snapshots);
 		MemberRecord leader = this.members.get(squad.leaderId);
@@ -601,6 +630,7 @@ public final class PaperSquadCoordinator {
 		if (next != squad.state) {
 			squad.state = next;
 			squad.stateEnteredAt = now;
+			squad.directiveRevision++;
 			this.metrics.phaseTransition();
 			this.announcePhase(squad);
 		}
@@ -696,7 +726,9 @@ public final class PaperSquadCoordinator {
 		}
 		Squad squad = this.squads.get(squadId);
 		if (squad != null) {
-			squad.memberIds.remove(memberId);
+			if (squad.memberIds.remove(memberId)) {
+				squad.directiveRevision++;
+			}
 			this.pruneSquadReference(squadId);
 		}
 	}
@@ -801,10 +833,21 @@ public final class PaperSquadCoordinator {
 		private LivingEntity rememberedTarget;
 		private long rememberedTargetUntil;
 		private long nextTargetPropagationAt;
+		private PaperSquadDirective cachedDirective;
+		private long directiveCachedAt = Long.MIN_VALUE;
+		private long cachedDirectiveRevision = Long.MIN_VALUE;
+		private boolean cachedSharedMemory;
 
 		private MemberRecord(final Mob mob, final int stableOrder) {
 			this.mob = mob;
 			this.stableOrder = stableOrder;
+		}
+
+		private void clearDirectiveCache() {
+			this.cachedDirective = null;
+			this.directiveCachedAt = Long.MIN_VALUE;
+			this.cachedDirectiveRevision = Long.MIN_VALUE;
+			this.cachedSharedMemory = false;
 		}
 	}
 
@@ -823,6 +866,7 @@ public final class PaperSquadCoordinator {
 		private Map<UUID, MixedSquadRole> roles = Map.of();
 		private Map<UUID, UUID> transportPairs = Map.of();
 		private Map<UUID, UUID> transportCarriers = Map.of();
+		private long directiveRevision;
 
 		private Squad(final long id, final LivingEntity target, final long now) {
 			this.id = id;

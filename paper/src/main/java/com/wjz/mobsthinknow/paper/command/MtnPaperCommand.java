@@ -295,6 +295,8 @@ public final class MtnPaperCommand implements TabExecutor {
 				+ ", friendlyFirePrevented=" + squads.friendlyDamagePrevented()
 				+ ", candidateChecks=" + squads.boundedCandidateChecks()
 				+ ", orderPathFailures=" + squads.orderPathFailures()
+				+ ", directiveComputations=" + this.squadCoordinator.directiveComputations()
+				+ ", directiveCacheHits=" + this.squadCoordinator.directiveCacheHits()
 				+ ", pendingDamageMemories=" + this.damageMemory.pendingCount()
 				+ ", pendingShieldSignals=" + this.lifecycle.pendingShieldBlockSignals()
 				+ ", disabledShieldGuards=" + this.lifecycle.disabledShieldGuardCount(),

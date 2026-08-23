@@ -77,6 +77,8 @@ GoalSelector 行为，而不是每 tick 强制传送实体：
 - Fabric 与 Paper 的成队查询现共用 `shared` 中的 `BoundedSpatialIndex`：世界/目标组严格隔离，移动实体
   以对象身份 O(1) 换桶，单次只访问九桶并受原始候选硬预算限制；相等快照不会互相覆盖，配置重载会
   以新桶尺寸重建索引；
+- Paper 为每名成员按当前 tick 与小队修订号缓存不可变指令；武器、盾牌、远程、载具和通用命令 Goal
+  在同 tick 重复查询时直接复用同一几何快照，目标共享状态改变或小队重规划会即时失效缓存；
 - `/mtnpaper status|inspect|reload|setiq|spawn|spawnall|assault|selftest` 提供运行诊断、批量生成和真实
   联合兵种冒烟入口；`selftest` 会在临时保活区块生成 IQ 10 的僵尸、弓手、弩手、苦力怕与蜘蛛，先验证
   同队和 `COMBINED_ARMS`，再等待真实 Goal 完成斧手跳劈、弩手可见装填与错峰射击、独行烟花弩碰撞引爆、真实自然出生职业幂等改装、蜘蛛载客、临时蛛网放置与原状回滚，以及独立盾卫探针的

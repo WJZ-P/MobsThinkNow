@@ -8,6 +8,7 @@ import hashlib
 import os
 from pathlib import Path
 import queue
+import re
 import shutil
 import socket
 import subprocess
@@ -439,6 +440,10 @@ def run_server(
                     "disabledShieldGuards=0",
                 )
                 missing = [marker for marker in cleanup_markers if marker not in line]
+                for metric in ("directiveComputations", "directiveCacheHits"):
+                    match = re.search(rf"(?:^|, ){metric}=(\d+)(?:,|$)", line)
+                    if match is None or int(match.group(1)) <= 0:
+                        missing.append(metric + ">0")
                 if missing:
                     cleanup_status_checks += 1
                     if cleanup_status_checks >= 20:
