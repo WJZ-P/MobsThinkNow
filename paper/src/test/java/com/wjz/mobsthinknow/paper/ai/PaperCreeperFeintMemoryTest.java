@@ -51,6 +51,26 @@ final class PaperCreeperFeintMemoryTest {
 		assertTrue(memory.canStart(creeper, 30L));
 	}
 
+	@Test
+	void completionChainRefreshesRecencyExpiresAndEnforcesCapacity() {
+		PaperCreeperFeintMemory memory = new PaperCreeperFeintMemory();
+		Creeper refreshed = creeper(UUID.randomUUID(), new AtomicBoolean(), new AtomicInteger());
+		memory.markCompleted(refreshed, 10L);
+		memory.markCompleted(refreshed, 500L);
+		memory.tickCooling(611L);
+		assertEquals(1, memory.completionCount());
+		memory.tickCooling(1_101L);
+		assertEquals(0, memory.completionCount());
+
+		for (int index = 0; index < 300; index++) {
+			memory.markCompleted(
+				creeper(UUID.randomUUID(), new AtomicBoolean(), new AtomicInteger()),
+				2_000L + index
+			);
+		}
+		assertEquals(256, memory.completionCount());
+	}
+
 	private static Creeper creeper(
 		final UUID id,
 		final AtomicBoolean ignited,

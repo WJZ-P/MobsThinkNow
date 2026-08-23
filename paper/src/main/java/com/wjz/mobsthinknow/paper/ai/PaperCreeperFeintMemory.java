@@ -26,8 +26,10 @@ public final class PaperCreeperFeintMemory {
 	private final Set<UUID> ownedIgnition = new HashSet<>();
 	private final Set<UUID> externallyIgnited = new HashSet<>();
 	private final Map<UUID, Long> nextAllowedAt = new HashMap<>();
-	private final Map<UUID, Long> completedAt = new LinkedHashMap<>();
+	private final Map<UUID, CompletionEntry> completions = new HashMap<>();
 	private final Map<UUID, CoolingEntry> cooling = new LinkedHashMap<>();
+	private CompletionEntry oldestCompletion;
+	private CompletionEntry newestCompletion;
 	private BukkitTask coolingTask;
 
 	public void start(final Plugin plugin) {
@@ -143,16 +145,26 @@ public final class PaperCreeperFeintMemory {
 
 	public void markCompleted(final Creeper creeper, final long now) {
 		this.pruneCompletions(now);
-		this.completedAt.put(creeper.getUniqueId(), now);
-		while (this.completedAt.size() > MAXIMUM_COMPLETION_ENTRIES) {
-			this.completedAt.remove(this.completedAt.keySet().iterator().next());
+		UUID id = creeper.getUniqueId();
+		CompletionEntry entry = this.completions.get(id);
+		if (entry == null) {
+			entry = new CompletionEntry(id);
+			this.completions.put(id, entry);
+		} else {
+			this.unlinkCompletion(entry);
+		}
+		entry.completedAt = now;
+		this.appendCompletion(entry);
+		while (this.completions.size() > MAXIMUM_COMPLETION_ENTRIES) {
+			this.removeOldestCompletion();
 		}
 	}
 
 	public boolean completedSince(final Creeper creeper, final long tick) {
 		long now = Bukkit.getCurrentTick();
 		this.pruneCompletions(now);
-		return this.completedAt.getOrDefault(creeper.getUniqueId(), Long.MIN_VALUE) >= tick;
+		CompletionEntry entry = this.completions.get(creeper.getUniqueId());
+		return entry != null && entry.completedAt >= tick;
 	}
 
 	public void discard(final Creeper creeper) {
@@ -162,7 +174,10 @@ public final class PaperCreeperFeintMemory {
 		this.externallyIgnited.remove(id);
 		this.cooling.remove(id);
 		this.nextAllowedAt.remove(id);
-		this.completedAt.remove(id);
+		CompletionEntry completion = this.completions.remove(id);
+		if (completion != null) {
+			this.unlinkCompletion(completion);
+		}
 	}
 
 	public int activeCount() {
@@ -178,7 +193,9 @@ public final class PaperCreeperFeintMemory {
 		this.ownedIgnition.clear();
 		this.externallyIgnited.clear();
 		this.nextAllowedAt.clear();
-		this.completedAt.clear();
+		this.completions.clear();
+		this.oldestCompletion = null;
+		this.newestCompletion = null;
 		for (CoolingEntry entry : this.cooling.values()) {
 			coolDown(entry.creeper());
 		}
@@ -206,7 +223,49 @@ public final class PaperCreeperFeintMemory {
 	}
 
 	private void pruneCompletions(final long now) {
-		this.completedAt.values().removeIf(completed -> now - completed > COMPLETION_MEMORY_TICKS);
+		while (this.oldestCompletion != null
+			&& now - this.oldestCompletion.completedAt > COMPLETION_MEMORY_TICKS) {
+			this.removeOldestCompletion();
+		}
+	}
+
+	int completionCount() {
+		return this.completions.size();
+	}
+
+	private void appendCompletion(final CompletionEntry entry) {
+		entry.previous = this.newestCompletion;
+		entry.next = null;
+		if (this.newestCompletion == null) {
+			this.oldestCompletion = entry;
+		} else {
+			this.newestCompletion.next = entry;
+		}
+		this.newestCompletion = entry;
+	}
+
+	private void unlinkCompletion(final CompletionEntry entry) {
+		if (entry.previous == null) {
+			this.oldestCompletion = entry.next;
+		} else {
+			entry.previous.next = entry.next;
+		}
+		if (entry.next == null) {
+			this.newestCompletion = entry.previous;
+		} else {
+			entry.next.previous = entry.previous;
+		}
+		entry.previous = null;
+		entry.next = null;
+	}
+
+	private void removeOldestCompletion() {
+		CompletionEntry entry = this.oldestCompletion;
+		if (entry == null) {
+			return;
+		}
+		this.unlinkCompletion(entry);
+		this.completions.remove(entry.id, entry);
 	}
 
 	private static void coolDown(final Creeper creeper) {
@@ -225,5 +284,16 @@ public final class PaperCreeperFeintMemory {
 	}
 
 	private record CoolingEntry(Creeper creeper, long combatUnlockAt) {
+	}
+
+	private static final class CompletionEntry {
+		private final UUID id;
+		private long completedAt;
+		private CompletionEntry previous;
+		private CompletionEntry next;
+
+		private CompletionEntry(final UUID id) {
+			this.id = id;
+		}
 	}
 }
