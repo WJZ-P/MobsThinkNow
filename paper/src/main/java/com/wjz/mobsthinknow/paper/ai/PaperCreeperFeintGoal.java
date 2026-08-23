@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -156,7 +157,7 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 		if (currentDestination == null) {
 			return;
 		}
-		if (this.creeper.getLocation().distanceSquared(currentDestination) <= DESTINATION_REACHED_SQUARED) {
+		if (PaperEntityMath.distanceSquared(this.creeper, currentDestination) <= DESTINATION_REACHED_SQUARED) {
 			this.creeper.getPathfinder().stopPathfinding();
 			this.completed = true;
 			this.phaseTicksRemaining = 0;
@@ -247,7 +248,7 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 			blocking,
 			this.creeper.isPowered(),
 			this.creeper.getFuseTicks() / (double)Math.max(1, this.creeper.getMaxFuseTicks()),
-			this.creeper.getLocation().distanceSquared(selected.getLocation()),
+			PaperEntityMath.distanceSquared(this.creeper, selected),
 			root.creeperMaximumFuseStartDistance()
 		);
 	}

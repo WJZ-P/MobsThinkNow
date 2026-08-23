@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -75,7 +76,7 @@ public final class PaperSpiderPounceGoal implements Goal<Spider> {
 				iq,
 				this.spider.hasLineOfSight(current),
 				this.spider.isOnGround(),
-				this.spider.getLocation().distanceSquared(current.getLocation())
+				PaperEntityMath.distanceSquared(this.spider, current)
 			);
 	}
 
@@ -94,7 +95,7 @@ public final class PaperSpiderPounceGoal implements Goal<Spider> {
 		}
 		return this.spider.isOnGround()
 			&& elapsed < config.spiderPounceLeaseTicks()
-			&& this.spider.getLocation().distanceSquared(this.target.getLocation()) <= 64.0;
+			&& PaperEntityMath.distanceSquared(this.spider, this.target) <= 64.0;
 	}
 
 	@Override

@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.paper.command;
 
 import com.wjz.mobsthinknow.paper.PaperMetrics;
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.wjz.mobsthinknow.paper.ai.PaperIntelligenceService;
 import com.wjz.mobsthinknow.paper.ai.PaperCreeperFeintMemory;
 import com.wjz.mobsthinknow.paper.ai.PaperFireworkBoltService;
@@ -746,7 +747,7 @@ public final class PaperRuntimeSelfTest {
 			+ ",usedTicks:" + guard.getActiveItemUsedTime()
 			+ ",yaw:" + guard.getYaw()
 			+ ",facingDot:" + facingDot
-			+ ",distance:" + Math.sqrt(guard.getLocation().distanceSquared(attacker.getLocation()));
+			+ ",distance:" + Math.sqrt(PaperEntityMath.distanceSquared(guard, attacker));
 	}
 
 	/** 独立斧手探针要求正面成熟举盾被打断，伤害照常结算，且不会误记为成功格挡反击。 */
@@ -938,7 +939,7 @@ public final class PaperRuntimeSelfTest {
 			+ ",ignited:" + creeper.isIgnited()
 			+ ",fuseTicks:" + creeper.getFuseTicks()
 			+ ",target:" + (creeper.getTarget() == null ? "none" : creeper.getTarget().getType().key().asString())
-			+ ",distance:" + Math.sqrt(creeper.getLocation().distanceSquared(target.getLocation()))
+			+ ",distance:" + Math.sqrt(PaperEntityMath.distanceSquared(creeper, target))
 			+ ",watchingDot:" + watchingDot;
 	}
 

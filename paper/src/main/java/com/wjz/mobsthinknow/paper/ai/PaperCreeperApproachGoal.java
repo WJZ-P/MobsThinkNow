@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -119,7 +120,7 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 			watching,
 			blocking,
 			visible,
-			this.creeper.getLocation().distanceSquared(target.getLocation()),
+			PaperEntityMath.distanceSquared(this.creeper, target),
 			config.creeperFlankingEnabled(),
 			this.stableSide
 		);

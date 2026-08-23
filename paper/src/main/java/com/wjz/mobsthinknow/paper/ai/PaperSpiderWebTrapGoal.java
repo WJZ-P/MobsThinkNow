@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
@@ -97,7 +98,7 @@ public final class PaperSpiderWebTrapGoal implements Goal<Spider> {
 				this.spider.hasLineOfSight(current),
 				this.spider.isOnGround(),
 				!this.spider.getPassengers().isEmpty(),
-				this.spider.getLocation().distanceSquared(current.getLocation())
+				PaperEntityMath.distanceSquared(this.spider, current)
 			)) {
 			return false;
 		}
@@ -276,8 +277,8 @@ public final class PaperSpiderWebTrapGoal implements Goal<Spider> {
 	private boolean isUsefulPlacement(final Block block, final LivingEntity current) {
 		Location center = block.getLocation().add(0.5, 0.5, 0.5);
 		BoundingBox placementBox = BoundingBox.of(block).expand(0.05);
-		return this.spider.getLocation().distanceSquared(center) <= MAXIMUM_PLACEMENT_DISTANCE_SQUARED
-			&& current.getLocation().distanceSquared(center) >= MINIMUM_TARGET_CLEARANCE_SQUARED
+		return PaperEntityMath.distanceSquared(this.spider, center) <= MAXIMUM_PLACEMENT_DISTANCE_SQUARED
+			&& PaperEntityMath.distanceSquared(current, center) >= MINIMUM_TARGET_CLEARANCE_SQUARED
 			&& !placementBox.overlaps(this.spider.getBoundingBox())
 			&& this.hasClearSilkPath(center)
 			&& this.traps.canPlace(this.spider, block);

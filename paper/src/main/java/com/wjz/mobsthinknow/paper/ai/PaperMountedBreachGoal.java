@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -133,7 +134,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 			&& !current.isIgnited()
 			&& Bukkit.getCurrentTick() - this.startedAt < config.spiderAssemblyTimeoutTicks()
 			&& current.getWorld() == this.spider.getWorld()
-			&& current.getLocation().distanceSquared(this.spider.getLocation()) <= MAXIMUM_ASSEMBLY_SEPARATION_SQUARED;
+			&& PaperEntityMath.distanceSquared(current, this.spider) <= MAXIMUM_ASSEMBLY_SEPARATION_SQUARED;
 	}
 
 	@Override
@@ -235,7 +236,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 			current.getPathfinder().stopPathfinding();
 			this.steerBoardingLeap(current);
 			if (this.boardingTicks >= MINIMUM_BOARDING_TICKS
-				&& this.spider.getLocation().distanceSquared(current.getLocation()) <= BOARDING_CATCH_DISTANCE_SQUARED) {
+				&& PaperEntityMath.distanceSquared(this.spider, current) <= BOARDING_CATCH_DISTANCE_SQUARED) {
 				this.completeBoarding(current);
 			} else if (this.boardingTicks >= MAXIMUM_BOARDING_TICKS) {
 				this.boarding = false;
@@ -245,7 +246,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 			return;
 		}
 
-		double distanceSquared = this.spider.getLocation().distanceSquared(current.getLocation());
+		double distanceSquared = PaperEntityMath.distanceSquared(this.spider, current);
 		if (now >= this.nextBoardingAt && distanceSquared <= BOARDING_TRIGGER_DISTANCE_SQUARED) {
 			this.beginBoardingLeap(current);
 			return;
@@ -391,7 +392,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 			PaperDifficultyAdapter.fromBukkit(current.getWorld().getDifficulty())
 		);
 		if (!this.spider.hasLineOfSight(currentTarget)
-			|| this.spider.getLocation().distanceSquared(currentTarget.getLocation()) > startDistance * startDistance) {
+			|| PaperEntityMath.distanceSquared(this.spider, currentTarget) > startDistance * startDistance) {
 			return false;
 		}
 		if (!this.blastReservations.tryReserve(
@@ -484,7 +485,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 		}
 		return !assigned.isInsideVehicle()
 			&& !assigned.isIgnited()
-			&& assigned.getLocation().distanceSquared(this.spider.getLocation()) <= MAXIMUM_ASSEMBLY_SEPARATION_SQUARED;
+			&& PaperEntityMath.distanceSquared(assigned, this.spider) <= MAXIMUM_ASSEMBLY_SEPARATION_SQUARED;
 	}
 
 	private boolean enabled(final PaperSettings config) {

@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -71,7 +72,7 @@ public final class PaperZombieShieldGoal implements Goal<Zombie> {
 			return false;
 		}
 		double maximum = config.raiseDistance();
-		if (this.zombie.getLocation().distanceSquared(selected.getLocation()) > maximum * maximum) {
+		if (PaperEntityMath.distanceSquared(this.zombie, selected) > maximum * maximum) {
 			return false;
 		}
 		this.target = selected;
@@ -86,7 +87,7 @@ public final class PaperZombieShieldGoal implements Goal<Zombie> {
 			return false;
 		}
 		double maximum = config.lowerDistance();
-		return this.zombie.getLocation().distanceSquared(selected.getLocation()) <= maximum * maximum;
+		return PaperEntityMath.distanceSquared(this.zombie, selected) <= maximum * maximum;
 	}
 
 	@Override
@@ -301,7 +302,7 @@ public final class PaperZombieShieldGoal implements Goal<Zombie> {
 
 	private boolean canReach(final LivingEntity current) {
 		double reach = MELEE_REACH + current.getWidth() * 0.25;
-		return this.zombie.getLocation().distanceSquared(current.getLocation()) <= reach * reach
+		return PaperEntityMath.distanceSquared(this.zombie, current) <= reach * reach
 			&& this.zombie.hasLineOfSight(current);
 	}
 

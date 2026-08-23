@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -107,12 +108,12 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 			|| !this.skeleton.hasLineOfSight(candidateTarget)
 			|| this.crossfireOwnsMovement()
 			|| RangedSpacingPlanner.shouldStartEmergencyDisengage(
-				horizontalDistanceSquared(this.skeleton.getLocation(), candidateTarget.getLocation()),
+				PaperEntityMath.horizontalDistanceSquared(this.skeleton, candidateTarget),
 				root.skeletonPreferredRange(),
 				this.intelligence.get(this.skeleton)
 			)
 			|| !CoverPositionPlanner.isUsefulRange(
-				this.skeleton.getLocation().distanceSquared(candidateTarget.getLocation()),
+				PaperEntityMath.distanceSquared(this.skeleton, candidateTarget),
 				root.skeletonPreferredRange(),
 				config.searchLimits()
 			)) {
@@ -162,7 +163,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 			&& Bukkit.getCurrentTick() - this.startedAt < config.cycleTimeoutTicks()
 			&& this.targetAnchor != null
 			&& this.targetAnchor.getWorld() == this.target.getWorld()
-			&& this.targetAnchor.distanceSquared(this.target.getLocation())
+			&& PaperEntityMath.distanceSquared(this.target, this.targetAnchor)
 				<= config.targetMovementTolerance() * config.targetMovementTolerance();
 	}
 
@@ -483,7 +484,12 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	}
 
 	private boolean reached(final GridPosition position) {
-		return this.skeleton.getLocation().distanceSquared(toLocation(position)) <= POSITION_REACHED_DISTANCE_SQUARED;
+		return PaperEntityMath.distanceSquared(
+			this.skeleton,
+			position.x() + 0.5,
+			position.y(),
+			position.z() + 0.5
+		) <= POSITION_REACHED_DISTANCE_SQUARED;
 	}
 
 	private int nextHiddenWait() {
@@ -512,12 +518,6 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 
 	private static Vec3d toShared(final Location location) {
 		return new Vec3d(location.getX(), location.getY(), location.getZ());
-	}
-
-	private static double horizontalDistanceSquared(final Location first, final Location second) {
-		double x = first.getX() - second.getX();
-		double z = first.getZ() - second.getZ();
-		return x * x + z * z;
 	}
 
 	private static boolean isHazard(final Material material) {

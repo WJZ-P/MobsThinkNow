@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.paper.command;
 
 import com.wjz.mobsthinknow.paper.MobsThinkNowPaperPlugin;
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperMobLifecycle;
 import com.wjz.mobsthinknow.paper.ai.PaperDamageMemory;
@@ -512,7 +513,7 @@ public final class MtnPaperCommand implements TabExecutor {
 			entity -> entity.isValid() && entity instanceof Mob mob && this.intelligence.supports(mob)
 		).stream()
 			.map(entity -> (Mob)entity)
-			.min(Comparator.comparingDouble(entity -> entity.getLocation().distanceSquared(player.getLocation())))
+			.min(Comparator.comparingDouble(entity -> PaperEntityMath.distanceSquared(entity, player)))
 			.orElse(null);
 	}
 

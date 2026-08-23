@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -446,7 +447,7 @@ public final class PaperZombieWeaponGoal implements Goal<Zombie> {
 
 	private boolean canReach(final LivingEntity current) {
 		double reach = MELEE_REACH + current.getWidth() * 0.25;
-		return this.zombie.getLocation().distanceSquared(current.getLocation()) <= reach * reach
+		return PaperEntityMath.distanceSquared(this.zombie, current) <= reach * reach
 			&& this.zombie.hasLineOfSight(current);
 	}
 

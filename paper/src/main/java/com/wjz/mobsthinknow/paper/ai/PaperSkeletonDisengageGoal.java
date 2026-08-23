@@ -5,6 +5,7 @@ import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.wjz.mobsthinknow.paper.PaperSettings;
 import com.wjz.mobsthinknow.shared.ai.RangedSpacingPlanner;
 import com.wjz.mobsthinknow.shared.ai.RetreatPlanner;
@@ -74,7 +75,7 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 		}
 		LivingEntity target = this.skeleton.getTarget();
 		if (!PaperThreats.isLiveFor(this.skeleton, target) || !RangedSpacingPlanner.shouldStartEmergencyDisengage(
-			horizontalDistanceSquared(this.skeleton.getLocation(), target.getLocation()),
+			PaperEntityMath.horizontalDistanceSquared(this.skeleton, target),
 			config.skeletonPreferredRange(),
 			iq
 		)) {
@@ -96,7 +97,7 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 			return false;
 		}
 		return RangedSpacingPlanner.shouldContinueEmergencyDisengage(
-			horizontalDistanceSquared(this.skeleton.getLocation(), current.getLocation()),
+			PaperEntityMath.horizontalDistanceSquared(this.skeleton, current),
 			config.skeletonPreferredRange(),
 			this.intelligence.get(this.skeleton)
 		);
@@ -136,7 +137,7 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 			&& PaperThreats.isLiveFor(this.skeleton, current)
 			&& Bukkit.getCurrentTick() - this.startedAt >= config.skeletonDisengageMaximumTicks()
 			&& RangedSpacingPlanner.shouldContinueEmergencyDisengage(
-				horizontalDistanceSquared(this.skeleton.getLocation(), current.getLocation()),
+				PaperEntityMath.horizontalDistanceSquared(this.skeleton, current),
 				config.skeletonPreferredRange(),
 				this.intelligence.get(this.skeleton)
 			);
@@ -166,8 +167,8 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 			return;
 		}
 		List<Vec3d> candidates = RetreatPlanner.candidateDestinations(
-			toVector(this.skeleton.getLocation()),
-			toVector(current.getLocation()),
+			new Vec3d(this.skeleton.getX(), this.skeleton.getY(), this.skeleton.getZ()),
+			new Vec3d(current.getX(), current.getY(), current.getZ()),
 			MINIMUM_ESCAPE_DISTANCE,
 			MAXIMUM_ESCAPE_DISTANCE,
 			this.distanceSample,
@@ -251,16 +252,6 @@ public final class PaperSkeletonDisengageGoal implements Goal<AbstractSkeleton> 
 			&& config.skeletonSpacingEnabled()
 			&& this.skeleton.isValid()
 			&& !this.skeleton.isDead();
-	}
-
-	private static double horizontalDistanceSquared(final Location first, final Location second) {
-		double x = first.getX() - second.getX();
-		double z = first.getZ() - second.getZ();
-		return x * x + z * z;
-	}
-
-	private static Vec3d toVector(final Location location) {
-		return new Vec3d(location.getX(), location.getY(), location.getZ());
 	}
 
 	private static float yawToward(final Location from, final Location to) {

@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -112,7 +113,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 			PaperDifficultyAdapter.fromBukkit(this.creeper.getWorld().getDifficulty())
 		);
 		return CreeperTacticalPlanner.shouldContinueFuse(
-			this.creeper.getLocation().distanceSquared(current.getLocation()),
+			PaperEntityMath.distanceSquared(this.creeper, current),
 			startDistance,
 			this.creeper.hasLineOfSight(current),
 			false,
@@ -205,7 +206,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 			PaperDifficultyAdapter.fromBukkit(this.creeper.getWorld().getDifficulty())
 		);
 		boolean committed = this.externallyIgnited || CreeperTacticalPlanner.shouldContinueFuse(
-			this.creeper.getLocation().distanceSquared(current.getLocation()),
+			PaperEntityMath.distanceSquared(this.creeper, current),
 			startDistance,
 			visible,
 			false,
@@ -284,7 +285,7 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 			PaperDifficultyAdapter.fromBukkit(this.creeper.getWorld().getDifficulty())
 		);
 		return CreeperTacticalPlanner.shouldStartFuse(
-			this.creeper.getLocation().distanceSquared(current.getLocation()),
+			PaperEntityMath.distanceSquared(this.creeper, current),
 			startDistance,
 			true,
 			false,

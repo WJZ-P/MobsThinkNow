@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.ai;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -118,7 +119,7 @@ public final class PaperZombieRetreatGoal implements Goal<Zombie> {
 		return RetreatPlanner.shouldContinue(
 			now - this.startedAt,
 			config.retreatMaximumTicks(),
-			this.zombie.getLocation().distanceSquared(currentAttacker.getLocation()),
+			PaperEntityMath.distanceSquared(this.zombie, currentAttacker),
 			config.retreatSafeDistance()
 		);
 	}
@@ -239,7 +240,7 @@ public final class PaperZombieRetreatGoal implements Goal<Zombie> {
 
 	private boolean hasReachedSafeDistance(final LivingEntity threat, final double safeDistance) {
 		return this.zombie.getWorld() != threat.getWorld()
-			|| this.zombie.getLocation().distanceSquared(threat.getLocation()) >= safeDistance * safeDistance;
+			|| PaperEntityMath.distanceSquared(this.zombie, threat) >= safeDistance * safeDistance;
 	}
 
 	private static LivingEntity livingEntity(final UUID entityId) {

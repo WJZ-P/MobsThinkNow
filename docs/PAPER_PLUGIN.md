@@ -245,6 +245,8 @@ MobsThinkNow/
   `tick + squad revision + shared-target flag` 缓存不可变 `PaperSquadDirective`；成员对象替换、结构/阶段
   变化或下一 tick 都会失效。缓存未命中时直接读取实体 XYZ/yaw，远程射界的线段投影和最近点也改用
   primitive 标量运算，仅在真实 Pathfinder、音效或弹体 API 边界创建 Bukkit `Location`；
+- 其他战斗 Goal 的范围、迟滞和到达判定共用 `PaperEntityMath` 直接比较实体 XYZ；跨世界仍明确拒绝，
+  但同世界热路径不再为了纯距离平方创建两份 Bukkit `Location`；
 - 同队成员互相设为目标时事件会被取消；可配置阻止普通近战和弹射物误伤。苦力怕的实体爆炸伤害特意
   保留，避免混编小队获得无提示免伤，也要求爆破兵继续遵守已有爆点预约；
 - `/mtnpaper inspect` 会显示最近怪物的小队 ID、任期、首领、阶段、方案和职责；若最近目标是蜘蛛还会

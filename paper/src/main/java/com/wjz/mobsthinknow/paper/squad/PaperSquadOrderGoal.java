@@ -1,5 +1,6 @@
 package com.wjz.mobsthinknow.paper.squad;
 
+import com.wjz.mobsthinknow.paper.PaperEntityMath;
 import com.destroystokyo.paper.entity.Pathfinder;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -61,7 +62,7 @@ public final class PaperSquadOrderGoal implements Goal<Mob> {
 		this.updateLook(directive);
 		Vec3d point = directive.destination();
 		Location destination = new Location(this.mob.getWorld(), point.x(), point.y(), point.z());
-		if (this.mob.getLocation().distanceSquared(destination) <= ARRIVAL_DISTANCE_SQUARED) {
+		if (PaperEntityMath.distanceSquared(this.mob, destination) <= ARRIVAL_DISTANCE_SQUARED) {
 			this.mob.getPathfinder().stopPathfinding();
 			return;
 		}
