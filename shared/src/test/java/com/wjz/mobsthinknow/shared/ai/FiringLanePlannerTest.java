@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.shared.ai;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wjz.mobsthinknow.shared.math.Vec3d;
@@ -56,6 +57,22 @@ class FiringLanePlannerTest {
 		);
 		assertTrue(result.clear());
 		assertEquals(1, result.checks());
+	}
+
+	@Test
+	void boundedClearResultsReuseTheSameImmutableInstance() {
+		Vec3d target = new Vec3d(0.0, 0.0, 10.0);
+		List<FiringLanePlanner.Ally<String>> allies = List.of(
+			new FiringLanePlanner.Ally<>("first", 3.0, 0.0, 2.0, 0.5),
+			new FiringLanePlanner.Ally<>("second", -3.0, 0.0, 7.0, 0.5)
+		);
+		FiringLanePlanner.Result<String> first = FiringLanePlanner.check(Vec3d.ZERO, target, allies, 20);
+		FiringLanePlanner.Result<String> second = FiringLanePlanner.check(Vec3d.ZERO, target, allies, 20);
+
+		assertSame(first, second);
+		assertTrue(first.clear());
+		assertNull(first.blocker());
+		assertEquals(2, first.checks());
 	}
 
 	@Test

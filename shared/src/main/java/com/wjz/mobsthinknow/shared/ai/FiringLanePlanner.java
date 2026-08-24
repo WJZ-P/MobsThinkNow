@@ -9,6 +9,8 @@ import java.util.Objects;
 /** 纯数学的友军射线胶囊检查；平台层只需提供同队成员的有限快照。 */
 public final class FiringLanePlanner {
 	private static final double ENDPOINT_MARGIN = 0.02;
+	private static final int MAXIMUM_CACHED_CLEAR_CHECKS = 100;
+	private static final Result<?>[] CLEAR_RESULTS = createClearResults();
 
 	private FiringLanePlanner() {
 	}
@@ -28,7 +30,7 @@ public final class FiringLanePlanner {
 		double segmentZ = target.z() - origin.z();
 		double lengthSquared = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
 		if (lengthSquared < 1.0E-9 || limit == 0) {
-			return new Result<>(true, null, 0);
+			return clearResult(0);
 		}
 
 		K blocker = null;
@@ -65,7 +67,22 @@ public final class FiringLanePlanner {
 				nearestProjection = projection;
 			}
 		}
-		return new Result<>(blocker == null, blocker, checks);
+		return blocker == null ? clearResult(checks) : new Result<>(false, blocker, checks);
+	}
+
+	private static Result<?>[] createClearResults() {
+		Result<?>[] results = new Result<?>[MAXIMUM_CACHED_CLEAR_CHECKS + 1];
+		for (int checks = 0; checks < results.length; checks++) {
+			results[checks] = new Result<>(true, null, checks);
+		}
+		return results;
+	}
+
+	@SuppressWarnings("unchecked")
+	private static <K> Result<K> clearResult(final int checks) {
+		return checks >= 0 && checks < CLEAR_RESULTS.length
+			? (Result<K>)CLEAR_RESULTS[checks]
+			: new Result<>(true, null, checks);
 	}
 
 	/** 射界受阻时先横移、再略微后撤，给下一次公共 Pathfinder 查询一个稳定候选。 */
