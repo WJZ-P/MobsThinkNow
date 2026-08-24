@@ -402,8 +402,16 @@ public final class PaperRuntimeSelfTest {
 			PaperMetrics.CoverSnapshot cover = this.metrics.coverSnapshot();
 			long coverPeekShots = cover.peekShots() - this.coverPeekShotBaseline;
 			long coverReturns = cover.returnsCompleted() - this.coverReturnBaseline;
-			if (coverPeekShots > 0L && coverReturns <= 0L
-				&& this.coverSettleChecks < MAXIMUM_COVER_SETTLE_CHECKS) {
+			boolean coverProbeAvailable = this.coverProbe != null
+				&& this.coverProbeTarget != null
+				&& this.coverProbe.isValid()
+				&& this.coverProbeTarget.isValid();
+			if (shouldSettleCoverProbe(
+				coverPeekShots,
+				coverReturns,
+				coverProbeAvailable,
+				this.coverSettleChecks
+			)) {
 				this.coverSettleChecks++;
 				this.validationTask = Bukkit.getScheduler().runTaskLater(
 					this.plugin,
@@ -574,6 +582,17 @@ public final class PaperRuntimeSelfTest {
 				this.cleanup();
 			}
 		}
+	}
+
+	static boolean shouldSettleCoverProbe(
+		final long peekShots,
+		final long returnsCompleted,
+		final boolean probeAvailable,
+		final int settleChecks
+	) {
+		return (peekShots <= 0L || returnsCompleted <= 0L)
+			&& probeAvailable
+			&& settleChecks < MAXIMUM_COVER_SETTLE_CHECKS;
 	}
 
 	private void cleanup() {
