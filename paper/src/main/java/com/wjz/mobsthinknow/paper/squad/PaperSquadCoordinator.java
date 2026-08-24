@@ -58,6 +58,8 @@ public final class PaperSquadCoordinator {
 	private long nextSquadId = 1L;
 	private long directiveCacheHits;
 	private long directiveComputations;
+	private long geometryCacheHits;
+	private long geometryComputations;
 	private BukkitTask task;
 
 	public PaperSquadCoordinator(
@@ -115,6 +117,12 @@ public final class PaperSquadCoordinator {
 		);
 		if (record.mob != mob) {
 			record.clearDirectiveCache();
+			Long squadId = this.squadByMember.get(mob.getUniqueId());
+			Squad squad = squadId == null ? null : this.squads.get(squadId);
+			if (squad != null && mob.getUniqueId().equals(squad.leaderId)) {
+				squad.directiveRevision++;
+				squad.clearGeometryCache();
+			}
 		}
 		record.mob = mob;
 		this.spatialIndex.upsert(record);
@@ -182,11 +190,9 @@ public final class PaperSquadCoordinator {
 			this.directiveCacheHits++;
 			return member.cachedDirective;
 		}
-		Vec3d focus = squad.target != null && squad.target.isValid()
-			? positionOf(squad.target)
-			: squad.lastTargetPosition;
+		SquadGeometry geometry = this.geometryFor(squad, leader, now);
 		MixedSquadRole role = squad.roles.getOrDefault(mob.getUniqueId(), MixedSquadRole.FRONTLINE);
-		Vec3d destination = this.destinationFor(squad, member, leader, focus, role);
+		Vec3d destination = this.destinationFor(squad, member, geometry, role);
 		PaperSquadDirective directive = new PaperSquadDirective(
 			squad.id,
 			squad.term,
@@ -194,7 +200,7 @@ public final class PaperSquadCoordinator {
 			squad.plan,
 			role,
 			destination,
-			focus,
+			geometry.focus(),
 			squad.leaderId,
 			squad.targetId,
 			sharedMemory
@@ -273,6 +279,14 @@ public final class PaperSquadCoordinator {
 
 	public long directiveComputations() {
 		return this.directiveComputations;
+	}
+
+	public long geometryCacheHits() {
+		return this.geometryCacheHits;
+	}
+
+	public long geometryComputations() {
+		return this.geometryComputations;
 	}
 
 	public PaperSquadMetrics metrics() {
@@ -644,7 +658,7 @@ public final class PaperSquadCoordinator {
 		if (leader == null || squad.memberIds.isEmpty()) {
 			return false;
 		}
-		Vec3d focus = squad.target != null ? positionOf(squad.target) : squad.lastTargetPosition;
+		SquadGeometry geometry = this.geometryFor(squad, leader, Bukkit.getCurrentTick());
 		int ready = 0;
 		int total = 0;
 		for (UUID memberId : squad.memberIds) {
@@ -654,7 +668,7 @@ public final class PaperSquadCoordinator {
 			}
 			total++;
 			MixedSquadRole role = squad.roles.getOrDefault(memberId, MixedSquadRole.FRONTLINE);
-			Vec3d destination = this.destinationFor(squad, member, leader, focus, role);
+			Vec3d destination = this.destinationFor(squad, member, geometry, role);
 			if (distanceSquared(member.mob, destination) <= DESTINATION_QUORUM_DISTANCE_SQUARED) {
 				ready++;
 			}
@@ -665,31 +679,52 @@ public final class PaperSquadCoordinator {
 	private Vec3d destinationFor(
 		final Squad squad,
 		final MemberRecord member,
-		final MemberRecord leader,
-		final Vec3d focus,
+		final SquadGeometry geometry,
 		final MixedSquadRole role
 	) {
-		Vec3d leaderPosition = positionOf(leader.mob);
 		if (squad.state == MixedSquadState.DEPLOYING || squad.state == MixedSquadState.ENGAGING) {
-			Vec3d targetFromLeader = focus.subtract(leaderPosition);
-			Vec3d targetLook = squad.target == null
-				? targetFromLeader
-				: horizontalLook(squad.target);
 			return MixedSquadGeometry.combatPosition(
-				focus,
-				targetLook,
-				targetFromLeader,
+				geometry.focus(),
+				geometry.targetLook(),
+				geometry.targetFromLeader(),
 				role,
 				member.stableOrder,
 				10.0
 			);
 		}
 		return MixedSquadGeometry.rallyPosition(
-			leaderPosition,
-			focus,
+			geometry.leaderPosition(),
+			geometry.focus(),
 			role,
 			member.stableOrder
 		);
+	}
+
+	private SquadGeometry geometryFor(final Squad squad, final MemberRecord leader, final long now) {
+		LivingEntity target = squad.target;
+		if (squad.cachedGeometry != null
+			&& squad.geometryCachedAt == now
+			&& squad.cachedGeometryRevision == squad.directiveRevision
+			&& squad.cachedGeometryLeader == leader.mob
+			&& squad.cachedGeometryTarget == target) {
+			this.geometryCacheHits++;
+			return squad.cachedGeometry;
+		}
+		Vec3d focus = target != null && target.isValid() ? positionOf(target) : squad.lastTargetPosition;
+		Vec3d leaderPosition = positionOf(leader.mob);
+		boolean combat = squad.state == MixedSquadState.DEPLOYING || squad.state == MixedSquadState.ENGAGING;
+		Vec3d targetFromLeader = combat ? focus.subtract(leaderPosition) : Vec3d.ZERO;
+		Vec3d targetLook = combat
+			? (target == null ? targetFromLeader : horizontalLook(target))
+			: Vec3d.ZERO;
+		SquadGeometry geometry = new SquadGeometry(focus, leaderPosition, targetFromLeader, targetLook);
+		squad.cachedGeometry = geometry;
+		squad.geometryCachedAt = now;
+		squad.cachedGeometryRevision = squad.directiveRevision;
+		squad.cachedGeometryLeader = leader.mob;
+		squad.cachedGeometryTarget = target;
+		this.geometryComputations++;
+		return geometry;
 	}
 
 	private void announcePhase(final Squad squad) {
@@ -892,6 +927,11 @@ public final class PaperSquadCoordinator {
 		private Map<UUID, UUID> transportPairs = Map.of();
 		private Map<UUID, UUID> transportCarriers = Map.of();
 		private long directiveRevision;
+		private SquadGeometry cachedGeometry;
+		private long geometryCachedAt = Long.MIN_VALUE;
+		private long cachedGeometryRevision = Long.MIN_VALUE;
+		private Mob cachedGeometryLeader;
+		private LivingEntity cachedGeometryTarget;
 
 		private Squad(final long id, final LivingEntity target, final long now) {
 			this.id = id;
@@ -901,6 +941,22 @@ public final class PaperSquadCoordinator {
 			this.lastTargetSeenAt = now;
 			this.stateEnteredAt = now;
 		}
+
+		private void clearGeometryCache() {
+			this.cachedGeometry = null;
+			this.geometryCachedAt = Long.MIN_VALUE;
+			this.cachedGeometryRevision = Long.MIN_VALUE;
+			this.cachedGeometryLeader = null;
+			this.cachedGeometryTarget = null;
+		}
+	}
+
+	private record SquadGeometry(
+		Vec3d focus,
+		Vec3d leaderPosition,
+		Vec3d targetFromLeader,
+		Vec3d targetLook
+	) {
 	}
 
 	private record ScanResult(List<MemberRecord> members, int rawChecks) {

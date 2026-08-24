@@ -86,7 +86,8 @@ GoalSelector 行为，而不是每 tick 强制传送实体：
   集合迭代器。相等快照不会互相覆盖，配置重载会以新桶尺寸重建索引；
 - Paper 为每名成员按当前 tick 与小队修订号缓存不可变指令；武器、盾牌、远程、载具和通用命令 Goal
   在同 tick 重复查询时直接复用同一几何快照，目标共享状态改变或小队重规划会即时失效缓存。必要计算
-  直接读取实体 XYZ/yaw，射击胶囊也使用 primitive 标量求投影与最近点，避开纯数学热路径的临时 Location/Vec3d；
+  还把焦点、首领位置、目标方向按小队/tick 共享，成员不再各自重建相同向量；直接读取实体 XYZ/yaw，
+  射击胶囊也使用 primitive 标量求投影与最近点，避开纯数学热路径的临时 Location/Vec3d；
 - Paper 各战斗 Goal 的范围、迟滞和到达判定统一走 `PaperEntityMath`，直接读取实体坐标；只有真实寻路、
   射线、音效和弹体调用才构造 Bukkit `Location`，避免调度器每 tick 为纯距离比较生成成对对象；
 - `/mtnpaper status|inspect|reload|setiq|spawn|spawnall|assault|selftest` 提供运行诊断、批量生成和真实

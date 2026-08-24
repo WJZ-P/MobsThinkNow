@@ -247,7 +247,8 @@ MobsThinkNow/
   临时坐标键或集合迭代器。默认单次最多检查 64 个原始候选、接收 20 人，因此不存在全服成员两两互扫；
 - 同一成员的武器、盾牌、远程、载具和通用命令 Goal 会在一个 tick 内多次读取命令。协调器按
   `tick + squad revision + shared-target flag` 缓存不可变 `PaperSquadDirective`；成员对象替换、结构/阶段
-  变化或下一 tick 都会失效。缓存未命中时直接读取实体 XYZ/yaw，远程射界的线段投影和最近点也改用
+  变化或下一 tick 都会失效。同一小队的焦点、首领位置、目标方向另按 tick/revision 共享，首领实体对象
+  替换会提升修订号使所有成员同步失效。缓存未命中时直接读取实体 XYZ/yaw，远程射界的线段投影和最近点也改用
   primitive 标量运算，仅在真实 Pathfinder、音效或弹体 API 边界创建 Bukkit `Location`；
 - 其他战斗 Goal 的范围、迟滞和到达判定共用 `PaperEntityMath` 直接比较实体 XYZ；跨世界仍明确拒绝，
   但同世界热路径不再为了纯距离平方创建两份 Bukkit `Location`；

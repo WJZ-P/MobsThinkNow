@@ -450,7 +450,8 @@ def run_server(
                 )
                 missing = [marker for marker in cleanup_markers if marker not in line]
                 for metric in ("intelligencePersistentReads", "intelligenceCacheHits",
-                               "directiveComputations", "directiveCacheHits"):
+                               "directiveComputations", "directiveCacheHits",
+                               "geometryComputations", "geometryCacheHits"):
                     match = re.search(rf"(?:^|, ){metric}=(\d+)(?:,|$)", line)
                     if match is None or int(match.group(1)) <= 0:
                         missing.append(metric + ">0")
