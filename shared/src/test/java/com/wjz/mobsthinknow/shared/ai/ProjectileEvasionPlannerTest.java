@@ -20,6 +20,25 @@ class ProjectileEvasionPlannerTest {
 	}
 
 	@Test
+	void precomputedClosestApproachMatchesTheCombinedIncomingCheck() {
+		double time = ProjectileEvasionPlanner.closestApproachTicks(
+			0.25, -0.1, 6.0, 0.0, 0.0, 1.0, 8.0
+		);
+		assertTrue(ProjectileEvasionPlanner.isIncomingAtClosestApproach(
+			0.25, -0.1, 6.0, 0.0, 0.0, 1.0, time, 1.15
+		));
+		assertEquals(
+			ProjectileEvasionPlanner.isIncoming(0.25, -0.1, 6.0, 0.0, 0.0, 1.0, 8.0, 1.15),
+			ProjectileEvasionPlanner.isIncomingAtClosestApproach(
+				0.25, -0.1, 6.0, 0.0, 0.0, 1.0, time, 1.15
+			)
+		);
+		assertFalse(ProjectileEvasionPlanner.isIncomingAtClosestApproach(
+			0.0, 0.0, 5.0, 0.0, 0.0, 1.0, Double.NaN, 1.15
+		));
+	}
+
+	@Test
 	void choosesTheSideAwayFromThePredictedMissPoint() {
 		assertEquals(1, ProjectileEvasionPlanner.saferSide(
 			0.0, 0.0, 4.0, 0.6, -0.75, 0.0, 4.0 / 0.75, -90.0, -1

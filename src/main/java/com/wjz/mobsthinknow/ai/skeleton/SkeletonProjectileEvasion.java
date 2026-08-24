@@ -65,14 +65,14 @@ public final class SkeletonProjectileEvasion {
 			reaction.predictionHorizonTicks()
 		);
 		if (!Double.isFinite(time)
-			|| !ProjectileEvasionPlanner.isIncoming(
+			|| !ProjectileEvasionPlanner.isIncomingAtClosestApproach(
 				relative.x,
 				relative.y,
 				relative.z,
 				velocity.x,
 				velocity.y,
 				velocity.z,
-				reaction.predictionHorizonTicks(),
+				time,
 				reaction.safetyRadius()
 			)) {
 			return null;

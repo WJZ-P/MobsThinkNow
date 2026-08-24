@@ -24,7 +24,13 @@ public final class ProjectileEvasionPlanner {
 		final double horizonTicks
 	) {
 		double speedSquared = velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ;
-		if (!allFinite(relativeX, relativeY, relativeZ, velocityX, velocityY, velocityZ, horizonTicks)
+		if (!Double.isFinite(relativeX)
+			|| !Double.isFinite(relativeY)
+			|| !Double.isFinite(relativeZ)
+			|| !Double.isFinite(velocityX)
+			|| !Double.isFinite(velocityY)
+			|| !Double.isFinite(velocityZ)
+			|| !Double.isFinite(horizonTicks)
 			|| speedSquared < MINIMUM_SPEED_SQUARED
 			|| horizonTicks <= 0.0) {
 			return Double.POSITIVE_INFINITY;
@@ -56,13 +62,45 @@ public final class ProjectileEvasionPlanner {
 			velocityZ,
 			horizonTicks
 		);
-		if (!Double.isFinite(time) || !Double.isFinite(safetyRadius) || safetyRadius <= 0.0) {
+		return isIncomingAtClosestApproach(
+			relativeX,
+			relativeY,
+			relativeZ,
+			velocityX,
+			velocityY,
+			velocityZ,
+			time,
+			safetyRadius
+		);
+	}
+
+	/** Reuses an already-computed closest-approach tick without repeating projection math. */
+	public static boolean isIncomingAtClosestApproach(
+		final double relativeX,
+		final double relativeY,
+		final double relativeZ,
+		final double velocityX,
+		final double velocityY,
+		final double velocityZ,
+		final double closestApproachTicks,
+		final double safetyRadius
+	) {
+		if (!Double.isFinite(relativeX)
+			|| !Double.isFinite(relativeY)
+			|| !Double.isFinite(relativeZ)
+			|| !Double.isFinite(velocityX)
+			|| !Double.isFinite(velocityY)
+			|| !Double.isFinite(velocityZ)
+			|| !Double.isFinite(closestApproachTicks)
+			|| closestApproachTicks < 0.0
+			|| !Double.isFinite(safetyRadius)
+			|| safetyRadius <= 0.0) {
 			return false;
 		}
 
-		double missX = relativeX - velocityX * time;
-		double missY = relativeY - velocityY * time;
-		double missZ = relativeZ - velocityZ * time;
+		double missX = relativeX - velocityX * closestApproachTicks;
+		double missY = relativeY - velocityY * closestApproachTicks;
+		double missZ = relativeZ - velocityZ * closestApproachTicks;
 		return missX * missX + missY * missY + missZ * missZ <= safetyRadius * safetyRadius;
 	}
 
@@ -83,16 +121,15 @@ public final class ProjectileEvasionPlanner {
 		final int fallbackDirection
 	) {
 		int fallback = fallbackDirection < 0 ? -1 : 1;
-		if (!allFinite(
-			actorX,
-			actorZ,
-			projectileX,
-			projectileZ,
-			velocityX,
-			velocityZ,
-			closestApproachTicks,
-			combatYawDegrees
-		) || closestApproachTicks < 0.0) {
+		if (!Double.isFinite(actorX)
+			|| !Double.isFinite(actorZ)
+			|| !Double.isFinite(projectileX)
+			|| !Double.isFinite(projectileZ)
+			|| !Double.isFinite(velocityX)
+			|| !Double.isFinite(velocityZ)
+			|| !Double.isFinite(closestApproachTicks)
+			|| !Double.isFinite(combatYawDegrees)
+			|| closestApproachTicks < 0.0) {
 			return fallback;
 		}
 
@@ -133,15 +170,6 @@ public final class ProjectileEvasionPlanner {
 		double sample = Double.isFinite(unitSample) ? Math.clamp(unitSample, 0.0, 1.0) : 0.0;
 		int span = profile.maximumDodgeTicks() - profile.minimumDodgeTicks();
 		return profile.minimumDodgeTicks() + Math.min(span, (int)Math.floor(sample * (span + 1)));
-	}
-
-	private static boolean allFinite(final double... values) {
-		for (double value : values) {
-			if (!Double.isFinite(value)) {
-				return false;
-			}
-		}
-		return true;
 	}
 
 	public record ReactionProfile(

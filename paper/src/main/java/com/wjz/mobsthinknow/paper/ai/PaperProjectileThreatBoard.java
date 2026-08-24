@@ -169,14 +169,14 @@ public final class PaperProjectileThreatBoard {
 							reaction.predictionHorizonTicks()
 						);
 						if (!Double.isFinite(time)
-							|| !ProjectileEvasionPlanner.isIncoming(
+							|| !ProjectileEvasionPlanner.isIncomingAtClosestApproach(
 								relativeX,
 								relativeY,
 								relativeZ,
 								entry.velocityX,
 								entry.velocityY,
 								entry.velocityZ,
-								reaction.predictionHorizonTicks(),
+								time,
 								reaction.safetyRadius()
 							)) {
 							continue;
