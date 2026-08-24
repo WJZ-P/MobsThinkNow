@@ -14,11 +14,18 @@ public record PaperSquadDirective(
 	MixedSquadPlan plan,
 	MixedSquadRole role,
 	Vec3d destination,
-	Vec3d focusPosition,
+	double focusX,
+	double focusY,
+	double focusZ,
 	UUID leaderId,
 	UUID targetId,
 	boolean hasSharedTargetMemory
 ) {
+	/** Compatibility view for diagnostic callers; combat goals keep the cached primitive coordinates. */
+	public Vec3d focusPosition() {
+		return new Vec3d(this.focusX, this.focusY, this.focusZ);
+	}
+
 	public boolean isHoldingForOrders() {
 		return this.state.isFormationPhase();
 	}

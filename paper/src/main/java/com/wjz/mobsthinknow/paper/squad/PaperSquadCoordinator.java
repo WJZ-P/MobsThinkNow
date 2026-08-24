@@ -200,7 +200,9 @@ public final class PaperSquadCoordinator {
 			squad.plan,
 			role,
 			destination,
-			geometry.focus(),
+			geometry.focusX(),
+			geometry.focusY(),
+			geometry.focusZ(),
 			squad.leaderId,
 			squad.targetId,
 			sharedMemory
@@ -556,7 +558,9 @@ public final class PaperSquadCoordinator {
 	private void resolveTarget(final Squad squad, final long now) {
 		if (squad.target != null && this.isValidForAnyMember(squad, squad.target)) {
 			squad.targetId = squad.target.getUniqueId();
-			squad.lastTargetPosition = positionOf(squad.target);
+			squad.lastTargetX = squad.target.getX();
+			squad.lastTargetY = squad.target.getY();
+			squad.lastTargetZ = squad.target.getZ();
 			squad.lastTargetSeenAt = now;
 			return;
 		}
@@ -568,7 +572,9 @@ public final class PaperSquadCoordinator {
 				&& !(candidate instanceof Mob mob && this.areSquadmates(member.mob, mob))) {
 				squad.target = candidate;
 				squad.targetId = candidate.getUniqueId();
-				squad.lastTargetPosition = positionOf(candidate);
+				squad.lastTargetX = candidate.getX();
+				squad.lastTargetY = candidate.getY();
+				squad.lastTargetZ = candidate.getZ();
 				squad.lastTargetSeenAt = now;
 				return;
 			}
@@ -701,7 +707,9 @@ public final class PaperSquadCoordinator {
 	) {
 		if (squad.state == MixedSquadState.DEPLOYING || squad.state == MixedSquadState.ENGAGING) {
 			return MixedSquadGeometry.combatPosition(
-				geometry.focus(),
+				geometry.focusX(),
+				geometry.focusY(),
+				geometry.focusZ(),
 				geometry.targetLookX(),
 				geometry.targetLookZ(),
 				geometry.targetFromLeaderX(),
@@ -712,8 +720,11 @@ public final class PaperSquadCoordinator {
 			);
 		}
 		return MixedSquadGeometry.rallyPosition(
-			geometry.leaderPosition(),
-			geometry.focus(),
+			geometry.leaderX(),
+			geometry.leaderY(),
+			geometry.leaderZ(),
+			geometry.focusX(),
+			geometry.focusZ(),
 			role,
 			member.stableOrder
 		);
@@ -729,11 +740,16 @@ public final class PaperSquadCoordinator {
 			this.geometryCacheHits++;
 			return squad.cachedGeometry;
 		}
-		Vec3d focus = target != null && target.isValid() ? positionOf(target) : squad.lastTargetPosition;
-		Vec3d leaderPosition = positionOf(leader.mob);
+		boolean currentTarget = target != null && target.isValid();
+		double focusX = currentTarget ? target.getX() : squad.lastTargetX;
+		double focusY = currentTarget ? target.getY() : squad.lastTargetY;
+		double focusZ = currentTarget ? target.getZ() : squad.lastTargetZ;
+		double leaderX = leader.mob.getX();
+		double leaderY = leader.mob.getY();
+		double leaderZ = leader.mob.getZ();
 		boolean combat = squad.state == MixedSquadState.DEPLOYING || squad.state == MixedSquadState.ENGAGING;
-		double targetFromLeaderX = combat ? focus.x() - leaderPosition.x() : 0.0;
-		double targetFromLeaderZ = combat ? focus.z() - leaderPosition.z() : 0.0;
+		double targetFromLeaderX = combat ? focusX - leaderX : 0.0;
+		double targetFromLeaderZ = combat ? focusZ - leaderZ : 0.0;
 		double targetLookX = targetFromLeaderX;
 		double targetLookZ = targetFromLeaderZ;
 		if (combat && target != null) {
@@ -743,8 +759,12 @@ public final class PaperSquadCoordinator {
 			targetLookZ = horizontalScale * Math.cos(yaw);
 		}
 		SquadGeometry geometry = new SquadGeometry(
-			focus,
-			leaderPosition,
+			focusX,
+			focusY,
+			focusZ,
+			leaderX,
+			leaderY,
+			leaderZ,
 			targetFromLeaderX,
 			targetFromLeaderZ,
 			targetLookX,
@@ -892,10 +912,6 @@ public final class PaperSquadCoordinator {
 		return id.getMostSignificantBits() ^ Long.rotateLeft(id.getLeastSignificantBits(), 23);
 	}
 
-	private static Vec3d positionOf(final Entity entity) {
-		return new Vec3d(entity.getX(), entity.getY(), entity.getZ());
-	}
-
 	private static double distanceSquared(final Entity first, final Entity second) {
 		double x = first.getX() - second.getX();
 		double y = first.getY() - second.getY();
@@ -940,7 +956,9 @@ public final class PaperSquadCoordinator {
 		private UUID leaderId;
 		private LivingEntity target;
 		private UUID targetId;
-		private Vec3d lastTargetPosition;
+		private double lastTargetX;
+		private double lastTargetY;
+		private double lastTargetZ;
 		private long lastTargetSeenAt;
 		private int term = 1;
 		private MixedSquadState state = MixedSquadState.FORMING;
@@ -960,7 +978,9 @@ public final class PaperSquadCoordinator {
 			this.id = id;
 			this.target = target;
 			this.targetId = target.getUniqueId();
-			this.lastTargetPosition = positionOf(target);
+			this.lastTargetX = target.getX();
+			this.lastTargetY = target.getY();
+			this.lastTargetZ = target.getZ();
 			this.lastTargetSeenAt = now;
 			this.stateEnteredAt = now;
 		}
@@ -975,8 +995,12 @@ public final class PaperSquadCoordinator {
 	}
 
 	private record SquadGeometry(
-		Vec3d focus,
-		Vec3d leaderPosition,
+		double focusX,
+		double focusY,
+		double focusZ,
+		double leaderX,
+		double leaderY,
+		double leaderZ,
 		double targetFromLeaderX,
 		double targetFromLeaderZ,
 		double targetLookX,
