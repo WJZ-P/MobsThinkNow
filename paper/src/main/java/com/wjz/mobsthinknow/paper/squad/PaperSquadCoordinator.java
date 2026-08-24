@@ -732,8 +732,7 @@ public final class PaperSquadCoordinator {
 
 	private SquadGeometry geometryFor(final Squad squad, final MemberRecord leader, final long now) {
 		LivingEntity target = squad.target;
-		if (squad.cachedGeometry != null
-			&& squad.geometryCachedAt == now
+		if (squad.geometryCachedAt == now
 			&& squad.cachedGeometryRevision == squad.directiveRevision
 			&& squad.cachedGeometryLeader == leader.mob
 			&& squad.cachedGeometryTarget == target) {
@@ -758,7 +757,8 @@ public final class PaperSquadCoordinator {
 			targetLookX = -horizontalScale * Math.sin(yaw);
 			targetLookZ = horizontalScale * Math.cos(yaw);
 		}
-		SquadGeometry geometry = new SquadGeometry(
+		SquadGeometry geometry = squad.cachedGeometry;
+		geometry.set(
 			focusX,
 			focusY,
 			focusZ,
@@ -770,7 +770,6 @@ public final class PaperSquadCoordinator {
 			targetLookX,
 			targetLookZ
 		);
-		squad.cachedGeometry = geometry;
 		squad.geometryCachedAt = now;
 		squad.cachedGeometryRevision = squad.directiveRevision;
 		squad.cachedGeometryLeader = leader.mob;
@@ -968,7 +967,7 @@ public final class PaperSquadCoordinator {
 		private Map<UUID, UUID> transportPairs = Map.of();
 		private Map<UUID, UUID> transportCarriers = Map.of();
 		private long directiveRevision;
-		private SquadGeometry cachedGeometry;
+		private final SquadGeometry cachedGeometry = new SquadGeometry();
 		private long geometryCachedAt = Long.MIN_VALUE;
 		private long cachedGeometryRevision = Long.MIN_VALUE;
 		private Mob cachedGeometryLeader;
@@ -986,7 +985,6 @@ public final class PaperSquadCoordinator {
 		}
 
 		private void clearGeometryCache() {
-			this.cachedGeometry = null;
 			this.geometryCachedAt = Long.MIN_VALUE;
 			this.cachedGeometryRevision = Long.MIN_VALUE;
 			this.cachedGeometryLeader = null;
@@ -994,18 +992,81 @@ public final class PaperSquadCoordinator {
 		}
 	}
 
-	private record SquadGeometry(
-		double focusX,
-		double focusY,
-		double focusZ,
-		double leaderX,
-		double leaderY,
-		double leaderZ,
-		double targetFromLeaderX,
-		double targetFromLeaderZ,
-		double targetLookX,
-		double targetLookZ
-	) {
+	private static final class SquadGeometry {
+		private double focusX;
+		private double focusY;
+		private double focusZ;
+		private double leaderX;
+		private double leaderY;
+		private double leaderZ;
+		private double targetFromLeaderX;
+		private double targetFromLeaderZ;
+		private double targetLookX;
+		private double targetLookZ;
+
+		private void set(
+			final double focusX,
+			final double focusY,
+			final double focusZ,
+			final double leaderX,
+			final double leaderY,
+			final double leaderZ,
+			final double targetFromLeaderX,
+			final double targetFromLeaderZ,
+			final double targetLookX,
+			final double targetLookZ
+		) {
+			this.focusX = focusX;
+			this.focusY = focusY;
+			this.focusZ = focusZ;
+			this.leaderX = leaderX;
+			this.leaderY = leaderY;
+			this.leaderZ = leaderZ;
+			this.targetFromLeaderX = targetFromLeaderX;
+			this.targetFromLeaderZ = targetFromLeaderZ;
+			this.targetLookX = targetLookX;
+			this.targetLookZ = targetLookZ;
+		}
+
+		private double focusX() {
+			return this.focusX;
+		}
+
+		private double focusY() {
+			return this.focusY;
+		}
+
+		private double focusZ() {
+			return this.focusZ;
+		}
+
+		private double leaderX() {
+			return this.leaderX;
+		}
+
+		private double leaderY() {
+			return this.leaderY;
+		}
+
+		private double leaderZ() {
+			return this.leaderZ;
+		}
+
+		private double targetFromLeaderX() {
+			return this.targetFromLeaderX;
+		}
+
+		private double targetFromLeaderZ() {
+			return this.targetFromLeaderZ;
+		}
+
+		private double targetLookX() {
+			return this.targetLookX;
+		}
+
+		private double targetLookZ() {
+			return this.targetLookZ;
+		}
 	}
 
 	private record ScanResult(List<MemberRecord> members, int rawChecks) {
