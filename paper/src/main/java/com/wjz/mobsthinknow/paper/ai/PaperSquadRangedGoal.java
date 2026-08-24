@@ -289,14 +289,14 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		}
 		PaperCrossbowSettings config = this.settings.get().skeletonCrossbowTactics();
 		boolean firework = this.crossbowPayload == CrossbowPayload.FIREWORK;
-		return CrossbowCombatPlanner.intercept(
+		return CrossbowCombatPlanner.interceptPoint(
 			eyePosition(this.skeleton),
 			eyePosition(target),
 			velocityOf(target),
 			firework ? config.firework().projectileSpeed() : config.projectileSpeed(),
 			firework ? 0.0 : config.gravityPerTickSquared(),
 			config.maximumLeadTicks()
-		).aimPoint();
+		);
 	}
 
 	private void handleBlockedLane(
@@ -574,14 +574,14 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		this.squadmateBuffer.clear();
 		Vec3d shooter = eyePosition(this.skeleton);
 		Vec3d targetCenter = eyePosition(target);
-		Vec3d predictedImpact = CrossbowCombatPlanner.intercept(
+		Vec3d predictedImpact = CrossbowCombatPlanner.interceptPoint(
 			shooter,
 			targetCenter,
 			velocityOf(target),
 			config.projectileSpeed(),
 			0.0,
 			crossbow.maximumLeadTicks()
-		).aimPoint();
+		);
 		return CrossbowCombatPlanner.assessBlast(
 			shooter,
 			predictedImpact,

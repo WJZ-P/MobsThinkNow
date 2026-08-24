@@ -137,7 +137,8 @@ MobsThinkNow/
   骷髅被贴身时优先级 1 的紧急脱离仍先执行；离队、换方案或关闭配置后原版弓/弩 Goal 自动恢复；
 - 弓箭最终调用 Paper 公开 `RangedEntity#rangedAttack`。持弩骷髅则使用共享 `CrossbowCombatPlanner` 的
   `UNCHARGED → CHARGING → AIMING` 节奏：真实举起弩并播放装填声，装填完成后把箭写入公开
-  `CrossbowMeta`，短暂瞄准移动目标的速度提前量，再通过 `World#spawnArrow` 发射禁止拾取的真实箭矢；
+  `CrossbowMeta`，短暂瞄准移动目标的速度提前量，再通过 `World#spawnArrow` 发射禁止拾取的真实箭矢。
+  弹道迭代使用 primitive 标量；射界与爆心检查只计算落点，真正发射时才额外物化单位方向；
 - 弩手即使暂时没有小队也能独立使用该状态机；加入小队后仍服从会议/交战阶段、错峰时隙和有界友军
   射界。所有实现只依赖 Paper API，没有 NMS 反射；普通事件级友伤拦截继续作为队友突然切入弹道时的
   第二层保护。

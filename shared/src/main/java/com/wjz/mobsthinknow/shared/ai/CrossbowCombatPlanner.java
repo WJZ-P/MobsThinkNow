@@ -59,18 +59,69 @@ public final class CrossbowCombatPlanner {
 		double gravity = finiteClamp(gravityPerTickSquared, 0.0, 0.20);
 		double maximumLead = finiteClamp(configuredMaximumLeadTicks, 0.0, 40.0);
 		double flightTicks = Math.min(maximumLead, Math.sqrt(shooter.distanceSquared(target)) / speed);
-		Vec3d aimPoint = target;
+		double aimX = target.x();
+		double aimY = target.y();
+		double aimZ = target.z();
 		for (int iteration = 0; iteration < 2; iteration++) {
-			aimPoint = target.add(targetVelocityPerTick.scale(flightTicks));
-			flightTicks = Math.min(maximumLead, Math.sqrt(shooter.distanceSquared(aimPoint)) / speed);
+			aimX = target.x() + targetVelocityPerTick.x() * flightTicks;
+			aimY = target.y() + targetVelocityPerTick.y() * flightTicks;
+			aimZ = target.z() + targetVelocityPerTick.z() * flightTicks;
+			double deltaX = aimX - shooter.x();
+			double deltaY = aimY - shooter.y();
+			double deltaZ = aimZ - shooter.z();
+			flightTicks = Math.min(
+				maximumLead,
+				Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ) / speed
+			);
 		}
-		aimPoint = aimPoint.add(new Vec3d(0.0, 0.5 * gravity * flightTicks * flightTicks, 0.0));
-		Vec3d delta = aimPoint.subtract(shooter);
-		double lengthSquared = delta.distanceSquared(Vec3d.ZERO);
-		Vec3d direction = lengthSquared < MINIMUM_DISTANCE_SQUARED
-			? new Vec3d(0.0, 0.0, 1.0)
-			: delta.scale(1.0 / Math.sqrt(lengthSquared));
-		return new AimSolution(direction, aimPoint, flightTicks);
+		aimY += 0.5 * gravity * flightTicks * flightTicks;
+		double deltaX = aimX - shooter.x();
+		double deltaY = aimY - shooter.y();
+		double deltaZ = aimZ - shooter.z();
+		double lengthSquared = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+		Vec3d direction;
+		if (lengthSquared < MINIMUM_DISTANCE_SQUARED) {
+			direction = new Vec3d(0.0, 0.0, 1.0);
+		} else {
+			double inverseLength = 1.0 / Math.sqrt(lengthSquared);
+			direction = new Vec3d(deltaX * inverseLength, deltaY * inverseLength, deltaZ * inverseLength);
+		}
+		return new AimSolution(direction, new Vec3d(aimX, aimY, aimZ), flightTicks);
+	}
+
+	/** Same intercept iteration when the caller only needs the predicted impact point. */
+	public static Vec3d interceptPoint(
+		final Vec3d shooter,
+		final Vec3d target,
+		final Vec3d targetVelocityPerTick,
+		final double projectileSpeedPerTick,
+		final double gravityPerTickSquared,
+		final double configuredMaximumLeadTicks
+	) {
+		Objects.requireNonNull(shooter, "shooter");
+		Objects.requireNonNull(target, "target");
+		Objects.requireNonNull(targetVelocityPerTick, "targetVelocityPerTick");
+		double speed = finiteClamp(projectileSpeedPerTick, MINIMUM_PROJECTILE_SPEED, 8.0);
+		double gravity = finiteClamp(gravityPerTickSquared, 0.0, 0.20);
+		double maximumLead = finiteClamp(configuredMaximumLeadTicks, 0.0, 40.0);
+		double flightTicks = Math.min(maximumLead, Math.sqrt(shooter.distanceSquared(target)) / speed);
+		double aimX = target.x();
+		double aimY = target.y();
+		double aimZ = target.z();
+		for (int iteration = 0; iteration < 2; iteration++) {
+			aimX = target.x() + targetVelocityPerTick.x() * flightTicks;
+			aimY = target.y() + targetVelocityPerTick.y() * flightTicks;
+			aimZ = target.z() + targetVelocityPerTick.z() * flightTicks;
+			double deltaX = aimX - shooter.x();
+			double deltaY = aimY - shooter.y();
+			double deltaZ = aimZ - shooter.z();
+			flightTicks = Math.min(
+				maximumLead,
+				Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ) / speed
+			);
+		}
+		aimY += 0.5 * gravity * flightTicks * flightTicks;
+		return new Vec3d(aimX, aimY, aimZ);
 	}
 
 	/**

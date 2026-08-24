@@ -52,6 +52,31 @@ class CrossbowCombatPlannerTest {
 	}
 
 	@Test
+	void pointOnlyInterceptMatchesTheFullSolution() {
+		Vec3d shooter = new Vec3d(-3.0, 1.5, 4.0);
+		Vec3d target = new Vec3d(8.0, 2.25, 24.0);
+		Vec3d velocity = new Vec3d(0.24, -0.03, -0.12);
+		CrossbowCombatPlanner.AimSolution full = CrossbowCombatPlanner.intercept(
+			shooter,
+			target,
+			velocity,
+			2.6,
+			0.05,
+			20.0
+		);
+		Vec3d pointOnly = CrossbowCombatPlanner.interceptPoint(
+			shooter,
+			target,
+			velocity,
+			2.6,
+			0.05,
+			20.0
+		);
+
+		assertEquals(full.aimPoint(), pointOnly);
+	}
+
+	@Test
 	void blastSafetyRejectsRangeAndNearestCheckedAlly() {
 		Vec3d shooter = Vec3d.ZERO;
 		assertEquals(
