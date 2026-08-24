@@ -253,8 +253,9 @@ MobsThinkNow/
   变化或下一 tick 都会失效。同一小队的焦点、首领位置另按 tick/revision 共享，目标方向与首领到目标
   方向以 primitive XZ 传给阵位规划器，首领实体对象
   替换会提升修订号使所有成员同步失效。缓存未命中时直接读取实体 XYZ/yaw，远程射界的线段投影和最近点也改用
-  primitive 标量运算；友军胶囊与烟花爆心的 ally 快照同样直接保存 XYZ/radius，仅在真实 Pathfinder、
-  音效或弹体 API 边界创建 Bukkit `Location`。常用 List 快照使用索引扫描，不创建集合迭代器；
+  primitive 标量运算；小队成员 UUID 以默认最多 20 项（配置硬限 100）的紧凑顺序 List 保存并按索引扫描，
+  存活队友直接写入各 Goal 持有的复用缓冲。友军胶囊与烟花爆心的 ally 快照同样直接保存 XYZ/radius，仅在真实 Pathfinder、
+  音效或弹体 API 边界创建 Bukkit `Location`，热路不再构造成员迭代器或临时成员副本；
 - 其他战斗 Goal 的范围、迟滞和到达判定共用 `PaperEntityMath` 直接比较实体 XYZ；跨世界仍明确拒绝，
   但同世界热路径不再为了纯距离平方创建两份 Bukkit `Location`；
 - 同队成员互相设为目标时事件会被取消；可配置阻止普通近战和弹射物误伤。苦力怕的实体爆炸伤害特意

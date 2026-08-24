@@ -57,6 +57,8 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	private final PaperSquadCoordinator squads;
 	private final PaperMetrics metrics;
 	private final int stableOrder;
+	private final List<Mob> squadmateBuffer = new ArrayList<>();
+	private final List<FiringLanePlanner.Ally<UUID>> friendlyLaneAllies = new ArrayList<>();
 
 	private LivingEntity target;
 	private Plan plan;
@@ -439,9 +441,11 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 
 	private boolean hasClearFriendlyLane(final LivingEntity currentTarget) {
 		PaperSettings config = this.settings.get();
-		List<FiringLanePlanner.Ally<UUID>> allies = new ArrayList<>();
-		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
-			allies.add(new FiringLanePlanner.Ally<>(
+		this.squads.copySquadmatesTo(this.skeleton, this.squadmateBuffer);
+		this.friendlyLaneAllies.clear();
+		for (int index = 0; index < this.squadmateBuffer.size(); index++) {
+			Mob ally = this.squadmateBuffer.get(index);
+			this.friendlyLaneAllies.add(new FiringLanePlanner.Ally<>(
 				ally.getUniqueId(),
 				ally.getX(),
 				ally.getY() + ally.getHeight() * 0.55,
@@ -449,10 +453,11 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 				Math.max(config.skeletonFriendlyLaneRadius(), ally.getWidth() * 0.65)
 			));
 		}
+		this.squadmateBuffer.clear();
 		var result = FiringLanePlanner.check(
 			toShared(this.skeleton.getEyeLocation()),
 			toShared(currentTarget.getEyeLocation()),
-			allies,
+			this.friendlyLaneAllies,
 			config.skeletonFriendlyLaneMaximumChecks()
 		);
 		if (!result.clear()) {

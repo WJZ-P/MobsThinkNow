@@ -16,9 +16,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -226,20 +226,27 @@ public final class PaperSquadCoordinator {
 		return leader == null ? null : leader.mob;
 	}
 
-	/** 返回至多 maximum-members 个当前同队成员的只读副本，供有界射界等平台适配器使用。 */
-	public List<Mob> squadmatesFor(final Mob mob) {
+	/** 将至多 maximum-members 个当前同队成员写入调用方复用的缓冲区。 */
+	public void copySquadmatesTo(final Mob mob, final List<Mob> destination) {
+		Objects.requireNonNull(destination, "destination");
+		destination.clear();
 		Long squadId = this.squadByMember.get(mob.getUniqueId());
 		Squad squad = squadId == null ? null : this.squads.get(squadId);
 		if (squad == null) {
-			return List.of();
+			return;
 		}
-		List<Mob> result = new ArrayList<>(squad.memberIds.size());
-		for (UUID memberId : squad.memberIds) {
-			MemberRecord member = this.members.get(memberId);
+		for (int index = 0; index < squad.memberIds.size(); index++) {
+			MemberRecord member = this.members.get(squad.memberIds.get(index));
 			if (member != null && member.mob != mob && member.mob.isValid() && !member.mob.isDead()) {
-				result.add(member.mob);
+				destination.add(member.mob);
 			}
 		}
+	}
+
+	/** 返回至多 maximum-members 个当前同队成员的只读副本；热路径应优先复用缓冲区重载。 */
+	public List<Mob> squadmatesFor(final Mob mob) {
+		List<Mob> result = new ArrayList<>();
+		this.copySquadmatesTo(mob, result);
 		return List.copyOf(result);
 	}
 
@@ -376,7 +383,8 @@ public final class PaperSquadCoordinator {
 				continue;
 			}
 			Squad squad = new Squad(this.nextSquadId++, target, now);
-			for (MemberRecord member : nearby.members()) {
+			for (int index = 0; index < nearby.members().size(); index++) {
+				MemberRecord member = nearby.members().get(index);
 				if (squad.memberIds.size() >= config.maximumMembers()) {
 					break;
 				}
@@ -406,7 +414,8 @@ public final class PaperSquadCoordinator {
 		}
 		ScanResult result = this.collectNearby(leader, squad.target, config, false);
 		boolean changed = false;
-		for (MemberRecord member : result.members()) {
+		for (int index = 0; index < result.members().size(); index++) {
+			MemberRecord member = result.members().get(index);
 			if (squad.memberIds.size() >= config.maximumMembers()) {
 				break;
 			}
@@ -451,10 +460,10 @@ public final class PaperSquadCoordinator {
 	private boolean pruneSquadMembers(final Squad squad, final PaperSquadSettings config) {
 		MemberRecord leader = this.members.get(squad.leaderId);
 		double maximumSquared = config.maximumSeparation() * config.maximumSeparation();
-		Iterator<UUID> iterator = squad.memberIds.iterator();
 		boolean changed = false;
-		while (iterator.hasNext()) {
-			UUID memberId = iterator.next();
+		int index = 0;
+		while (index < squad.memberIds.size()) {
+			UUID memberId = squad.memberIds.get(index);
 			MemberRecord member = this.members.get(memberId);
 			boolean wrongWorld = leader != null
 				&& member != null
@@ -464,10 +473,12 @@ public final class PaperSquadCoordinator {
 				&& !wrongWorld
 				&& distanceSquared(member.mob, leader.mob) > maximumSquared;
 			if (member == null || wrongWorld || tooFar) {
-				iterator.remove();
+				squad.memberIds.remove(index);
 				this.squadByMember.remove(memberId, squad.id);
 				changed = true;
+				continue;
 			}
+			index++;
 		}
 		return changed;
 	}
@@ -497,7 +508,8 @@ public final class PaperSquadCoordinator {
 		squad.plan = MixedSquadPlanner.choosePlan(composition, leaderIntelligence);
 		squad.roles = MixedSquadPlanner.assignRoles(snapshots, squad.leaderId, squad.plan);
 		List<MixedSquadTransportPlanner.Member<UUID>> transportMembers = new ArrayList<>(snapshots.size());
-		for (MixedSquadPlanner.Member<UUID> member : snapshots) {
+		for (int index = 0; index < snapshots.size(); index++) {
+			MixedSquadPlanner.Member<UUID> member = snapshots.get(index);
 			transportMembers.add(new MixedSquadTransportPlanner.Member<>(
 				member.id(),
 				member.species(),
@@ -517,7 +529,8 @@ public final class PaperSquadCoordinator {
 
 	private List<MixedSquadPlanner.Member<UUID>> snapshots(final Squad squad) {
 		List<MixedSquadPlanner.Member<UUID>> snapshots = new ArrayList<>(squad.memberIds.size());
-		for (UUID memberId : squad.memberIds) {
+		for (int index = 0; index < squad.memberIds.size(); index++) {
+			UUID memberId = squad.memberIds.get(index);
 			MemberRecord member = this.members.get(memberId);
 			if (member == null) {
 				continue;
@@ -547,7 +560,8 @@ public final class PaperSquadCoordinator {
 			squad.lastTargetSeenAt = now;
 			return;
 		}
-		for (UUID memberId : squad.memberIds) {
+		for (int index = 0; index < squad.memberIds.size(); index++) {
+			UUID memberId = squad.memberIds.get(index);
 			MemberRecord member = this.members.get(memberId);
 			LivingEntity candidate = member == null ? null : this.targetFor(member, now);
 			if (member != null && candidate != null
@@ -567,7 +581,8 @@ public final class PaperSquadCoordinator {
 			&& this.squadByMember.get(mob.getUniqueId()).equals(squad.id)) {
 			return false;
 		}
-		for (UUID memberId : squad.memberIds) {
+		for (int index = 0; index < squad.memberIds.size(); index++) {
+			UUID memberId = squad.memberIds.get(index);
 			MemberRecord member = this.members.get(memberId);
 			if (member != null && PaperThreats.isLiveFor(member.mob, target)) {
 				return true;
@@ -600,7 +615,8 @@ public final class PaperSquadCoordinator {
 			return;
 		}
 		long now = Bukkit.getCurrentTick();
-		for (UUID memberId : squad.memberIds) {
+		for (int index = 0; index < squad.memberIds.size(); index++) {
+			UUID memberId = squad.memberIds.get(index);
 			MemberRecord member = this.members.get(memberId);
 			if (member == null || !PaperThreats.isLiveFor(member.mob, squad.target)) {
 				continue;
@@ -661,7 +677,8 @@ public final class PaperSquadCoordinator {
 		SquadGeometry geometry = this.geometryFor(squad, leader, Bukkit.getCurrentTick());
 		int ready = 0;
 		int total = 0;
-		for (UUID memberId : squad.memberIds) {
+		for (int index = 0; index < squad.memberIds.size(); index++) {
+			UUID memberId = squad.memberIds.get(index);
 			MemberRecord member = this.members.get(memberId);
 			if (member == null) {
 				continue;
@@ -759,7 +776,8 @@ public final class PaperSquadCoordinator {
 			1.0F,
 			pitch
 		);
-		for (UUID memberId : squad.memberIds) {
+		for (int index = 0; index < squad.memberIds.size(); index++) {
+			UUID memberId = squad.memberIds.get(index);
 			MemberRecord member = this.members.get(memberId);
 			if (member != null && member != leader && Math.floorMod(member.stableOrder, 3) == 0) {
 				member.mob.swingMainHand();
@@ -789,8 +807,8 @@ public final class PaperSquadCoordinator {
 	}
 
 	private void releaseSquadMembers(final Squad squad) {
-		for (UUID memberId : squad.memberIds) {
-			this.squadByMember.remove(memberId, squad.id);
+		for (int index = 0; index < squad.memberIds.size(); index++) {
+			this.squadByMember.remove(squad.memberIds.get(index), squad.id);
 		}
 		squad.memberIds.clear();
 	}
@@ -918,7 +936,7 @@ public final class PaperSquadCoordinator {
 
 	private static final class Squad {
 		private final long id;
-		private final LinkedHashSet<UUID> memberIds = new LinkedHashSet<>();
+		private final List<UUID> memberIds = new ArrayList<>();
 		private UUID leaderId;
 		private LivingEntity target;
 		private UUID targetId;

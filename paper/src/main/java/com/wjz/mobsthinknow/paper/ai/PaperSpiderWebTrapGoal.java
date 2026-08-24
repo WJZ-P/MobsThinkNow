@@ -11,6 +11,7 @@ import com.wjz.mobsthinknow.paper.squad.PaperSquadCoordinator;
 import com.wjz.mobsthinknow.shared.ai.CreeperTacticalPlanner;
 import com.wjz.mobsthinknow.shared.ai.SpiderWebTrapPlanner;
 import com.wjz.mobsthinknow.shared.math.Vec3d;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -49,6 +50,7 @@ public final class PaperSpiderWebTrapGoal implements Goal<Spider> {
 	private final PaperWebTrapService traps;
 	private final PaperMetrics metrics;
 	private final int stableSide;
+	private final List<Mob> squadmateBuffer = new ArrayList<>();
 
 	private LivingEntity target;
 	private Block plannedBlock;
@@ -300,7 +302,9 @@ public final class PaperSpiderWebTrapGoal implements Goal<Spider> {
 	private BlastThreat activeBlastFor(final LivingEntity current) {
 		Creeper selected = null;
 		double selectedProgress = -1.0;
-		for (Mob squadmate : this.squads.squadmatesFor(this.spider)) {
+		this.squads.copySquadmatesTo(this.spider, this.squadmateBuffer);
+		for (int index = 0; index < this.squadmateBuffer.size(); index++) {
+			Mob squadmate = this.squadmateBuffer.get(index);
 			if (!(squadmate instanceof Creeper creeper)
 				|| !creeper.isValid()
 				|| creeper.isDead()
@@ -316,6 +320,7 @@ public final class PaperSpiderWebTrapGoal implements Goal<Spider> {
 				selectedProgress = progress;
 			}
 		}
+		this.squadmateBuffer.clear();
 		if (selected == null) {
 			return null;
 		}

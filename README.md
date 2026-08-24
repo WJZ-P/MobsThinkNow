@@ -90,8 +90,10 @@ GoalSelector 行为，而不是每 tick 强制传送实体：
   在同 tick 重复查询时直接复用同一几何快照，目标共享状态改变或小队重规划会即时失效缓存。必要计算
   还把焦点、首领位置按小队/tick 共享，目标朝向与首领到目标方向直接保存 primitive XZ，成员不再各自
   重建相同向量；直接读取实体 XYZ/yaw，
+  小队成员 UUID 以默认最多 20 项（配置硬限 100）的紧凑顺序 List 保存并按索引扫描，存活队友直接写入
+  各 Goal 持有的复用缓冲；
   友军胶囊与烟花爆心的 ally 快照直接保存 primitive XYZ/radius，射击胶囊也使用标量求投影与最近点，
-  常用 List 快照以索引扫描而不创建迭代器，同时保留任意 Collection 兼容路径；
+  热路不再构造成员集合迭代器或临时成员副本，同时保留任意 Collection 兼容路径；
 - Paper 各战斗 Goal 的范围、迟滞和到达判定统一走 `PaperEntityMath`，直接读取实体坐标；只有真实寻路、
   射线、音效和弹体调用才构造 Bukkit `Location`，避免调度器每 tick 为纯距离比较生成成对对象；
 - `/mtnpaper status|inspect|reload|setiq|spawn|spawnall|assault|selftest` 提供运行诊断、批量生成和真实

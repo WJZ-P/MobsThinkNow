@@ -53,6 +53,9 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 	private final PaperFireworkBoltService fireworkBolts;
 	private final PaperMetrics metrics;
 	private final int stableOrder;
+	private final List<Mob> squadmateBuffer = new ArrayList<>();
+	private final List<FiringLanePlanner.Ally<UUID>> firingLaneAllies = new ArrayList<>();
+	private final List<CrossbowCombatPlanner.BlastAlly<UUID>> blastAllies = new ArrayList<>();
 
 	private long nextReleaseAt;
 	private long nextRepathAt;
@@ -256,21 +259,24 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 			return this.cachedLane;
 		}
 		PaperSettings config = this.settings.get();
-		List<FiringLanePlanner.Ally<UUID>> allies = new ArrayList<>();
-		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
+		this.squads.copySquadmatesTo(this.skeleton, this.squadmateBuffer);
+		this.firingLaneAllies.clear();
+		for (int index = 0; index < this.squadmateBuffer.size(); index++) {
+			Mob ally = this.squadmateBuffer.get(index);
 			double radius = Math.max(config.skeletonFriendlyLaneRadius(), ally.getWidth() * 0.65);
-			allies.add(new FiringLanePlanner.Ally<>(
+			this.firingLaneAllies.add(new FiringLanePlanner.Ally<>(
 				ally.getUniqueId(),
 				ally.getX(),
 				ally.getY() + ally.getHeight() * 0.55,
 				ally.getZ(),
-				radius
+					radius
 			));
 		}
+		this.squadmateBuffer.clear();
 		this.cachedLane = FiringLanePlanner.check(
 			eyePosition(this.skeleton),
 			this.firingEndpoint(target),
-			allies,
+			this.firingLaneAllies,
 			config.skeletonFriendlyLaneMaximumChecks()
 		);
 		this.nextLaneCheckAt = now + LANE_CACHE_TICKS;
@@ -553,9 +559,11 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 
 	private boolean fireworkSafe(final LivingEntity target, final PaperCrossbowSettings crossbow) {
 		PaperFireworkSettings config = crossbow.firework();
-		List<CrossbowCombatPlanner.BlastAlly<UUID>> allies = new ArrayList<>();
-		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
-			allies.add(new CrossbowCombatPlanner.BlastAlly<>(
+		this.squads.copySquadmatesTo(this.skeleton, this.squadmateBuffer);
+		this.blastAllies.clear();
+		for (int index = 0; index < this.squadmateBuffer.size(); index++) {
+			Mob ally = this.squadmateBuffer.get(index);
+			this.blastAllies.add(new CrossbowCombatPlanner.BlastAlly<>(
 				ally.getUniqueId(),
 				ally.getX(),
 				ally.getY() + ally.getHeight() * 0.5,
@@ -563,6 +571,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 				ally.getWidth() * 0.65
 			));
 		}
+		this.squadmateBuffer.clear();
 		Vec3d shooter = eyePosition(this.skeleton);
 		Vec3d targetCenter = eyePosition(target);
 		Vec3d predictedImpact = CrossbowCombatPlanner.intercept(
@@ -576,7 +585,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		return CrossbowCombatPlanner.assessBlast(
 			shooter,
 			predictedImpact,
-			allies,
+			this.blastAllies,
 			config.minimumRange(),
 			config.maximumRange(),
 			config.allyDangerRadius(),
