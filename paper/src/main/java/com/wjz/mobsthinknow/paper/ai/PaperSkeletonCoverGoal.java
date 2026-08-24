@@ -441,10 +441,11 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 		PaperSettings config = this.settings.get();
 		List<FiringLanePlanner.Ally<UUID>> allies = new ArrayList<>();
 		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
-			Location center = ally.getLocation().add(0.0, ally.getHeight() * 0.55, 0.0);
 			allies.add(new FiringLanePlanner.Ally<>(
 				ally.getUniqueId(),
-				toShared(center),
+				ally.getX(),
+				ally.getY() + ally.getHeight() * 0.55,
+				ally.getZ(),
 				Math.max(config.skeletonFriendlyLaneRadius(), ally.getWidth() * 0.65)
 			));
 		}

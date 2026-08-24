@@ -116,6 +116,25 @@ class FiringLanePlannerTest {
 			.subtract(forward.scale(Math.min(1.5, distance * 0.30)));
 	}
 
+	@Test
+	void scalarAllySnapshotMatchesTheVectorCompatibilityConstructor() {
+		Vec3d origin = new Vec3d(0.0, 1.5, 0.0);
+		Vec3d target = new Vec3d(0.0, 1.5, 10.0);
+		var vector = FiringLanePlanner.check(
+			origin,
+			target,
+			List.of(new FiringLanePlanner.Ally<>("ally", new Vec3d(0.2, 1.5, 4.0), 0.7)),
+			4
+		);
+		var scalar = FiringLanePlanner.check(
+			origin,
+			target,
+			List.of(new FiringLanePlanner.Ally<>("ally", 0.2, 1.5, 4.0, 0.7)),
+			4
+		);
+		assertEquals(vector, scalar);
+	}
+
 	private static void assertVectorEquals(final Vec3d expected, final Vec3d actual) {
 		assertEquals(expected.x(), actual.x(), 1.0E-12);
 		assertEquals(expected.y(), actual.y(), 1.0E-12);

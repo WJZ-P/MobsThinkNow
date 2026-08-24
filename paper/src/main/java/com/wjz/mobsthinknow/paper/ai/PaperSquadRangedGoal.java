@@ -259,7 +259,13 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		List<FiringLanePlanner.Ally<UUID>> allies = new ArrayList<>();
 		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
 			double radius = Math.max(config.skeletonFriendlyLaneRadius(), ally.getWidth() * 0.65);
-			allies.add(new FiringLanePlanner.Ally<>(ally.getUniqueId(), bodyCenter(ally, 0.55), radius));
+			allies.add(new FiringLanePlanner.Ally<>(
+				ally.getUniqueId(),
+				ally.getX(),
+				ally.getY() + ally.getHeight() * 0.55,
+				ally.getZ(),
+				radius
+			));
 		}
 		this.cachedLane = FiringLanePlanner.check(
 			eyePosition(this.skeleton),
@@ -551,7 +557,9 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		for (Mob ally : this.squads.squadmatesFor(this.skeleton)) {
 			allies.add(new CrossbowCombatPlanner.BlastAlly<>(
 				ally.getUniqueId(),
-				bodyCenter(ally, 0.5),
+				ally.getX(),
+				ally.getY() + ally.getHeight() * 0.5,
+				ally.getZ(),
 				ally.getWidth() * 0.65
 			));
 		}
@@ -608,10 +616,6 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 
 	private static Vec3d eyePosition(final LivingEntity entity) {
 		return new Vec3d(entity.getX(), entity.getY() + entity.getEyeHeight(), entity.getZ());
-	}
-
-	private static Vec3d bodyCenter(final LivingEntity entity, final double heightFactor) {
-		return new Vec3d(entity.getX(), entity.getY() + entity.getHeight() * heightFactor, entity.getZ());
 	}
 
 	private static double distanceSquared(final Entity first, final Entity second) {

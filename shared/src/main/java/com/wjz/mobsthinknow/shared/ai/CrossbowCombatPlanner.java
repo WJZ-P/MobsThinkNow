@@ -106,7 +106,10 @@ public final class CrossbowCombatPlanner {
 			}
 			checks++;
 			double combinedRadius = dangerRadius + finiteClamp(ally.radius(), 0.0, 4.0);
-			if (ally.position().distanceSquared(target) <= combinedRadius * combinedRadius) {
+			double deltaX = ally.x() - target.x();
+			double deltaY = ally.y() - target.y();
+			double deltaZ = ally.z() - target.z();
+			if (deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ <= combinedRadius * combinedRadius) {
 				return new BlastSafety<>(BlastStatus.ALLY_IN_BLAST, ally.id(), checks);
 			}
 		}
@@ -130,10 +133,20 @@ public final class CrossbowCombatPlanner {
 		}
 	}
 
-	public record BlastAlly<T>(T id, Vec3d position, double radius) {
+	public record BlastAlly<T>(T id, double x, double y, double z, double radius) {
+		public BlastAlly(final T id, final Vec3d position, final double radius) {
+			this(id, position.x(), position.y(), position.z(), radius);
+		}
+
 		public BlastAlly {
 			Objects.requireNonNull(id, "id");
-			Objects.requireNonNull(position, "position");
+			if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
+				throw new IllegalArgumentException("ally position must be finite");
+			}
+		}
+
+		public Vec3d position() {
+			return new Vec3d(this.x, this.y, this.z);
 		}
 	}
 

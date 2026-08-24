@@ -37,9 +37,9 @@ public final class FiringLanePlanner {
 				break;
 			}
 			checks++;
-			double relativeX = ally.position().x() - origin.x();
-			double relativeY = ally.position().y() - origin.y();
-			double relativeZ = ally.position().z() - origin.z();
+			double relativeX = ally.x() - origin.x();
+			double relativeY = ally.y() - origin.y();
+			double relativeZ = ally.z() - origin.z();
 			double projection = (
 				relativeX * segmentX + relativeY * segmentY + relativeZ * segmentZ
 			) / lengthSquared;
@@ -49,9 +49,9 @@ public final class FiringLanePlanner {
 			double closestX = origin.x() + segmentX * projection;
 			double closestY = origin.y() + segmentY * projection;
 			double closestZ = origin.z() + segmentZ * projection;
-			double separationX = closestX - ally.position().x();
-			double separationY = closestY - ally.position().y();
-			double separationZ = closestZ - ally.position().z();
+			double separationX = closestX - ally.x();
+			double separationY = closestY - ally.y();
+			double separationZ = closestZ - ally.z();
 			double separationSquared = separationX * separationX
 				+ separationY * separationY
 				+ separationZ * separationZ;
@@ -94,11 +94,21 @@ public final class FiringLanePlanner {
 		);
 	}
 
-	public record Ally<K>(K id, Vec3d position, double radius) {
+	public record Ally<K>(K id, double x, double y, double z, double radius) {
+		public Ally(final K id, final Vec3d position, final double radius) {
+			this(id, position.x(), position.y(), position.z(), radius);
+		}
+
 		public Ally {
 			Objects.requireNonNull(id, "id");
-			Objects.requireNonNull(position, "position");
+			if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
+				throw new IllegalArgumentException("ally position must be finite");
+			}
 			radius = Double.isFinite(radius) ? Math.clamp(radius, 0.05, 4.0) : 0.75;
+		}
+
+		public Vec3d position() {
+			return new Vec3d(this.x, this.y, this.z);
 		}
 	}
 

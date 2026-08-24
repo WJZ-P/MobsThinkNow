@@ -117,4 +117,29 @@ class CrossbowCombatPlannerTest {
 			).status()
 		);
 	}
+
+	@Test
+	void scalarBlastAllyMatchesTheVectorCompatibilityConstructor() {
+		Vec3d shooter = Vec3d.ZERO;
+		Vec3d target = new Vec3d(0.0, 0.0, 16.0);
+		var vector = CrossbowCombatPlanner.assessBlast(
+			shooter,
+			target,
+			List.of(new CrossbowCombatPlanner.BlastAlly<>("ally", new Vec3d(0.5, 0.0, 16.0), 0.7)),
+			6.0,
+			30.0,
+			3.0,
+			4
+		);
+		var scalar = CrossbowCombatPlanner.assessBlast(
+			shooter,
+			target,
+			List.of(new CrossbowCombatPlanner.BlastAlly<>("ally", 0.5, 0.0, 16.0, 0.7)),
+			6.0,
+			30.0,
+			3.0,
+			4
+		);
+		assertEquals(vector, scalar);
+	}
 }
