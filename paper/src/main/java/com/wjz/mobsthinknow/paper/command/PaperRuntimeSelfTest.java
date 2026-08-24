@@ -1139,7 +1139,7 @@ public final class PaperRuntimeSelfTest {
 		this.setTemporaryBlock(world.getBlockAt(centerX, feetY, centerZ + 4), Material.STONE);
 		this.setTemporaryBlock(world.getBlockAt(centerX, feetY + 1, centerZ + 4), Material.STONE);
 		Location skeletonLocation = new Location(world, centerX + 2.5, feetY, centerZ + 0.5);
-		Location targetLocation = new Location(world, centerX + 0.5, feetY, centerZ + 10.5);
+		Location targetLocation = new Location(world, centerX + 0.5, feetY, centerZ + 12.5);
 		this.forceChunk(skeletonLocation);
 		this.forceChunk(targetLocation);
 

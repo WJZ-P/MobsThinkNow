@@ -138,7 +138,25 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 		this.metrics.skeletonCoverPlansFound(result.plans().size());
 		this.nextSearchAt = now + config.searchCooldownTicks();
 		Pathfinder pathfinder = this.skeleton.getPathfinder();
+		int intelligence = this.intelligence.get(this.skeleton);
 		for (Plan candidate : result.plans()) {
+			if (!avoidsEmergencyDisengage(
+				candidate.hide().x(),
+				candidate.hide().z(),
+				candidateTarget.getX(),
+				candidateTarget.getZ(),
+				root.skeletonPreferredRange(),
+				intelligence
+			) || !avoidsEmergencyDisengage(
+				candidate.peek().x(),
+				candidate.peek().z(),
+				candidateTarget.getX(),
+				candidateTarget.getZ(),
+				root.skeletonPreferredRange(),
+				intelligence
+			)) {
+				continue;
+			}
 			Pathfinder.PathResult path = pathfinder.findPath(toLocation(candidate.hide()));
 			if (path != null) {
 				this.target = candidateTarget;
@@ -528,6 +546,23 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 
 	private static Vec3d toShared(final Location location) {
 		return new Vec3d(location.getX(), location.getY(), location.getZ());
+	}
+
+	static boolean avoidsEmergencyDisengage(
+		final int blockX,
+		final int blockZ,
+		final double targetX,
+		final double targetZ,
+		final double preferredRange,
+		final int intelligence
+	) {
+		double deltaX = blockX + 0.5 - targetX;
+		double deltaZ = blockZ + 0.5 - targetZ;
+		return !RangedSpacingPlanner.shouldStartEmergencyDisengage(
+			deltaX * deltaX + deltaZ * deltaZ,
+			preferredRange,
+			intelligence
+		);
 	}
 
 	private static boolean isHazard(final Material material) {
