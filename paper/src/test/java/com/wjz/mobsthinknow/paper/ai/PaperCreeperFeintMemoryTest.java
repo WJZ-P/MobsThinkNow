@@ -41,6 +41,55 @@ final class PaperCreeperFeintMemoryTest {
 	}
 
 	@Test
+	void coolingChainUnlinksReplacementsAndInteriorEntries() {
+		PaperCreeperFeintMemory memory = new PaperCreeperFeintMemory();
+		AtomicInteger validityChecks = new AtomicInteger();
+		UUID replacedId = UUID.randomUUID();
+		Creeper original = creeper(
+			replacedId,
+			new AtomicBoolean(true),
+			new AtomicInteger(7),
+			true,
+			validityChecks
+		);
+		Creeper replacement = creeper(
+			replacedId,
+			new AtomicBoolean(true),
+			new AtomicInteger(7),
+			true,
+			validityChecks
+		);
+		Creeper interior = creeper(
+			UUID.randomUUID(),
+			new AtomicBoolean(true),
+			new AtomicInteger(7),
+			true,
+			validityChecks
+		);
+		Creeper neighbor = creeper(
+			UUID.randomUUID(),
+			new AtomicBoolean(true),
+			new AtomicInteger(7),
+			true,
+			validityChecks
+		);
+		memory.beginPostFeintCooling(original, 100L, 5);
+		memory.beginPostFeintCooling(interior, 100L, 30);
+		memory.beginPostFeintCooling(neighbor, 100L, 40);
+		memory.beginPostFeintCooling(replacement, 100L, 20);
+		memory.transferToRealFuse(interior);
+
+		memory.tickCooling(101L);
+
+		assertEquals(2, memory.coolingCount());
+		assertEquals(4, validityChecks.get());
+		memory.tickCooling(120L);
+		assertEquals(1, memory.coolingCount());
+		memory.tickCooling(140L);
+		assertEquals(0, memory.coolingCount());
+	}
+
+	@Test
 	void elapsedPerEntityCooldownIsRemovedAndAllowsASecondFeint() {
 		PaperCreeperFeintMemory memory = new PaperCreeperFeintMemory();
 		Creeper creeper = creeper(UUID.randomUUID(), new AtomicBoolean(), new AtomicInteger());
@@ -85,12 +134,27 @@ final class PaperCreeperFeintMemoryTest {
 		final AtomicInteger fuseTicks,
 		final boolean valid
 	) {
+		return creeper(id, ignited, fuseTicks, valid, null);
+	}
+
+	private static Creeper creeper(
+		final UUID id,
+		final AtomicBoolean ignited,
+		final AtomicInteger fuseTicks,
+		final boolean valid,
+		final AtomicInteger validityChecks
+	) {
 		return (Creeper)Proxy.newProxyInstance(
 			Creeper.class.getClassLoader(),
 			new Class<?>[]{Creeper.class},
 			(proxy, method, arguments) -> switch (method.getName()) {
 				case "getUniqueId" -> id;
-				case "isValid" -> valid;
+				case "isValid" -> {
+					if (validityChecks != null) {
+						validityChecks.incrementAndGet();
+					}
+					yield valid;
+				}
 				case "isDead" -> false;
 				case "isIgnited" -> ignited.get();
 				case "setIgnited" -> {

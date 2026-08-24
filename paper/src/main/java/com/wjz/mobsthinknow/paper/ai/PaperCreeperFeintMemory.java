@@ -2,7 +2,6 @@ package com.wjz.mobsthinknow.paper.ai;
 
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -27,7 +26,9 @@ public final class PaperCreeperFeintMemory {
 	private final Set<UUID> externallyIgnited = new HashSet<>();
 	private final Map<UUID, Long> nextAllowedAt = new HashMap<>();
 	private final Map<UUID, CompletionEntry> completions = new HashMap<>();
-	private final Map<UUID, CoolingEntry> cooling = new LinkedHashMap<>();
+	private final Map<UUID, CoolingEntry> cooling = new HashMap<>();
+	private CoolingEntry oldestCooling;
+	private CoolingEntry newestCooling;
 	private CompletionEntry oldestCompletion;
 	private CompletionEntry newestCompletion;
 	private BukkitTask coolingTask;
@@ -81,14 +82,17 @@ public final class PaperCreeperFeintMemory {
 	public boolean blocksCombatGoals(final Creeper creeper) {
 		UUID id = creeper.getUniqueId();
 		CoolingEntry entry = this.cooling.get(id);
-		if (entry != null && Bukkit.getCurrentTick() >= entry.combatUnlockAt()) {
-			coolDown(entry.creeper());
-			this.cooling.remove(id, entry);
-			this.ownedIgnition.remove(id);
-			entry = null;
+		if (entry == null) {
+			return this.active.contains(id);
 		}
-		return this.active.contains(id)
-			|| entry != null && Bukkit.getCurrentTick() < entry.combatUnlockAt();
+		long now = Bukkit.getCurrentTick();
+		if (now >= entry.combatUnlockAt) {
+			coolDown(entry.creeper);
+			this.removeCooling(entry);
+			this.ownedIgnition.remove(id);
+			return this.active.contains(id);
+		}
+		return true;
 	}
 
 	public void beginOwnedIgnition(final Creeper creeper) {
@@ -112,7 +116,7 @@ public final class PaperCreeperFeintMemory {
 		if (this.active.contains(id) || this.cooling.containsKey(id)) {
 			this.externallyIgnited.add(id);
 			this.ownedIgnition.remove(id);
-			this.cooling.remove(id);
+			this.removeCooling(id);
 		}
 	}
 
@@ -123,13 +127,20 @@ public final class PaperCreeperFeintMemory {
 	public void beginPostFeintCooling(final Creeper creeper, final long now, final int durationTicks) {
 		UUID id = creeper.getUniqueId();
 		this.ownedIgnition.add(id);
-		this.cooling.put(id, new CoolingEntry(creeper, saturatingAdd(now, Math.max(1, durationTicks))));
+		this.removeCooling(id);
+		CoolingEntry entry = new CoolingEntry(
+			id,
+			creeper,
+			saturatingAdd(now, Math.max(1, durationTicks))
+		);
+		this.cooling.put(id, entry);
+		this.appendCooling(entry);
 	}
 
 	/** Stops synthetic fuse suppression exactly when the real tactical fuse has acquired a valid attack. */
 	public void transferToRealFuse(final Creeper creeper) {
 		UUID id = creeper.getUniqueId();
-		this.cooling.remove(id);
+		this.removeCooling(id);
 		this.ownedIgnition.remove(id);
 	}
 
@@ -172,7 +183,7 @@ public final class PaperCreeperFeintMemory {
 		this.active.remove(id);
 		this.ownedIgnition.remove(id);
 		this.externallyIgnited.remove(id);
-		this.cooling.remove(id);
+		this.removeCooling(id);
 		this.nextAllowedAt.remove(id);
 		CompletionEntry completion = this.completions.remove(id);
 		if (completion != null) {
@@ -196,29 +207,71 @@ public final class PaperCreeperFeintMemory {
 		this.completions.clear();
 		this.oldestCompletion = null;
 		this.newestCompletion = null;
-		for (CoolingEntry entry : this.cooling.values()) {
-			coolDown(entry.creeper());
+		for (CoolingEntry entry = this.oldestCooling; entry != null; entry = entry.next) {
+			coolDown(entry.creeper);
 		}
 		this.cooling.clear();
+		this.oldestCooling = null;
+		this.newestCooling = null;
 	}
 
 	void tickCooling(final long now) {
 		this.pruneCompletions(now);
-		var iterator = this.cooling.entrySet().iterator();
-		while (iterator.hasNext()) {
-			Map.Entry<UUID, CoolingEntry> mapped = iterator.next();
-			CoolingEntry entry = mapped.getValue();
-			Creeper creeper = entry.creeper();
+		CoolingEntry entry = this.oldestCooling;
+		while (entry != null) {
+			CoolingEntry next = entry.next;
+			Creeper creeper = entry.creeper;
 			if (!creeper.isValid() || creeper.isDead()) {
-				this.ownedIgnition.remove(mapped.getKey());
-				iterator.remove();
-				continue;
+				this.ownedIgnition.remove(entry.id);
+				this.removeCooling(entry);
+			} else {
+				coolDown(creeper);
+				if (now >= entry.combatUnlockAt) {
+					this.ownedIgnition.remove(entry.id);
+					this.removeCooling(entry);
+				}
 			}
-			coolDown(creeper);
-			if (now >= entry.combatUnlockAt()) {
-				this.ownedIgnition.remove(mapped.getKey());
-				iterator.remove();
-			}
+			entry = next;
+		}
+	}
+
+	private void appendCooling(final CoolingEntry entry) {
+		entry.previous = this.newestCooling;
+		entry.next = null;
+		if (this.newestCooling == null) {
+			this.oldestCooling = entry;
+		} else {
+			this.newestCooling.next = entry;
+		}
+		this.newestCooling = entry;
+	}
+
+	private void unlinkCooling(final CoolingEntry entry) {
+		if (entry.previous == null) {
+			this.oldestCooling = entry.next;
+		} else {
+			entry.previous.next = entry.next;
+		}
+		if (entry.next == null) {
+			this.newestCooling = entry.previous;
+		} else {
+			entry.next.previous = entry.previous;
+		}
+		entry.previous = null;
+		entry.next = null;
+	}
+
+	private CoolingEntry removeCooling(final UUID id) {
+		CoolingEntry entry = this.cooling.remove(id);
+		if (entry != null) {
+			this.unlinkCooling(entry);
+		}
+		return entry;
+	}
+
+	private void removeCooling(final CoolingEntry entry) {
+		if (this.cooling.remove(entry.id, entry)) {
+			this.unlinkCooling(entry);
 		}
 	}
 
@@ -283,7 +336,18 @@ public final class PaperCreeperFeintMemory {
 		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
-	private record CoolingEntry(Creeper creeper, long combatUnlockAt) {
+	private static final class CoolingEntry {
+		private final UUID id;
+		private final Creeper creeper;
+		private final long combatUnlockAt;
+		private CoolingEntry previous;
+		private CoolingEntry next;
+
+		private CoolingEntry(final UUID id, final Creeper creeper, final long combatUnlockAt) {
+			this.id = id;
+			this.creeper = creeper;
+			this.combatUnlockAt = combatUnlockAt;
+		}
 	}
 
 	private static final class CompletionEntry {
