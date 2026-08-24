@@ -69,7 +69,7 @@ public final class PaperSpiderPounceGoal implements Goal<Spider> {
 			&& config.spiderPredictivePounceEnabled()
 			&& iq >= Math.max(4, config.spiderMinimumIntelligence())
 			&& Bukkit.getCurrentTick() >= this.nextPounceAt
-			&& this.spider.getPassengers().isEmpty()
+			&& this.spider.isEmpty()
 			&& !this.spider.isInsideVehicle()
 			&& PaperThreats.isLiveFor(this.spider, current)
 			&& SpiderTacticalPlanner.canPredictivePounce(

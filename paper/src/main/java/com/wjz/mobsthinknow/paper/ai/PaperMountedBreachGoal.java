@@ -100,7 +100,7 @@ public final class PaperMountedBreachGoal implements Goal<Spider> {
 		LivingEntity selectedTarget = this.squads.sharedTargetFor(this.spider);
 		if (!PaperThreats.isLiveFor(this.spider, selectedTarget)
 			|| !this.isAvailable(assigned)
-			|| (!this.spider.getPassengers().isEmpty() && assigned.getVehicle() != this.spider)) {
+			|| (!this.spider.isEmpty() && assigned.getVehicle() != this.spider)) {
 			return false;
 		}
 		this.payload = assigned;

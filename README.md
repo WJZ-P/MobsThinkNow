@@ -95,7 +95,8 @@ GoalSelector 行为，而不是每 tick 强制传送实体：
   友军胶囊与烟花爆心的 ally 快照直接保存 primitive XYZ/radius，射击胶囊也使用标量求投影与最近点，
   热路不再构造成员集合迭代器或临时成员副本，同时保留任意 Collection 兼容路径；
 - Paper 各战斗 Goal 的范围、迟滞和到达判定统一走 `PaperEntityMath`，直接读取实体坐标；只有真实寻路、
-  射线、音效和弹体调用才构造 Bukkit `Location`，避免调度器每 tick 为纯距离比较生成成对对象；
+  射线、音效和弹体调用才构造 Bukkit `Location`；蜘蛛乘员门控直接调用 `Entity#isEmpty()`，不为布尔判断
+  构造 Bukkit/Guava 乘客转换列表；
 - `/mtnpaper status|inspect|reload|setiq|spawn|spawnall|assault|selftest` 提供运行诊断、批量生成和真实
   联合兵种冒烟入口；`selftest` 会在临时保活区块生成 IQ 10 的僵尸、弓手、弩手、苦力怕与蜘蛛，先验证
   同队和 `COMBINED_ARMS`，再等待真实 Goal 完成斧手跳劈、弩手可见装填与错峰射击、独行烟花弩碰撞引爆、真实自然出生职业幂等改装、蜘蛛载客、临时蛛网放置与原状回滚，以及独立盾卫探针的

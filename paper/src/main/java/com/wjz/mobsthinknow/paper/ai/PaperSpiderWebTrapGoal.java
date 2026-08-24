@@ -99,7 +99,7 @@ public final class PaperSpiderWebTrapGoal implements Goal<Spider> {
 				iq,
 				this.spider.hasLineOfSight(current),
 				this.spider.isOnGround(),
-				!this.spider.getPassengers().isEmpty(),
+				!this.spider.isEmpty(),
 				PaperEntityMath.distanceSquared(this.spider, current)
 			)) {
 			return false;

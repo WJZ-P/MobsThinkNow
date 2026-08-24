@@ -55,7 +55,7 @@ public final class PaperSpiderCombatGoal implements Goal<Spider> {
 		return enabled(config)
 			&& !this.squadCoordinator.isHoldingForOrders(this.spider)
 			&& this.intelligence.get(this.spider) >= config.spiderMinimumIntelligence()
-			&& this.spider.getPassengers().isEmpty()
+			&& this.spider.isEmpty()
 			&& !this.spider.isInsideVehicle()
 			&& PaperThreats.isLiveFor(this.spider, this.spider.getTarget());
 	}
