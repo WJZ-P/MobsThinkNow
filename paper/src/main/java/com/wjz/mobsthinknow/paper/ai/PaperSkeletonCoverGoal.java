@@ -391,27 +391,27 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	private CoverPositionPlanner.Probe probe(final LivingEntity currentTarget) {
 		return new CoverPositionPlanner.Probe() {
 			@Override
-			public boolean isStandable(final GridPosition position) {
-				return PaperSkeletonCoverGoal.this.isStandable(position);
+			public boolean isStandable(final int x, final int y, final int z) {
+				return PaperSkeletonCoverGoal.this.isStandable(x, y, z);
 			}
 
 			@Override
-			public boolean isHidden(final GridPosition position) {
-				return !PaperSkeletonCoverGoal.this.hasClearRay(position, currentTarget);
+			public boolean isHidden(final int x, final int y, final int z) {
+				return !PaperSkeletonCoverGoal.this.hasClearRay(x, y, z, currentTarget);
 			}
 
 			@Override
-			public boolean hasClearShot(final GridPosition position) {
-				return PaperSkeletonCoverGoal.this.hasClearRay(position, currentTarget);
+			public boolean hasClearShot(final int x, final int y, final int z) {
+				return PaperSkeletonCoverGoal.this.hasClearRay(x, y, z, currentTarget);
 			}
 		};
 	}
 
-	private boolean isStandable(final GridPosition position) {
+	private boolean isStandable(final int x, final int y, final int z) {
 		World world = this.skeleton.getWorld();
-		Block feet = world.getBlockAt(position.x(), position.y(), position.z());
-		Block head = world.getBlockAt(position.x(), position.y() + 1, position.z());
-		Block support = world.getBlockAt(position.x(), position.y() - 1, position.z());
+		Block feet = world.getBlockAt(x, y, z);
+		Block head = world.getBlockAt(x, y + 1, z);
+		Block support = world.getBlockAt(x, y - 1, z);
 		return support.getType().isSolid()
 			&& !isHazard(support.getType())
 			&& feet.isPassable()
@@ -420,11 +420,11 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 			&& feet.getType() != Material.LAVA
 			&& head.getType() != Material.WATER
 			&& head.getType() != Material.LAVA
-			&& world.getWorldBorder().isInside(toLocation(position));
+			&& world.getWorldBorder().isInside(toLocation(x, y, z));
 	}
 
-	private boolean hasClearRay(final GridPosition position, final LivingEntity currentTarget) {
-		Location from = toLocation(position).add(0.0, this.skeleton.getEyeHeight(), 0.0);
+	private boolean hasClearRay(final int x, final int y, final int z, final LivingEntity currentTarget) {
+		Location from = toLocation(x, y, z).add(0.0, this.skeleton.getEyeHeight(), 0.0);
 		Location to = currentTarget.getEyeLocation();
 		Vector direction = to.toVector().subtract(from.toVector());
 		double distance = direction.length();
@@ -509,7 +509,11 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	}
 
 	private Location toLocation(final GridPosition position) {
-		return new Location(this.skeleton.getWorld(), position.x() + 0.5, position.y(), position.z() + 0.5);
+		return this.toLocation(position.x(), position.y(), position.z());
+	}
+
+	private Location toLocation(final int x, final int y, final int z) {
+		return new Location(this.skeleton.getWorld(), x + 0.5, y, z + 0.5);
 	}
 
 	private static GridPosition toGrid(final Location location) {

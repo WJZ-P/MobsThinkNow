@@ -8,6 +8,7 @@ import com.wjz.mobsthinknow.shared.ai.CoverPositionPlanner.GridPosition;
 import com.wjz.mobsthinknow.shared.ai.CoverPositionPlanner.SearchLimits;
 import com.wjz.mobsthinknow.shared.math.Vec3d;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -47,7 +48,7 @@ class CoverPositionPlannerTest {
 			10.0,
 			0,
 			limits,
-			position -> {
+			(x, y, z) -> {
 				standabilityChecks.incrementAndGet();
 				return false;
 			}
@@ -71,24 +72,50 @@ class CoverPositionPlannerTest {
 		assertFalse(CoverPositionPlanner.isUsefulRange(Double.NaN, 10.0, SearchLimits.defaults()));
 	}
 
+	@Test
+	void scalarScoringMatchesTheOriginalCenterVectorFormula() {
+		Vec3d actor = new Vec3d(-3.25, 63.0, 8.75);
+		Vec3d target = new Vec3d(12.5, 65.0, -4.5);
+		for (GridPosition hide : List.of(
+			new GridPosition(0, 64, 0),
+			new GridPosition(-7, 62, 9)
+		)) {
+			for (GridPosition peek : List.of(
+				hide.offset(1, 0, 0),
+				hide.offset(0, 0, -1)
+			)) {
+				double preferredRange = 10.0;
+				double travelCost = hide.center().distanceSquared(actor);
+				double rangeError = Math.sqrt(peek.center().distanceSquared(target)) - preferredRange;
+				double verticalCost = Math.abs(hide.y() - actor.y()) * 2.0;
+				double expected = travelCost + rangeError * rangeError * 1.5 + verticalCost;
+				assertEquals(
+					expected,
+					CoverPositionPlanner.score(actor, target, hide, peek, preferredRange),
+					1.0E-12
+				);
+			}
+		}
+	}
+
 	private record SetProbe(
 		Set<GridPosition> standable,
 		Set<GridPosition> hidden,
 		Set<GridPosition> clear
 	) implements CoverPositionPlanner.Probe {
 		@Override
-		public boolean isStandable(final GridPosition position) {
-			return this.standable.contains(position);
+		public boolean isStandable(final int x, final int y, final int z) {
+			return this.standable.contains(new GridPosition(x, y, z));
 		}
 
 		@Override
-		public boolean isHidden(final GridPosition position) {
-			return this.hidden.contains(position);
+		public boolean isHidden(final int x, final int y, final int z) {
+			return this.hidden.contains(new GridPosition(x, y, z));
 		}
 
 		@Override
-		public boolean hasClearShot(final GridPosition position) {
-			return this.clear.contains(position);
+		public boolean hasClearShot(final int x, final int y, final int z) {
+			return this.clear.contains(new GridPosition(x, y, z));
 		}
 	}
 }

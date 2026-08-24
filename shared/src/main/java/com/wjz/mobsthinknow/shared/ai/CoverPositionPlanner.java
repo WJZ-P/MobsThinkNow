@@ -43,7 +43,7 @@ public final class CoverPositionPlanner {
 		Objects.requireNonNull(limits, "limits");
 		Objects.requireNonNull(probe, "probe");
 		double preferredRange = validPreferredRange(configuredPreferredRange);
-		List<ScoredPlan> candidates = new ArrayList<>();
+		List<Plan> candidates = new ArrayList<>();
 		int rawChecks = 0;
 		int directionOffset = Math.floorMod(stableRotation, HORIZONTAL_DIRECTIONS.length);
 
@@ -52,41 +52,59 @@ public final class CoverPositionPlanner {
 				break;
 			}
 			rawChecks++;
-			GridPosition hide = origin.offset(offset.x(), offset.y(), offset.z());
-			if (!probe.isStandable(hide)
-				|| !isUsefulRange(hide.center().distanceSquared(targetPosition), preferredRange, limits)
-				|| !probe.isHidden(hide)) {
+			int hideX = origin.x() + offset.x();
+			int hideY = origin.y() + offset.y();
+			int hideZ = origin.z() + offset.z();
+			if (!probe.isStandable(hideX, hideY, hideZ)
+				|| !isUsefulRange(centerDistanceSquared(hideX, hideY, hideZ, targetPosition), preferredRange, limits)
+				|| !probe.isHidden(hideX, hideY, hideZ)) {
 				continue;
 			}
 
-			Plan bestAtHide = null;
 			double bestScore = Double.POSITIVE_INFINITY;
+			int bestPeekX = 0;
+			int bestPeekZ = 0;
 			for (int index = 0; index < HORIZONTAL_DIRECTIONS.length; index++) {
 				Direction direction = HORIZONTAL_DIRECTIONS[
 					(index + directionOffset) % HORIZONTAL_DIRECTIONS.length
 				];
-				GridPosition peek = hide.offset(direction.x(), 0, direction.z());
-				if (!probe.isStandable(peek)
-					|| !isUsefulRange(peek.center().distanceSquared(targetPosition), preferredRange, limits)
-					|| !probe.hasClearShot(peek)) {
+				int peekX = hideX + direction.x();
+				int peekZ = hideZ + direction.z();
+				if (!probe.isStandable(peekX, hideY, peekZ)
+					|| !isUsefulRange(centerDistanceSquared(peekX, hideY, peekZ, targetPosition), preferredRange, limits)
+					|| !probe.hasClearShot(peekX, hideY, peekZ)) {
 					continue;
 				}
-				double score = score(actorPosition, targetPosition, hide, peek, preferredRange);
+				double score = score(
+					actorPosition,
+					targetPosition,
+					hideX,
+					hideY,
+					hideZ,
+					peekX,
+					peekZ,
+					preferredRange
+				);
 				if (score < bestScore) {
 					bestScore = score;
-					bestAtHide = new Plan(hide, peek, score);
+					bestPeekX = peekX;
+					bestPeekZ = peekZ;
 				}
 			}
-			if (bestAtHide != null) {
-				candidates.add(new ScoredPlan(bestAtHide));
+			if (Double.isFinite(bestScore)) {
+				candidates.add(new Plan(
+					new GridPosition(hideX, hideY, hideZ),
+					new GridPosition(bestPeekX, hideY, bestPeekZ),
+					bestScore
+				));
 			}
 		}
 
-		candidates.sort(Comparator.comparingDouble(candidate -> candidate.plan().score()));
+		candidates.sort(Comparator.comparingDouble(Plan::score));
 		int resultSize = Math.min(limits.maximumPlans(), candidates.size());
 		List<Plan> plans = new ArrayList<>(resultSize);
 		for (int index = 0; index < resultSize; index++) {
-			plans.add(candidates.get(index).plan());
+			plans.add(candidates.get(index));
 		}
 		return new SearchResult(plans, rawChecks);
 	}
@@ -118,10 +136,16 @@ public final class CoverPositionPlanner {
 		Objects.requireNonNull(hide, "hide");
 		Objects.requireNonNull(peek, "peek");
 		double preferredRange = validPreferredRange(configuredPreferredRange);
-		double travelCost = hide.center().distanceSquared(actorPosition);
-		double peekRangeError = Math.sqrt(peek.center().distanceSquared(targetPosition)) - preferredRange;
-		double verticalCost = Math.abs(hide.y() - actorPosition.y()) * 2.0;
-		return travelCost + peekRangeError * peekRangeError * 1.5 + verticalCost;
+		return score(
+			actorPosition,
+			targetPosition,
+			hide.x(),
+			hide.y(),
+			hide.z(),
+			peek.x(),
+			peek.z(),
+			preferredRange
+		);
 	}
 
 	private static List<Offset> offsetsFor(final SearchLimits limits) {
@@ -156,14 +180,26 @@ public final class CoverPositionPlanner {
 
 	@FunctionalInterface
 	public interface Probe {
-		boolean isStandable(GridPosition position);
+		boolean isStandable(int x, int y, int z);
+
+		default boolean isStandable(final GridPosition position) {
+			return this.isStandable(position.x(), position.y(), position.z());
+		}
+
+		default boolean isHidden(final int x, final int y, final int z) {
+			return false;
+		}
 
 		default boolean isHidden(final GridPosition position) {
+			return this.isHidden(position.x(), position.y(), position.z());
+		}
+
+		default boolean hasClearShot(final int x, final int y, final int z) {
 			return false;
 		}
 
 		default boolean hasClearShot(final GridPosition position) {
-			return false;
+			return this.hasClearShot(position.x(), position.y(), position.z());
 		}
 	}
 
@@ -227,6 +263,36 @@ public final class CoverPositionPlanner {
 		return Double.isFinite(value) ? Math.clamp(value, minimum, maximum) : fallback;
 	}
 
+	private static double centerDistanceSquared(
+		final int x,
+		final int y,
+		final int z,
+		final Vec3d point
+	) {
+		double deltaX = x + 0.5 - point.x();
+		double deltaY = y - point.y();
+		double deltaZ = z + 0.5 - point.z();
+		return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+	}
+
+	private static double score(
+		final Vec3d actorPosition,
+		final Vec3d targetPosition,
+		final int hideX,
+		final int hideY,
+		final int hideZ,
+		final int peekX,
+		final int peekZ,
+		final double preferredRange
+	) {
+		double travelCost = centerDistanceSquared(hideX, hideY, hideZ, actorPosition);
+		double peekRangeError = Math.sqrt(
+			centerDistanceSquared(peekX, hideY, peekZ, targetPosition)
+		) - preferredRange;
+		double verticalCost = Math.abs(hideY - actorPosition.y()) * 2.0;
+		return travelCost + peekRangeError * peekRangeError * 1.5 + verticalCost;
+	}
+
 	private record Direction(int x, int z) {
 	}
 
@@ -236,6 +302,4 @@ public final class CoverPositionPlanner {
 	private record OffsetShape(int horizontalRadius, int verticalRadius) {
 	}
 
-	private record ScoredPlan(Plan plan) {
-	}
 }

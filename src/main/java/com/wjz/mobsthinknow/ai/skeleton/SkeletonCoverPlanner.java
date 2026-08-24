@@ -52,18 +52,18 @@ public final class SkeletonCoverPlanner {
 			SEARCH_LIMITS,
 			new CoverPositionPlanner.Probe() {
 				@Override
-				public boolean isStandable(final GridPosition position) {
-					return SkeletonCoverPlanner.isStandable(skeleton, toBlockPos(position));
+				public boolean isStandable(final int x, final int y, final int z) {
+					return SkeletonCoverPlanner.isStandable(skeleton, new BlockPos(x, y, z));
 				}
 
 				@Override
-				public boolean isHidden(final GridPosition position) {
-					return SkeletonCoverPlanner.isHiddenFromTarget(skeleton, target, toBlockPos(position));
+				public boolean isHidden(final int x, final int y, final int z) {
+					return SkeletonCoverPlanner.isHiddenFromTarget(skeleton, target, new BlockPos(x, y, z));
 				}
 
 				@Override
-				public boolean hasClearShot(final GridPosition position) {
-					return SkeletonCoverPlanner.hasClearShotFrom(skeleton, target, toBlockPos(position));
+				public boolean hasClearShot(final int x, final int y, final int z) {
+					return SkeletonCoverPlanner.hasClearShotFrom(skeleton, target, new BlockPos(x, y, z));
 				}
 			}
 		);
