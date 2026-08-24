@@ -3,6 +3,7 @@ package com.wjz.mobsthinknow.paper.ai;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,9 +36,9 @@ final class PaperProjectileThreatBoardTest {
 	@Test
 	void linkedArrowBucketPreservesOrderAcrossRemovalAndReentry() {
 		PaperProjectileThreatBoard.ArrowBucket bucket = new PaperProjectileThreatBoard.ArrowBucket();
-		var first = new PaperProjectileThreatBoard.TrackedArrow(null, UUID.randomUUID(), 1L);
-		var moving = new PaperProjectileThreatBoard.TrackedArrow(null, UUID.randomUUID(), 1L);
-		var last = new PaperProjectileThreatBoard.TrackedArrow(null, UUID.randomUUID(), 1L);
+		var first = trackedArrow();
+		var moving = trackedArrow();
+		var last = trackedArrow();
 		bucket.add(first);
 		bucket.add(moving);
 		bucket.add(last);
@@ -56,5 +57,38 @@ final class PaperProjectileThreatBoardTest {
 		bucket.remove(last);
 		bucket.remove(moving);
 		assertTrue(bucket.isEmpty());
+	}
+
+	@Test
+	void globalArrowChainPreservesOldestOrderAcrossRemovalAndReentry() {
+		PaperProjectileThreatBoard.TrackedArrowChain chain = new PaperProjectileThreatBoard.TrackedArrowChain();
+		var first = trackedArrow();
+		var moving = trackedArrow();
+		var last = trackedArrow();
+		chain.add(first);
+		chain.add(moving);
+		chain.add(last);
+		assertEquals(3, chain.size());
+		assertSame(first, chain.first());
+
+		chain.remove(first);
+		assertSame(moving, chain.first());
+		chain.remove(moving);
+		chain.add(moving);
+		assertSame(last, chain.first());
+		assertEquals(2, chain.size());
+
+		chain.clear();
+		assertEquals(0, chain.size());
+		assertNull(chain.first());
+	}
+
+	private static PaperProjectileThreatBoard.TrackedArrow trackedArrow() {
+		return new PaperProjectileThreatBoard.TrackedArrow(
+			UUID.randomUUID(),
+			null,
+			UUID.randomUUID(),
+			1L
+		);
 	}
 }

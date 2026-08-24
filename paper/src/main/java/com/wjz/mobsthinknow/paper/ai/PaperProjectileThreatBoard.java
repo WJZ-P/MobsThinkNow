@@ -6,8 +6,6 @@ import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner;
 import com.wjz.mobsthinknow.shared.ai.ProjectileEvasionPlanner.ReactionProfile;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -37,7 +35,8 @@ public final class PaperProjectileThreatBoard {
 	private final BooleanSupplier globallyEnabled;
 	private final Supplier<PaperProjectileEvasionSettings> settings;
 	private final PaperMetrics metrics;
-	private final LinkedHashMap<UUID, TrackedArrow> tracked = new LinkedHashMap<>();
+	private final Map<UUID, TrackedArrow> tracked = new HashMap<>();
+	private final TrackedArrowChain trackedOrder = new TrackedArrowChain();
 	private final Map<UUID, Long2ObjectOpenHashMap<ArrowBucket>> cellsByWorld = new HashMap<>();
 	private Plugin plugin;
 	private BukkitTask task;
@@ -71,6 +70,7 @@ public final class PaperProjectileThreatBoard {
 
 	public void clear() {
 		this.tracked.clear();
+		this.trackedOrder.clear();
 		this.cellsByWorld.clear();
 	}
 
@@ -82,8 +82,11 @@ public final class PaperProjectileThreatBoard {
 			return;
 		}
 		while (this.tracked.size() > config.maximumTrackedProjectiles()) {
-			UUID oldest = this.tracked.keySet().iterator().next();
-			this.remove(oldest);
+			TrackedArrow oldest = this.trackedOrder.first();
+			if (oldest == null) {
+				break;
+			}
+			this.remove(oldest.id);
 		}
 		this.trackLoadedArrows();
 		this.startTask();
@@ -231,8 +234,10 @@ public final class PaperProjectileThreatBoard {
 			return;
 		}
 		long cell = packedCell(arrow.getX(), arrow.getY(), arrow.getZ());
-		TrackedArrow entry = new TrackedArrow(arrow, arrow.getWorld().getUID(), cell);
-		this.tracked.put(arrow.getUniqueId(), entry);
+		UUID id = arrow.getUniqueId();
+		TrackedArrow entry = new TrackedArrow(id, arrow, arrow.getWorld().getUID(), cell);
+		this.tracked.put(id, entry);
+		this.trackedOrder.add(entry);
 		this.bucket(entry.worldId(), cell).add(entry);
 	}
 
@@ -243,25 +248,23 @@ public final class PaperProjectileThreatBoard {
 			}
 			return;
 		}
-		Iterator<Map.Entry<UUID, TrackedArrow>> iterator = this.tracked.entrySet().iterator();
-		while (iterator.hasNext()) {
-			Map.Entry<UUID, TrackedArrow> mapEntry = iterator.next();
-			TrackedArrow entry = mapEntry.getValue();
+		TrackedArrow entry = this.trackedOrder.first();
+		while (entry != null) {
+			TrackedArrow next = entry.trackedNext;
 			AbstractArrow arrow = entry.arrow();
 			if (!arrow.isValid() || arrow.isDead() || arrow.isInBlock()) {
-				this.removeFromBucket(entry);
-				iterator.remove();
-				continue;
+				this.remove(entry.id);
+			} else {
+				UUID worldId = arrow.getWorld().getUID();
+				long nextCell = packedCell(arrow.getX(), arrow.getY(), arrow.getZ());
+				if (!worldId.equals(entry.worldId()) || nextCell != entry.cell()) {
+					this.removeFromBucket(entry);
+					entry.worldId = worldId;
+					entry.cell = nextCell;
+					this.bucket(worldId, nextCell).add(entry);
+				}
 			}
-			UUID worldId = arrow.getWorld().getUID();
-			long nextCell = packedCell(arrow.getX(), arrow.getY(), arrow.getZ());
-			if (worldId.equals(entry.worldId()) && nextCell == entry.cell()) {
-				continue;
-			}
-			this.removeFromBucket(entry);
-			entry.worldId = worldId;
-			entry.cell = nextCell;
-			this.bucket(worldId, nextCell).add(entry);
+			entry = next;
 		}
 	}
 
@@ -269,6 +272,7 @@ public final class PaperProjectileThreatBoard {
 		TrackedArrow removed = this.tracked.remove(id);
 		if (removed != null) {
 			this.removeFromBucket(removed);
+			this.trackedOrder.remove(removed);
 		}
 	}
 
@@ -312,6 +316,7 @@ public final class PaperProjectileThreatBoard {
 	}
 
 	static final class TrackedArrow {
+		private final UUID id;
 		private final AbstractArrow arrow;
 		private UUID worldId;
 		private long cell;
@@ -321,8 +326,11 @@ public final class PaperProjectileThreatBoard {
 		private double velocityZ;
 		private TrackedArrow bucketPrevious;
 		private TrackedArrow bucketNext;
+		private TrackedArrow trackedPrevious;
+		private TrackedArrow trackedNext;
 
-		TrackedArrow(final AbstractArrow arrow, final UUID worldId, final long cell) {
+		TrackedArrow(final UUID id, final AbstractArrow arrow, final UUID worldId, final long cell) {
+			this.id = id;
 			this.arrow = arrow;
 			this.worldId = worldId;
 			this.cell = cell;
@@ -353,6 +361,54 @@ public final class PaperProjectileThreatBoard {
 			this.velocityY = velocity.getY();
 			this.velocityZ = velocity.getZ();
 			this.velocityTick = now;
+		}
+	}
+
+	static final class TrackedArrowChain {
+		private TrackedArrow first;
+		private TrackedArrow last;
+		private int size;
+
+		void add(final TrackedArrow entry) {
+			entry.trackedPrevious = this.last;
+			entry.trackedNext = null;
+			if (this.last == null) {
+				this.first = entry;
+			} else {
+				this.last.trackedNext = entry;
+			}
+			this.last = entry;
+			this.size++;
+		}
+
+		void remove(final TrackedArrow entry) {
+			if (entry.trackedPrevious == null) {
+				this.first = entry.trackedNext;
+			} else {
+				entry.trackedPrevious.trackedNext = entry.trackedNext;
+			}
+			if (entry.trackedNext == null) {
+				this.last = entry.trackedPrevious;
+			} else {
+				entry.trackedNext.trackedPrevious = entry.trackedPrevious;
+			}
+			entry.trackedPrevious = null;
+			entry.trackedNext = null;
+			this.size--;
+		}
+
+		void clear() {
+			this.first = null;
+			this.last = null;
+			this.size = 0;
+		}
+
+		TrackedArrow first() {
+			return this.first;
+		}
+
+		int size() {
+			return this.size;
 		}
 	}
 

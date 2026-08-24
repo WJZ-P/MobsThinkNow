@@ -98,7 +98,8 @@ MobsThinkNow/
   有限性检查均为固定标量，平台先算一次最近 tick，再把它传给安全半径判定，不产生 varargs 数组或重复投影；
 - Paper 不让每只骷髅调用全世界实体扫描。`PaperProjectileThreatBoard` 通过实体装载/移除事件登记箭，全服
   唯一主线程任务每 tick 更新最多 `maximum-tracked-projectiles`（默认 256）枚箭的 12 格三维桶。三轴桶坐标
-  压入 fastutil primitive-long 键；`TrackedArrow` 自身作为桶内双向节点，每次感知只访问中心及相邻 26 桶，
+  压入 fastutil primitive-long 键；`TrackedArrow` 自身同时作为全局顺序链与桶内双向节点，tick 和容量裁剪
+  直接沿节点移动，每次感知只访问中心及相邻 26 桶，
   不创建 27 个临时键、Set 迭代器或 UUID 二次查表，并在
   `maximum-candidate-checks`（默认 24）个原始候选后硬停止。同一箭的速度在该 tick 首次查询时缓存为
   三个 primitive 标量，骷髅中心直接由 XYZ/高度计算，因此多个感知者不重复创建 Vector/BoundingBox；
