@@ -131,8 +131,8 @@ MobsThinkNow/
   确定性释放时隙；同翼个体再按稳定序号加入小抖动，避免所有箭在同一 tick 生成；
 - 每次蓄力前和真正放箭前，`FiringLanePlanner` 都把射手眼睛到目标眼睛视为线段，并只检查当前小队至多
   20 个友军胶囊。命中胶囊时取消蓄力，沿职责对应一侧横移并略微后撤；计算量受
-  `maximum-lane-checks` 硬限制，不查询全世界实体；检查数相同的清晰结果复用预建不可变实例，受阻结果
-  仍独立携带最近 blocker；
+  `maximum-lane-checks` 硬限制，不查询全世界实体；平台 Goal 复用 UUID/primitive 坐标缓冲，不逐成员创建
+  ally 快照对象；检查数相同的清晰结果复用预建不可变实例，受阻结果仍独立携带最近 blocker；
 - 自定义 Goal 只在交叉火力方案、交战阶段和左右射手职责同时成立时，以优先级 2 暂时接管 `MOVE/LOOK`。
   骷髅被贴身时优先级 1 的紧急脱离仍先执行；离队、换方案或关闭配置后原版弓/弩 Goal 自动恢复；
 - 弓箭最终调用 Paper 公开 `RangedEntity#rangedAttack`。持弩骷髅则使用共享 `CrossbowCombatPlanner` 的

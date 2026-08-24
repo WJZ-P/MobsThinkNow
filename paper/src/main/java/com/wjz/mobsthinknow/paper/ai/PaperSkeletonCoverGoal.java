@@ -58,7 +58,7 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 	private final PaperMetrics metrics;
 	private final int stableOrder;
 	private final List<Mob> squadmateBuffer = new ArrayList<>();
-	private final List<FiringLanePlanner.Ally<UUID>> friendlyLaneAllies = new ArrayList<>();
+	private final FiringLanePlanner.AllyBuffer<UUID> friendlyLaneAllies = new FiringLanePlanner.AllyBuffer<>();
 
 	private LivingEntity target;
 	private Plan plan;
@@ -445,13 +445,13 @@ public final class PaperSkeletonCoverGoal implements Goal<AbstractSkeleton> {
 		this.friendlyLaneAllies.clear();
 		for (int index = 0; index < this.squadmateBuffer.size(); index++) {
 			Mob ally = this.squadmateBuffer.get(index);
-			this.friendlyLaneAllies.add(new FiringLanePlanner.Ally<>(
+			this.friendlyLaneAllies.add(
 				ally.getUniqueId(),
 				ally.getX(),
 				ally.getY() + ally.getHeight() * 0.55,
 				ally.getZ(),
 				Math.max(config.skeletonFriendlyLaneRadius(), ally.getWidth() * 0.65)
-			));
+			);
 		}
 		this.squadmateBuffer.clear();
 		var result = FiringLanePlanner.check(

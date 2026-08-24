@@ -167,6 +167,27 @@ class FiringLanePlannerTest {
 		);
 	}
 
+	@Test
+	void reusableAllyBufferMatchesListAndCanBeRefilled() {
+		Vec3d origin = Vec3d.ZERO;
+		Vec3d target = new Vec3d(0.0, 0.0, 10.0);
+		List<FiringLanePlanner.Ally<String>> allies = List.of(
+			new FiringLanePlanner.Ally<>("clear", 3.0, 0.0, 2.0, 0.5),
+			new FiringLanePlanner.Ally<>("block", 0.0, 0.0, 5.0, 0.5)
+		);
+		FiringLanePlanner.AllyBuffer<String> buffer = new FiringLanePlanner.AllyBuffer<>();
+		for (FiringLanePlanner.Ally<String> ally : allies) {
+			buffer.add(ally.id(), ally.x(), ally.y(), ally.z(), ally.radius());
+		}
+		assertEquals(FiringLanePlanner.check(origin, target, allies, 4),
+			FiringLanePlanner.check(origin, target, buffer, 4));
+
+		buffer.clear();
+		buffer.add("refilled", 4.0, 0.0, 6.0, 0.5);
+		assertEquals(1, buffer.size());
+		assertTrue(FiringLanePlanner.check(origin, target, buffer, 4).clear());
+	}
+
 	private static void assertVectorEquals(final Vec3d expected, final Vec3d actual) {
 		assertEquals(expected.x(), actual.x(), 1.0E-12);
 		assertEquals(expected.y(), actual.y(), 1.0E-12);

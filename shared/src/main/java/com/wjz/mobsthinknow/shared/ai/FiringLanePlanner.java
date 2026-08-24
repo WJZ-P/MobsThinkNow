@@ -1,6 +1,7 @@
 package com.wjz.mobsthinknow.shared.ai;
 
 import com.wjz.mobsthinknow.shared.math.Vec3d;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -70,6 +71,61 @@ public final class FiringLanePlanner {
 		return blocker == null ? clearResult(checks) : new Result<>(false, blocker, checks);
 	}
 
+	/** Allocation-free hot-path overload for platform adapters that retain one buffer per goal instance. */
+	public static <K> Result<K> check(
+		final Vec3d origin,
+		final Vec3d target,
+		final AllyBuffer<K> allies,
+		final int maximumChecks
+	) {
+		Objects.requireNonNull(origin, "origin");
+		Objects.requireNonNull(target, "target");
+		Objects.requireNonNull(allies, "allies");
+		int limit = Math.max(0, maximumChecks);
+		double segmentX = target.x() - origin.x();
+		double segmentY = target.y() - origin.y();
+		double segmentZ = target.z() - origin.z();
+		double lengthSquared = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
+		if (lengthSquared < 1.0E-9 || limit == 0) {
+			return clearResult(0);
+		}
+
+		K blocker = null;
+		double nearestProjection = Double.POSITIVE_INFINITY;
+		int checks = 0;
+		for (int index = 0; index < allies.size && checks < limit; index++) {
+			int offset = index * AllyBuffer.VALUE_STRIDE;
+			double allyX = allies.values[offset];
+			double allyY = allies.values[offset + 1];
+			double allyZ = allies.values[offset + 2];
+			double radius = allies.values[offset + 3];
+			checks++;
+			double relativeX = allyX - origin.x();
+			double relativeY = allyY - origin.y();
+			double relativeZ = allyZ - origin.z();
+			double projection = (
+				relativeX * segmentX + relativeY * segmentY + relativeZ * segmentZ
+			) / lengthSquared;
+			if (projection <= ENDPOINT_MARGIN || projection >= 1.0 - ENDPOINT_MARGIN) {
+				continue;
+			}
+			double closestX = origin.x() + segmentX * projection;
+			double closestY = origin.y() + segmentY * projection;
+			double closestZ = origin.z() + segmentZ * projection;
+			double separationX = closestX - allyX;
+			double separationY = closestY - allyY;
+			double separationZ = closestZ - allyZ;
+			double separationSquared = separationX * separationX
+				+ separationY * separationY
+				+ separationZ * separationZ;
+			if (separationSquared <= radius * radius && projection < nearestProjection) {
+				blocker = allies.idAt(index);
+				nearestProjection = projection;
+			}
+		}
+		return blocker == null ? clearResult(checks) : new Result<>(false, blocker, checks);
+	}
+
 	private static Result<?>[] createClearResults() {
 		Result<?>[] results = new Result<?>[MAXIMUM_CACHED_CLEAR_CHECKS + 1];
 		for (int checks = 0; checks < results.length; checks++) {
@@ -130,6 +186,53 @@ public final class FiringLanePlanner {
 
 		public Vec3d position() {
 			return new Vec3d(this.x, this.y, this.z);
+		}
+	}
+
+	public static final class AllyBuffer<K> {
+		private static final int INITIAL_CAPACITY = 8;
+		private static final int VALUE_STRIDE = 4;
+
+		private Object[] ids = new Object[INITIAL_CAPACITY];
+		private double[] values = new double[INITIAL_CAPACITY * VALUE_STRIDE];
+		private int size;
+
+		public void add(final K id, final double x, final double y, final double z, final double radius) {
+			Objects.requireNonNull(id, "id");
+			if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
+				throw new IllegalArgumentException("ally position must be finite");
+			}
+			this.ensureCapacity(this.size + 1);
+			this.ids[this.size] = id;
+			int offset = this.size * VALUE_STRIDE;
+			this.values[offset] = x;
+			this.values[offset + 1] = y;
+			this.values[offset + 2] = z;
+			this.values[offset + 3] = Double.isFinite(radius) ? Math.clamp(radius, 0.05, 4.0) : 0.75;
+			this.size++;
+		}
+
+		public void clear() {
+			Arrays.fill(this.ids, 0, this.size, null);
+			this.size = 0;
+		}
+
+		public int size() {
+			return this.size;
+		}
+
+		@SuppressWarnings("unchecked")
+		private K idAt(final int index) {
+			return (K)this.ids[index];
+		}
+
+		private void ensureCapacity(final int required) {
+			if (required <= this.ids.length) {
+				return;
+			}
+			int capacity = Math.max(required, this.ids.length * 2);
+			this.ids = Arrays.copyOf(this.ids, capacity);
+			this.values = Arrays.copyOf(this.values, capacity * VALUE_STRIDE);
 		}
 	}
 

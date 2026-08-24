@@ -54,7 +54,7 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 	private final PaperMetrics metrics;
 	private final int stableOrder;
 	private final List<Mob> squadmateBuffer = new ArrayList<>();
-	private final List<FiringLanePlanner.Ally<UUID>> firingLaneAllies = new ArrayList<>();
+	private final FiringLanePlanner.AllyBuffer<UUID> firingLaneAllies = new FiringLanePlanner.AllyBuffer<>();
 	private final List<CrossbowCombatPlanner.BlastAlly<UUID>> blastAllies = new ArrayList<>();
 
 	private long nextReleaseAt;
@@ -264,13 +264,13 @@ public final class PaperSquadRangedGoal implements Goal<AbstractSkeleton> {
 		for (int index = 0; index < this.squadmateBuffer.size(); index++) {
 			Mob ally = this.squadmateBuffer.get(index);
 			double radius = Math.max(config.skeletonFriendlyLaneRadius(), ally.getWidth() * 0.65);
-			this.firingLaneAllies.add(new FiringLanePlanner.Ally<>(
+			this.firingLaneAllies.add(
 				ally.getUniqueId(),
 				ally.getX(),
 				ally.getY() + ally.getHeight() * 0.55,
 				ally.getZ(),
-					radius
-			));
+				radius
+			);
 		}
 		this.squadmateBuffer.clear();
 		this.cachedLane = FiringLanePlanner.check(
