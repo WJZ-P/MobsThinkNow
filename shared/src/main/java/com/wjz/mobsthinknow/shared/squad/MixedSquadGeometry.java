@@ -54,12 +54,34 @@ public final class MixedSquadGeometry {
 		final int stableOrdinal,
 		final double rangedDistance
 	) {
-		double forwardX = targetLook.x();
-		double forwardZ = targetLook.z();
+		return combatPosition(
+			targetPosition,
+			targetLook.x(),
+			targetLook.z(),
+			fallbackDirection.x(),
+			fallbackDirection.z(),
+			role,
+			stableOrdinal,
+			rangedDistance
+		);
+	}
+
+	public static Vec3d combatPosition(
+		final Vec3d targetPosition,
+		final double targetLookX,
+		final double targetLookZ,
+		final double fallbackX,
+		final double fallbackZ,
+		final MixedSquadRole role,
+		final int stableOrdinal,
+		final double rangedDistance
+	) {
+		double forwardX = targetLookX;
+		double forwardZ = targetLookZ;
 		double lengthSquared = forwardX * forwardX + forwardZ * forwardZ;
 		if (lengthSquared < MINIMUM_HORIZONTAL_LENGTH_SQUARED) {
-			forwardX = fallbackDirection.x();
-			forwardZ = fallbackDirection.z();
+			forwardX = fallbackX;
+			forwardZ = fallbackZ;
 			lengthSquared = forwardX * forwardX + forwardZ * forwardZ;
 		}
 		if (lengthSquared < MINIMUM_HORIZONTAL_LENGTH_SQUARED) {

@@ -58,6 +58,27 @@ class MixedSquadGeometryTest {
 		}
 	}
 
+	@Test
+	void primitiveCombatDirectionMatchesTheVectorEntryPoint() {
+		Vec3d target = new Vec3d(7.0, 64.0, -3.0);
+		Vec3d look = new Vec3d(-0.4, 0.8, 0.6);
+		Vec3d fallback = new Vec3d(2.0, 0.0, 5.0);
+		for (MixedSquadRole role : MixedSquadRole.values()) {
+			Vec3d vector = MixedSquadGeometry.combatPosition(target, look, fallback, role, 7, 10.0);
+			Vec3d primitive = MixedSquadGeometry.combatPosition(
+				target,
+				look.x(),
+				look.z(),
+				fallback.x(),
+				fallback.z(),
+				role,
+				7,
+				10.0
+			);
+			assertVectorEquals(vector, primitive);
+		}
+	}
+
 	private static Vec3d legacyRallyPosition(
 		final Vec3d leader,
 		final Vec3d target,

@@ -685,8 +685,10 @@ public final class PaperSquadCoordinator {
 		if (squad.state == MixedSquadState.DEPLOYING || squad.state == MixedSquadState.ENGAGING) {
 			return MixedSquadGeometry.combatPosition(
 				geometry.focus(),
-				geometry.targetLook(),
-				geometry.targetFromLeader(),
+				geometry.targetLookX(),
+				geometry.targetLookZ(),
+				geometry.targetFromLeaderX(),
+				geometry.targetFromLeaderZ(),
 				role,
 				member.stableOrder,
 				10.0
@@ -713,11 +715,24 @@ public final class PaperSquadCoordinator {
 		Vec3d focus = target != null && target.isValid() ? positionOf(target) : squad.lastTargetPosition;
 		Vec3d leaderPosition = positionOf(leader.mob);
 		boolean combat = squad.state == MixedSquadState.DEPLOYING || squad.state == MixedSquadState.ENGAGING;
-		Vec3d targetFromLeader = combat ? focus.subtract(leaderPosition) : Vec3d.ZERO;
-		Vec3d targetLook = combat
-			? (target == null ? targetFromLeader : horizontalLook(target))
-			: Vec3d.ZERO;
-		SquadGeometry geometry = new SquadGeometry(focus, leaderPosition, targetFromLeader, targetLook);
+		double targetFromLeaderX = combat ? focus.x() - leaderPosition.x() : 0.0;
+		double targetFromLeaderZ = combat ? focus.z() - leaderPosition.z() : 0.0;
+		double targetLookX = targetFromLeaderX;
+		double targetLookZ = targetFromLeaderZ;
+		if (combat && target != null) {
+			double yaw = Math.toRadians(target.getYaw());
+			double horizontalScale = Math.cos(Math.toRadians(target.getPitch()));
+			targetLookX = -horizontalScale * Math.sin(yaw);
+			targetLookZ = horizontalScale * Math.cos(yaw);
+		}
+		SquadGeometry geometry = new SquadGeometry(
+			focus,
+			leaderPosition,
+			targetFromLeaderX,
+			targetFromLeaderZ,
+			targetLookX,
+			targetLookZ
+		);
 		squad.cachedGeometry = geometry;
 		squad.geometryCachedAt = now;
 		squad.cachedGeometryRevision = squad.directiveRevision;
@@ -863,16 +878,6 @@ public final class PaperSquadCoordinator {
 		return new Vec3d(entity.getX(), entity.getY(), entity.getZ());
 	}
 
-	private static Vec3d horizontalLook(final Entity entity) {
-		double yaw = Math.toRadians(entity.getYaw());
-		double horizontalScale = Math.cos(Math.toRadians(entity.getPitch()));
-		return new Vec3d(
-			-horizontalScale * Math.sin(yaw),
-			0.0,
-			horizontalScale * Math.cos(yaw)
-		);
-	}
-
 	private static double distanceSquared(final Entity first, final Entity second) {
 		double x = first.getX() - second.getX();
 		double y = first.getY() - second.getY();
@@ -954,8 +959,10 @@ public final class PaperSquadCoordinator {
 	private record SquadGeometry(
 		Vec3d focus,
 		Vec3d leaderPosition,
-		Vec3d targetFromLeader,
-		Vec3d targetLook
+		double targetFromLeaderX,
+		double targetFromLeaderZ,
+		double targetLookX,
+		double targetLookZ
 	) {
 	}
 
