@@ -1,10 +1,14 @@
 package com.wjz.mobsthinknow.paper.ai;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 final class PaperProjectileThreatBoardTest {
@@ -26,5 +30,31 @@ final class PaperProjectileThreatBoardTest {
 			PaperProjectileThreatBoard.packedCell(-1, 0, 0),
 			PaperProjectileThreatBoard.packedCell(0, 0, 0)
 		);
+	}
+
+	@Test
+	void linkedArrowBucketPreservesOrderAcrossRemovalAndReentry() {
+		PaperProjectileThreatBoard.ArrowBucket bucket = new PaperProjectileThreatBoard.ArrowBucket();
+		var first = new PaperProjectileThreatBoard.TrackedArrow(null, UUID.randomUUID(), 1L);
+		var moving = new PaperProjectileThreatBoard.TrackedArrow(null, UUID.randomUUID(), 1L);
+		var last = new PaperProjectileThreatBoard.TrackedArrow(null, UUID.randomUUID(), 1L);
+		bucket.add(first);
+		bucket.add(moving);
+		bucket.add(last);
+		assertEquals(3, bucket.size());
+		assertSame(first, bucket.first());
+		assertSame(moving, first.bucketNext());
+
+		bucket.remove(moving);
+		assertEquals(2, bucket.size());
+		assertSame(last, first.bucketNext());
+		assertFalse(bucket.isEmpty());
+		bucket.add(moving);
+		assertSame(moving, last.bucketNext());
+
+		bucket.remove(first);
+		bucket.remove(last);
+		bucket.remove(moving);
+		assertTrue(bucket.isEmpty());
 	}
 }

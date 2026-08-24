@@ -8,7 +8,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -39,7 +38,7 @@ public final class PaperProjectileThreatBoard {
 	private final Supplier<PaperProjectileEvasionSettings> settings;
 	private final PaperMetrics metrics;
 	private final LinkedHashMap<UUID, TrackedArrow> tracked = new LinkedHashMap<>();
-	private final Map<UUID, Long2ObjectOpenHashMap<LinkedHashSet<UUID>>> cellsByWorld = new HashMap<>();
+	private final Map<UUID, Long2ObjectOpenHashMap<ArrowBucket>> cellsByWorld = new HashMap<>();
 	private Plugin plugin;
 	private BukkitTask task;
 
@@ -119,7 +118,7 @@ public final class PaperProjectileThreatBoard {
 		int centerCellX = cell(centerX);
 		int centerCellY = cell(centerY);
 		int centerCellZ = cell(centerZ);
-		Long2ObjectOpenHashMap<LinkedHashSet<UUID>> worldCells = this.cellsByWorld.get(
+		Long2ObjectOpenHashMap<ArrowBucket> worldCells = this.cellsByWorld.get(
 			skeleton.getWorld().getUID()
 		);
 		if (worldCells == null) {
@@ -134,20 +133,18 @@ public final class PaperProjectileThreatBoard {
 		for (int dy = -1; dy <= 1; dy++) {
 			for (int dz = -1; dz <= 1; dz++) {
 				for (int dx = -1; dx <= 1; dx++) {
-					LinkedHashSet<UUID> bucket = worldCells.get(
+					ArrowBucket bucket = worldCells.get(
 						packedCell(centerCellX + dx, centerCellY + dy, centerCellZ + dz)
 					);
 					if (bucket == null) {
 						continue;
 					}
-					for (UUID id : bucket) {
+					for (TrackedArrow entry = bucket.first(); entry != null; entry = entry.bucketNext()) {
 						if (checks >= maximumChecks) {
 							break outer;
 						}
 						checks++;
-						TrackedArrow entry = this.tracked.get(id);
-						if (entry == null
-							|| !entry.arrow().isValid()
+						if (!entry.arrow().isValid()
 							|| entry.arrow().isInBlock()
 							|| shotBy(entry.arrow(), skeleton)) {
 							continue;
@@ -236,7 +233,7 @@ public final class PaperProjectileThreatBoard {
 		long cell = packedCell(arrow.getX(), arrow.getY(), arrow.getZ());
 		TrackedArrow entry = new TrackedArrow(arrow, arrow.getWorld().getUID(), cell);
 		this.tracked.put(arrow.getUniqueId(), entry);
-		this.bucket(entry.worldId(), cell).add(arrow.getUniqueId());
+		this.bucket(entry.worldId(), cell).add(entry);
 	}
 
 	private void tick() {
@@ -252,7 +249,7 @@ public final class PaperProjectileThreatBoard {
 			TrackedArrow entry = mapEntry.getValue();
 			AbstractArrow arrow = entry.arrow();
 			if (!arrow.isValid() || arrow.isDead() || arrow.isInBlock()) {
-				this.removeFromBucket(mapEntry.getKey(), entry.worldId(), entry.cell());
+				this.removeFromBucket(entry);
 				iterator.remove();
 				continue;
 			}
@@ -261,44 +258,47 @@ public final class PaperProjectileThreatBoard {
 			if (worldId.equals(entry.worldId()) && nextCell == entry.cell()) {
 				continue;
 			}
-			this.removeFromBucket(mapEntry.getKey(), entry.worldId(), entry.cell());
-			this.bucket(worldId, nextCell).add(mapEntry.getKey());
+			this.removeFromBucket(entry);
 			entry.worldId = worldId;
 			entry.cell = nextCell;
+			this.bucket(worldId, nextCell).add(entry);
 		}
 	}
 
 	private void remove(final UUID id) {
 		TrackedArrow removed = this.tracked.remove(id);
 		if (removed != null) {
-			this.removeFromBucket(id, removed.worldId(), removed.cell());
+			this.removeFromBucket(removed);
 		}
 	}
 
-	private LinkedHashSet<UUID> bucket(final UUID worldId, final long cell) {
-		Long2ObjectOpenHashMap<LinkedHashSet<UUID>> worldCells = this.cellsByWorld.computeIfAbsent(
+	private ArrowBucket bucket(final UUID worldId, final long cell) {
+		Long2ObjectOpenHashMap<ArrowBucket> worldCells = this.cellsByWorld.computeIfAbsent(
 			worldId,
 			ignored -> new Long2ObjectOpenHashMap<>()
 		);
-		LinkedHashSet<UUID> bucket = worldCells.get(cell);
+		ArrowBucket bucket = worldCells.get(cell);
 		if (bucket == null) {
-			bucket = new LinkedHashSet<>();
+			bucket = new ArrowBucket();
 			worldCells.put(cell, bucket);
 		}
 		return bucket;
 	}
 
-	private void removeFromBucket(final UUID id, final UUID worldId, final long cell) {
-		Long2ObjectOpenHashMap<LinkedHashSet<UUID>> worldCells = this.cellsByWorld.get(worldId);
+	private void removeFromBucket(final TrackedArrow entry) {
+		Long2ObjectOpenHashMap<ArrowBucket> worldCells = this.cellsByWorld.get(entry.worldId);
 		if (worldCells == null) {
 			return;
 		}
-		LinkedHashSet<UUID> bucket = worldCells.get(cell);
-		if (bucket != null && bucket.remove(id) && bucket.isEmpty()) {
-			worldCells.remove(cell);
+		ArrowBucket bucket = worldCells.get(entry.cell);
+		if (bucket != null) {
+			bucket.remove(entry);
+			if (bucket.isEmpty()) {
+				worldCells.remove(entry.cell);
+			}
 		}
 		if (worldCells.isEmpty()) {
-			this.cellsByWorld.remove(worldId);
+			this.cellsByWorld.remove(entry.worldId);
 		}
 	}
 
@@ -311,7 +311,7 @@ public final class PaperProjectileThreatBoard {
 		return this.globallyEnabled.getAsBoolean() && this.settings.get().enabled();
 	}
 
-	private static final class TrackedArrow {
+	static final class TrackedArrow {
 		private final AbstractArrow arrow;
 		private UUID worldId;
 		private long cell;
@@ -319,8 +319,10 @@ public final class PaperProjectileThreatBoard {
 		private double velocityX;
 		private double velocityY;
 		private double velocityZ;
+		private TrackedArrow bucketPrevious;
+		private TrackedArrow bucketNext;
 
-		private TrackedArrow(final AbstractArrow arrow, final UUID worldId, final long cell) {
+		TrackedArrow(final AbstractArrow arrow, final UUID worldId, final long cell) {
 			this.arrow = arrow;
 			this.worldId = worldId;
 			this.cell = cell;
@@ -338,6 +340,10 @@ public final class PaperProjectileThreatBoard {
 			return this.cell;
 		}
 
+		TrackedArrow bucketNext() {
+			return this.bucketNext;
+		}
+
 		private void refreshVelocity(final long now) {
 			if (this.velocityTick == now) {
 				return;
@@ -347,6 +353,52 @@ public final class PaperProjectileThreatBoard {
 			this.velocityY = velocity.getY();
 			this.velocityZ = velocity.getZ();
 			this.velocityTick = now;
+		}
+	}
+
+	static final class ArrowBucket {
+		private TrackedArrow first;
+		private TrackedArrow last;
+		private int size;
+
+		void add(final TrackedArrow entry) {
+			entry.bucketPrevious = this.last;
+			entry.bucketNext = null;
+			if (this.last == null) {
+				this.first = entry;
+			} else {
+				this.last.bucketNext = entry;
+			}
+			this.last = entry;
+			this.size++;
+		}
+
+		void remove(final TrackedArrow entry) {
+			if (entry.bucketPrevious == null) {
+				this.first = entry.bucketNext;
+			} else {
+				entry.bucketPrevious.bucketNext = entry.bucketNext;
+			}
+			if (entry.bucketNext == null) {
+				this.last = entry.bucketPrevious;
+			} else {
+				entry.bucketNext.bucketPrevious = entry.bucketPrevious;
+			}
+			entry.bucketPrevious = null;
+			entry.bucketNext = null;
+			this.size--;
+		}
+
+		TrackedArrow first() {
+			return this.first;
+		}
+
+		boolean isEmpty() {
+			return this.size == 0;
+		}
+
+		int size() {
+			return this.size;
 		}
 	}
 
