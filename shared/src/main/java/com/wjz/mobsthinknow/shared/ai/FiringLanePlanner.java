@@ -2,6 +2,8 @@ package com.wjz.mobsthinknow.shared.ai;
 
 import com.wjz.mobsthinknow.shared.math.Vec3d;
 import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 
 /** 纯数学的友军射线胶囊检查；平台层只需提供同队成员的有限快照。 */
@@ -32,10 +34,12 @@ public final class FiringLanePlanner {
 		K blocker = null;
 		double nearestProjection = Double.POSITIVE_INFINITY;
 		int checks = 0;
-		for (Ally<K> ally : allies) {
-			if (checks >= limit) {
-				break;
-			}
+		@SuppressWarnings("unchecked")
+		List<Ally<K>> list = allies instanceof List<?> ? (List<Ally<K>>)allies : null;
+		Iterator<Ally<K>> iterator = list == null ? allies.iterator() : null;
+		int index = 0;
+		while (checks < limit && (list != null ? index < list.size() : iterator.hasNext())) {
+			Ally<K> ally = list != null ? list.get(index++) : iterator.next();
 			checks++;
 			double relativeX = ally.x() - origin.x();
 			double relativeY = ally.y() - origin.y();

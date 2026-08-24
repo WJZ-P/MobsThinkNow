@@ -100,10 +100,8 @@ public final class CrossbowCombatPlanner {
 		double dangerRadius = finiteClamp(configuredDangerRadius, 1.0, 12.0);
 		int maximumChecks = Math.clamp(configuredMaximumChecks, 1, 128);
 		int checks = 0;
-		for (BlastAlly<T> ally : allies) {
-			if (checks >= maximumChecks) {
-				break;
-			}
+		for (int index = 0; index < allies.size() && checks < maximumChecks; index++) {
+			BlastAlly<T> ally = allies.get(index);
 			checks++;
 			double combinedRadius = dangerRadius + finiteClamp(ally.radius(), 0.0, 4.0);
 			double deltaX = ally.x() - target.x();

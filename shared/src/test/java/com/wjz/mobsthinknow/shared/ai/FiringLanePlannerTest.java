@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wjz.mobsthinknow.shared.math.Vec3d;
+import java.util.LinkedHashSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -133,6 +134,20 @@ class FiringLanePlannerTest {
 			4
 		);
 		assertEquals(vector, scalar);
+	}
+
+	@Test
+	void genericCollectionFallbackPreservesListResults() {
+		Vec3d origin = Vec3d.ZERO;
+		Vec3d target = new Vec3d(0.0, 0.0, 10.0);
+		List<FiringLanePlanner.Ally<String>> allies = List.of(
+			new FiringLanePlanner.Ally<>("clear", 3.0, 0.0, 2.0, 0.5),
+			new FiringLanePlanner.Ally<>("block", 0.0, 0.0, 5.0, 0.5)
+		);
+		assertEquals(
+			FiringLanePlanner.check(origin, target, allies, 4),
+			FiringLanePlanner.check(origin, target, new LinkedHashSet<>(allies), 4)
+		);
 	}
 
 	private static void assertVectorEquals(final Vec3d expected, final Vec3d actual) {
