@@ -13,6 +13,30 @@ public final class MixedSquadPhasePlanner {
 		final boolean leaderChanged,
 		final Timings timings
 	) {
+		return next(
+			current,
+			elapsedTicks,
+			quorumReached,
+			emergency,
+			leaderChanged,
+			timings.formingTimeoutTicks(),
+			timings.briefingTicks(),
+			timings.deploymentTimeoutTicks(),
+			timings.reorganizingTicks()
+		);
+	}
+
+	public static MixedSquadState next(
+		final MixedSquadState current,
+		final long elapsedTicks,
+		final boolean quorumReached,
+		final boolean emergency,
+		final boolean leaderChanged,
+		final int formingTimeoutTicks,
+		final int briefingTicks,
+		final int deploymentTimeoutTicks,
+		final int reorganizingTicks
+	) {
 		if (leaderChanged) {
 			return MixedSquadState.REORGANIZING;
 		}
@@ -21,12 +45,12 @@ public final class MixedSquadPhasePlanner {
 		}
 		long elapsed = Math.max(0L, elapsedTicks);
 		return switch (current) {
-			case FORMING -> quorumReached || elapsed >= timings.formingTimeoutTicks()
+			case FORMING -> quorumReached || elapsed >= Math.max(1, formingTimeoutTicks)
 				? MixedSquadState.BRIEFING : current;
-			case BRIEFING -> elapsed >= timings.briefingTicks() ? MixedSquadState.DEPLOYING : current;
-			case DEPLOYING -> quorumReached || elapsed >= timings.deploymentTimeoutTicks()
+			case BRIEFING -> elapsed >= Math.max(1, briefingTicks) ? MixedSquadState.DEPLOYING : current;
+			case DEPLOYING -> quorumReached || elapsed >= Math.max(1, deploymentTimeoutTicks)
 				? MixedSquadState.ENGAGING : current;
-			case REORGANIZING -> elapsed >= timings.reorganizingTicks() ? MixedSquadState.FORMING : current;
+			case REORGANIZING -> elapsed >= Math.max(1, reorganizingTicks) ? MixedSquadState.FORMING : current;
 			case ENGAGING -> current;
 		};
 	}

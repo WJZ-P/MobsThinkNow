@@ -25,6 +25,20 @@ class MixedSquadPhasePlannerTest {
 	}
 
 	@Test
+	void primitiveTimingsMatchTheRecordEntryPoint() {
+		for (MixedSquadState state : MixedSquadState.values()) {
+			for (long elapsed : new long[] {-1L, 0L, 19L, 40L, 200L}) {
+				for (boolean quorum : new boolean[] {false, true}) {
+					assertEquals(
+						MixedSquadPhasePlanner.next(state, elapsed, quorum, false, false, TIMINGS),
+						MixedSquadPhasePlanner.next(state, elapsed, quorum, false, false, 40, 30, 40, 20)
+					);
+				}
+			}
+		}
+	}
+
+	@Test
 	void closeThreatOverridesMeetingAndLeaderChangeReorganizes() {
 		assertEquals(
 			MixedSquadState.ENGAGING,

@@ -659,12 +659,10 @@ public final class PaperSquadCoordinator {
 			quorum,
 			emergency,
 			structureChanged,
-			new MixedSquadPhasePlanner.Timings(
-				config.formingTimeoutTicks(),
-				config.briefingTicks(),
-				config.deploymentTimeoutTicks(),
-				config.reorganizingTicks()
-			)
+			config.formingTimeoutTicks(),
+			config.briefingTicks(),
+			config.deploymentTimeoutTicks(),
+			config.reorganizingTicks()
 		);
 		if (next != squad.state) {
 			squad.state = next;
