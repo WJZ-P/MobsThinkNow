@@ -4,11 +4,10 @@ import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
 import com.wjz.mobsthinknow.shared.ai.BlastReservationPlanner;
 import com.wjz.mobsthinknow.shared.math.Vec3d;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.PriorityQueue;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.bukkit.Bukkit;
@@ -25,7 +24,7 @@ public final class PaperBlastReservationBoard {
 	private final Supplier<PaperSettings> settings;
 	private final PaperMetrics metrics;
 	private final Map<UUID, Reservation> byOwner = new HashMap<>();
-	private final Map<CellKey, Set<UUID>> cells = new HashMap<>();
+	private final Map<UUID, Long2ObjectOpenHashMap<ReservationBucket>> cellsByWorld = new HashMap<>();
 	private final PriorityQueue<Expiry> expiries = new PriorityQueue<>();
 
 	public PaperBlastReservationBoard(
@@ -103,10 +102,12 @@ public final class PaperBlastReservationBoard {
 		if (previous != null) {
 			this.removeFromCell(previous);
 		}
-		CellKey cell = cellFor(worldId, centerX, centerZ, config.creeperBlastConflictRadius());
+		long cell = packedCell(
+			BlastReservationPlanner.cellCoordinate(centerX, config.creeperBlastConflictRadius()),
+			BlastReservationPlanner.cellCoordinate(centerZ, config.creeperBlastConflictRadius())
+		);
 		Reservation replacement = new Reservation(
 			ownerId,
-			target.getUniqueId(),
 			worldId,
 			centerX,
 			centerZ,
@@ -115,7 +116,7 @@ public final class PaperBlastReservationBoard {
 			cell
 		);
 		this.byOwner.put(ownerId, replacement);
-		this.cells.computeIfAbsent(cell, ignored -> new HashSet<>()).add(ownerId);
+		this.bucket(worldId, cell).add(replacement);
 		this.expiries.add(new Expiry(ownerId, expiresAt));
 		this.compactExpiriesIfNeeded();
 		if (previous == null) {
@@ -163,7 +164,7 @@ public final class PaperBlastReservationBoard {
 
 	public void clear() {
 		this.byOwner.clear();
-		this.cells.clear();
+		this.cellsByWorld.clear();
 		this.expiries.clear();
 	}
 
@@ -177,20 +178,24 @@ public final class PaperBlastReservationBoard {
 	) {
 		PaperSettings config = this.settings.get();
 		double cellSize = config.creeperBlastConflictRadius();
-		CellKey centerCell = cellFor(worldId, centerX, centerZ, cellSize);
+		int centerCellX = BlastReservationPlanner.cellCoordinate(centerX, cellSize);
+		int centerCellZ = BlastReservationPlanner.cellCoordinate(centerZ, cellSize);
+		Long2ObjectOpenHashMap<ReservationBucket> worldCells = this.cellsByWorld.get(worldId);
+		if (worldCells == null) {
+			return Availability.AVAILABLE;
+		}
 		int rawChecks = 0;
 		for (int dz = -1; dz <= 1; dz++) {
 			for (int dx = -1; dx <= 1; dx++) {
-				Set<UUID> bucket = this.cells.get(new CellKey(worldId, centerCell.x() + dx, centerCell.z() + dz));
+				ReservationBucket bucket = worldCells.get(packedCell(centerCellX + dx, centerCellZ + dz));
 				if (bucket == null) {
 					continue;
 				}
-				for (UUID candidateId : bucket) {
-					if (candidateId.equals(ownerId)) {
+				for (Reservation candidate = bucket.first(); candidate != null; candidate = candidate.bucketNext) {
+					if (candidate.ownerId().equals(ownerId)) {
 						continue;
 					}
-					Reservation candidate = this.byOwner.get(candidateId);
-					if (candidate == null || candidate.expiresAt() <= now) {
+					if (candidate.expiresAt() <= now) {
 						continue;
 					}
 					if (++rawChecks > config.creeperBlastMaximumChecks()) {
@@ -230,13 +235,33 @@ public final class PaperBlastReservationBoard {
 	}
 
 	private void removeFromCell(final Reservation reservation) {
-		Set<UUID> bucket = this.cells.get(reservation.cell());
+		Long2ObjectOpenHashMap<ReservationBucket> worldCells = this.cellsByWorld.get(reservation.worldId());
+		if (worldCells == null) {
+			return;
+		}
+		ReservationBucket bucket = worldCells.get(reservation.cell());
 		if (bucket != null) {
-			bucket.remove(reservation.ownerId());
+			bucket.remove(reservation);
 			if (bucket.isEmpty()) {
-				this.cells.remove(reservation.cell());
+				worldCells.remove(reservation.cell());
 			}
 		}
+		if (worldCells.isEmpty()) {
+			this.cellsByWorld.remove(reservation.worldId());
+		}
+	}
+
+	private ReservationBucket bucket(final UUID worldId, final long cell) {
+		Long2ObjectOpenHashMap<ReservationBucket> worldCells = this.cellsByWorld.computeIfAbsent(
+			worldId,
+			ignored -> new Long2ObjectOpenHashMap<>()
+		);
+		ReservationBucket bucket = worldCells.get(cell);
+		if (bucket == null) {
+			bucket = new ReservationBucket();
+			worldCells.put(cell, bucket);
+		}
+		return bucket;
 	}
 
 	private void compactExpiriesIfNeeded() {
@@ -260,17 +285,8 @@ public final class PaperBlastReservationBoard {
 		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
-	private static CellKey cellFor(
-		final UUID worldId,
-		final double centerX,
-		final double centerZ,
-		final double cellSize
-	) {
-		return new CellKey(
-			worldId,
-			BlastReservationPlanner.cellCoordinate(centerX, cellSize),
-			BlastReservationPlanner.cellCoordinate(centerZ, cellSize)
-		);
+	static long packedCell(final int x, final int z) {
+		return ((long)x << Integer.SIZE) ^ (z & 0xFFFFFFFFL);
 	}
 
 	public enum Availability {
@@ -279,19 +295,108 @@ public final class PaperBlastReservationBoard {
 		SATURATED
 	}
 
-	private record CellKey(UUID worldId, int x, int z) {
+	static final class Reservation {
+		private final UUID ownerId;
+		private final UUID worldId;
+		private final double centerX;
+		private final double centerZ;
+		private final long detonationTick;
+		private final long expiresAt;
+		private final long cell;
+		private Reservation bucketPrevious;
+		private Reservation bucketNext;
+
+		Reservation(
+			final UUID ownerId,
+			final UUID worldId,
+			final double centerX,
+			final double centerZ,
+			final long detonationTick,
+			final long expiresAt,
+			final long cell
+		) {
+			this.ownerId = ownerId;
+			this.worldId = worldId;
+			this.centerX = centerX;
+			this.centerZ = centerZ;
+			this.detonationTick = detonationTick;
+			this.expiresAt = expiresAt;
+			this.cell = cell;
+		}
+
+		private UUID ownerId() {
+			return this.ownerId;
+		}
+
+		private UUID worldId() {
+			return this.worldId;
+		}
+
+		private double centerX() {
+			return this.centerX;
+		}
+
+		private double centerZ() {
+			return this.centerZ;
+		}
+
+		private long detonationTick() {
+			return this.detonationTick;
+		}
+
+		private long expiresAt() {
+			return this.expiresAt;
+		}
+
+		private long cell() {
+			return this.cell;
+		}
 	}
 
-	private record Reservation(
-		UUID ownerId,
-		UUID targetId,
-		UUID worldId,
-		double centerX,
-		double centerZ,
-		long detonationTick,
-		long expiresAt,
-		CellKey cell
-	) {
+	static final class ReservationBucket {
+		private Reservation first;
+		private Reservation last;
+		private int size;
+
+		void add(final Reservation reservation) {
+			reservation.bucketPrevious = this.last;
+			reservation.bucketNext = null;
+			if (this.last == null) {
+				this.first = reservation;
+			} else {
+				this.last.bucketNext = reservation;
+			}
+			this.last = reservation;
+			this.size++;
+		}
+
+		void remove(final Reservation reservation) {
+			if (reservation.bucketPrevious == null) {
+				this.first = reservation.bucketNext;
+			} else {
+				reservation.bucketPrevious.bucketNext = reservation.bucketNext;
+			}
+			if (reservation.bucketNext == null) {
+				this.last = reservation.bucketPrevious;
+			} else {
+				reservation.bucketNext.bucketPrevious = reservation.bucketPrevious;
+			}
+			reservation.bucketPrevious = null;
+			reservation.bucketNext = null;
+			this.size--;
+		}
+
+		Reservation first() {
+			return this.first;
+		}
+
+		boolean isEmpty() {
+			return this.size == 0;
+		}
+
+		int size() {
+			return this.size;
+		}
 	}
 
 	private record Expiry(UUID ownerId, long expiresAt) implements Comparable<Expiry> {
