@@ -9,6 +9,7 @@ package com.wjz.mobsthinknow.shared.ai;
 public final class ProjectileEvasionPlanner {
 	private static final double MINIMUM_SPEED_SQUARED = 1.0E-4;
 	private static final double CENTER_EPSILON = 1.0E-6;
+	private static final ReactionProfile[] REACTION_PROFILES = createReactionProfiles();
 
 	private ProjectileEvasionPlanner() {
 	}
@@ -152,14 +153,22 @@ public final class ProjectileEvasionPlanner {
 	/** Creates a monotonic, hard-bounded IQ reaction profile. */
 	public static ReactionProfile reactionProfile(final int intelligence) {
 		int iq = Math.clamp(intelligence, 1, 10);
-		double progress = (iq - 1) / 9.0;
-		return new ReactionProfile(
-			6 - (int)Math.floor(progress * 4.0),
-			4.5 + progress * 3.5,
-			0.90 + progress * 0.25,
-			6 + (int)Math.floor(progress * 2.0),
-			8 + (int)Math.floor(progress * 3.0)
-		);
+		return REACTION_PROFILES[iq - 1];
+	}
+
+	private static ReactionProfile[] createReactionProfiles() {
+		ReactionProfile[] profiles = new ReactionProfile[10];
+		for (int iq = 1; iq <= profiles.length; iq++) {
+			double progress = (iq - 1) / 9.0;
+			profiles[iq - 1] = new ReactionProfile(
+				6 - (int)Math.floor(progress * 4.0),
+				4.5 + progress * 3.5,
+				0.90 + progress * 0.25,
+				6 + (int)Math.floor(progress * 2.0),
+				8 + (int)Math.floor(progress * 3.0)
+			);
+		}
+		return profiles;
 	}
 
 	/** Converts a stable unit sample into an inclusive, bounded dodge duration. */

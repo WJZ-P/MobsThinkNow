@@ -2,6 +2,7 @@ package com.wjz.mobsthinknow.shared.ai;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -64,5 +65,21 @@ class ProjectileEvasionPlannerTest {
 		assertEquals(low.minimumDodgeTicks(), ProjectileEvasionPlanner.dodgeTicks(low, Double.NaN));
 		assertEquals(high.maximumDodgeTicks(), ProjectileEvasionPlanner.dodgeTicks(high, 1.0));
 		assertEquals(high.minimumDodgeTicks(), ProjectileEvasionPlanner.dodgeTicks(high, Double.POSITIVE_INFINITY));
+	}
+
+	@Test
+	void reactionProfilesReuseTheClampedIqTier() {
+		assertSame(
+			ProjectileEvasionPlanner.reactionProfile(7),
+			ProjectileEvasionPlanner.reactionProfile(7)
+		);
+		assertSame(
+			ProjectileEvasionPlanner.reactionProfile(1),
+			ProjectileEvasionPlanner.reactionProfile(Integer.MIN_VALUE)
+		);
+		assertSame(
+			ProjectileEvasionPlanner.reactionProfile(10),
+			ProjectileEvasionPlanner.reactionProfile(Integer.MAX_VALUE)
+		);
 	}
 }

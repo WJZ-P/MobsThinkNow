@@ -96,6 +96,7 @@ MobsThinkNow/
 - `ProjectileEvasionPlanner` 是 Fabric/Paper 共用的纯 Java 轨迹内核：用相对位置与速度求有限时间窗内的
   三维最近交会点，排除静止、远离、超时和安全半径外的投射物，再按预测水平落点选择相反侧；所有
   有限性检查均为固定标量，平台先算一次最近 tick，再把它传给安全半径判定，不产生 varargs 数组或重复投影；
+  IQ 1～10 的不可变反应参数按档位预建，同档查询直接复用；
 - Paper 不让每只骷髅调用全世界实体扫描。`PaperProjectileThreatBoard` 通过实体装载/移除事件登记箭，全服
   唯一主线程任务每 tick 更新最多 `maximum-tracked-projectiles`（默认 256）枚箭的 12 格三维桶。三轴桶坐标
   压入 fastutil primitive-long 键；`TrackedArrow` 自身同时作为全局顺序链与桶内双向节点，tick 和容量裁剪
