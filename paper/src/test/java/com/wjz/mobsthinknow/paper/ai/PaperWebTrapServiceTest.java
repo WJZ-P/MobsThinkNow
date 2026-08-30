@@ -32,4 +32,28 @@ final class PaperWebTrapServiceTest {
 		index.clear();
 		assertEquals(0, index.chunkCount());
 	}
+
+	@Test
+	void worldIndexKeepsCountsSnapshotsAndRemovalConsistent() {
+		PaperWebTrapService.WorldIndex index = new PaperWebTrapService.WorldIndex();
+		UUID firstWorld = UUID.randomUUID();
+		UUID secondWorld = UUID.randomUUID();
+		PaperWebTrapService.BlockKey first = new PaperWebTrapService.BlockKey(firstWorld, 1, 64, 1);
+		PaperWebTrapService.BlockKey second = new PaperWebTrapService.BlockKey(firstWorld, 18, 64, 1);
+		PaperWebTrapService.BlockKey isolated = new PaperWebTrapService.BlockKey(secondWorld, 1, 64, 1);
+		index.add(first);
+		index.add(second);
+		index.add(isolated);
+
+		assertEquals(List.of(first, second), index.snapshot(firstWorld));
+		assertEquals(2, index.count(firstWorld));
+		assertEquals(1, index.count(secondWorld));
+		assertEquals(2, index.worldIds().size());
+
+		index.remove(first);
+		assertEquals(List.of(second), index.snapshot(firstWorld));
+		index.remove(second);
+		assertEquals(0, index.count(firstWorld));
+		assertEquals(List.of(secondWorld), index.worldIds());
+	}
 }

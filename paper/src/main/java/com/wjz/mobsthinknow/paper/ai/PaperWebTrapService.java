@@ -62,7 +62,7 @@ public final class PaperWebTrapService implements Listener {
 	private final PaperMetrics metrics;
 	private final BlockData cobweb = Material.COBWEB.createBlockData();
 	private final Map<BlockKey, Trap> active = new HashMap<>();
-	private final Map<UUID, Integer> activeByWorld = new HashMap<>();
+	private final WorldIndex activeByWorld = new WorldIndex();
 	private final Map<UUID, LinkedHashSet<BlockKey>> activeByOwner = new HashMap<>();
 	private final ChunkIndex activeByChunk = new ChunkIndex();
 	private final PriorityQueue<Expiry> expiries = new PriorityQueue<>();
@@ -143,7 +143,7 @@ public final class PaperWebTrapService implements Listener {
 		long expiresAt = saturatingAdd(now, this.settings.get().lifetimeTicks());
 		Trap trap = new Trap(owner.getUniqueId(), previous, expiresAt);
 		this.active.put(key, trap);
-		this.activeByWorld.merge(key.worldId(), 1, Integer::sum);
+		this.activeByWorld.add(key);
 		this.activeByOwner.computeIfAbsent(trap.ownerId(), ignored -> new LinkedHashSet<>()).add(key);
 		this.activeByChunk.add(key);
 		this.expiries.add(new Expiry(key, expiresAt));
@@ -281,9 +281,9 @@ public final class PaperWebTrapService implements Listener {
 		if (this.active.containsKey(key) && block.getType() != Material.COBWEB) {
 			this.discardStaleEntry(key);
 		}
-		if (this.activeByWorld.getOrDefault(key.worldId(), 0) >= config.maximumActivePerWorld()) {
+		if (this.activeByWorld.count(key.worldId()) >= config.maximumActivePerWorld()) {
 			this.auditLoadedOwnership(world);
-			if (this.activeByWorld.getOrDefault(key.worldId(), 0) >= config.maximumActivePerWorld()) {
+			if (this.activeByWorld.count(key.worldId()) >= config.maximumActivePerWorld()) {
 				return false;
 			}
 		}
@@ -359,7 +359,7 @@ public final class PaperWebTrapService implements Listener {
 			return;
 		}
 		for (World world : Bukkit.getWorlds()) {
-			if (this.activeByWorld.containsKey(world.getUID())
+			if (this.activeByWorld.contains(world.getUID())
 				&& !Boolean.TRUE.equals(world.getGameRuleValue(GameRules.MOB_GRIEFING))) {
 				this.restoreLoadedWorld(world);
 			}
@@ -409,17 +409,15 @@ public final class PaperWebTrapService implements Listener {
 
 	private void restoreWorld(final World world) {
 		UUID worldId = world.getUID();
-		for (BlockKey key : new ArrayList<>(this.active.keySet())) {
-			if (key.worldId().equals(worldId)) {
-				this.remove(key, true, false, world);
-			}
+		for (BlockKey key : this.activeByWorld.snapshot(worldId)) {
+			this.remove(key, true, false, world);
 		}
 	}
 
 	private void restoreLoadedWorld(final World world) {
 		UUID worldId = world.getUID();
-		for (BlockKey key : new ArrayList<>(this.active.keySet())) {
-			if (key.worldId().equals(worldId) && key.isChunkLoaded(world)) {
+		for (BlockKey key : this.activeByWorld.snapshot(worldId)) {
+			if (key.isChunkLoaded(world)) {
 				this.remove(key, true, false);
 			}
 		}
@@ -427,18 +425,15 @@ public final class PaperWebTrapService implements Listener {
 
 	private void enforceConfiguredCapacity() {
 		int maximum = this.settings.get().maximumActivePerWorld();
-		Map<UUID, List<Map.Entry<BlockKey, Trap>>> byWorld = new HashMap<>();
-		for (Map.Entry<BlockKey, Trap> entry : this.active.entrySet()) {
-			byWorld.computeIfAbsent(entry.getKey().worldId(), ignored -> new ArrayList<>()).add(entry);
-		}
-		for (List<Map.Entry<BlockKey, Trap>> entries : byWorld.values()) {
-			int excess = entries.size() - maximum;
+		for (UUID worldId : this.activeByWorld.worldIds()) {
+			List<BlockKey> keys = new ArrayList<>(this.activeByWorld.snapshot(worldId));
+			int excess = keys.size() - maximum;
 			if (excess <= 0) {
 				continue;
 			}
-			entries.sort(Comparator.comparingLong(entry -> entry.getValue().expiresAt()));
+			keys.sort(Comparator.comparingLong(key -> this.active.get(key).expiresAt()));
 			for (int index = 0; index < excess; index++) {
-				this.remove(entries.get(index).getKey(), true, true);
+				this.remove(keys.get(index), true, true);
 			}
 		}
 	}
@@ -475,9 +470,8 @@ public final class PaperWebTrapService implements Listener {
 	}
 
 	private void auditLoadedOwnership(final World world) {
-		for (BlockKey key : new ArrayList<>(this.active.keySet())) {
-			if (key.worldId().equals(world.getUID())
-				&& key.isChunkLoaded(world)
+		for (BlockKey key : this.activeByWorld.snapshot(world.getUID())) {
+			if (key.isChunkLoaded(world)
 				&& world.getBlockAt(key.x(), key.y(), key.z()).getType() != Material.COBWEB) {
 				this.discardStaleEntry(key);
 			}
@@ -498,7 +492,7 @@ public final class PaperWebTrapService implements Listener {
 		if (trap == null) {
 			return false;
 		}
-		this.activeByWorld.computeIfPresent(key.worldId(), (ignored, count) -> count <= 1 ? null : count - 1);
+		this.activeByWorld.remove(key);
 		this.activeByOwner.computeIfPresent(trap.ownerId(), (ignored, keys) -> {
 			keys.remove(key);
 			return keys.isEmpty() ? null : keys;
@@ -622,6 +616,43 @@ public final class PaperWebTrapService implements Listener {
 
 		int chunkCount() {
 			return this.entries.size();
+		}
+	}
+
+	static final class WorldIndex {
+		private final Map<UUID, LinkedHashSet<BlockKey>> entries = new HashMap<>();
+
+		void add(final BlockKey key) {
+			this.entries.computeIfAbsent(key.worldId(), ignored -> new LinkedHashSet<>()).add(key);
+		}
+
+		void remove(final BlockKey key) {
+			this.entries.computeIfPresent(key.worldId(), (ignored, keys) -> {
+				keys.remove(key);
+				return keys.isEmpty() ? null : keys;
+			});
+		}
+
+		List<BlockKey> snapshot(final UUID worldId) {
+			LinkedHashSet<BlockKey> keys = this.entries.get(worldId);
+			return keys == null ? List.of() : List.copyOf(keys);
+		}
+
+		List<UUID> worldIds() {
+			return List.copyOf(this.entries.keySet());
+		}
+
+		int count(final UUID worldId) {
+			LinkedHashSet<BlockKey> keys = this.entries.get(worldId);
+			return keys == null ? 0 : keys.size();
+		}
+
+		boolean contains(final UUID worldId) {
+			return this.entries.containsKey(worldId);
+		}
+
+		void clear() {
+			this.entries.clear();
 		}
 	}
 
