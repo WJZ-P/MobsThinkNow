@@ -51,7 +51,8 @@ public final class PaperSquadCoordinator {
 	private final Supplier<PaperSquadSettings> settings;
 	private final PaperIntelligenceService intelligence;
 	private final PaperSquadMetrics metrics = new PaperSquadMetrics();
-	private final Map<UUID, MemberRecord> members = new LinkedHashMap<>();
+	private final Map<UUID, MemberRecord> members = new HashMap<>();
+	private final MemberChain memberOrder = new MemberChain();
 	private final Map<Long, Squad> squads = new LinkedHashMap<>();
 	private final Map<UUID, Long> squadByMember = new HashMap<>();
 	private BoundedSpatialIndex<UUID, MemberRecord> spatialIndex;
@@ -89,6 +90,7 @@ public final class PaperSquadCoordinator {
 		this.resetSquads();
 		if (!this.enabled()) {
 			this.members.clear();
+			this.memberOrder.clear();
 			this.spatialIndex.clear();
 			return;
 		}
@@ -100,6 +102,7 @@ public final class PaperSquadCoordinator {
 		this.stopTask();
 		this.resetSquads();
 		this.members.clear();
+		this.memberOrder.clear();
 		this.spatialIndex.clear();
 	}
 
@@ -111,10 +114,13 @@ public final class PaperSquadCoordinator {
 		if (!this.enabled() || !this.intelligence.supports(mob)) {
 			return;
 		}
-		MemberRecord record = this.members.computeIfAbsent(
-			mob.getUniqueId(),
-			ignored -> new MemberRecord(mob, stableOrder(mob.getUniqueId()))
-		);
+		UUID id = mob.getUniqueId();
+		MemberRecord record = this.members.get(id);
+		if (record == null) {
+			record = new MemberRecord(id, mob, stableOrder(id));
+			this.members.put(id, record);
+			this.memberOrder.add(record);
+		}
 		if (record.mob != mob) {
 			record.clearDirectiveCache();
 			Long squadId = this.squadByMember.get(mob.getUniqueId());
@@ -133,6 +139,7 @@ public final class PaperSquadCoordinator {
 		if (removed == null) {
 			return;
 		}
+		this.memberOrder.remove(removed);
 		this.spatialIndex.remove(removed);
 		this.detachMember(mob.getUniqueId());
 	}
@@ -327,6 +334,7 @@ public final class PaperSquadCoordinator {
 		if (!this.globallyEnabled.getAsBoolean() || !config.enabled()) {
 			this.resetSquads();
 			this.members.clear();
+			this.memberOrder.clear();
 			this.spatialIndex.clear();
 			return;
 		}
@@ -337,21 +345,18 @@ public final class PaperSquadCoordinator {
 	}
 
 	private void refreshMembers() {
-		Iterator<Map.Entry<UUID, MemberRecord>> iterator = this.members.entrySet().iterator();
-		List<UUID> detached = new ArrayList<>();
-		while (iterator.hasNext()) {
-			Map.Entry<UUID, MemberRecord> entry = iterator.next();
-			MemberRecord member = entry.getValue();
+		MemberRecord member = this.memberOrder.first();
+		while (member != null) {
+			MemberRecord next = member.next;
 			if (!member.mob.isValid() || member.mob.isDead() || !this.intelligence.supports(member.mob)) {
 				this.spatialIndex.remove(member);
-				detached.add(entry.getKey());
-				iterator.remove();
-				continue;
+				this.members.remove(member.id, member);
+				this.memberOrder.remove(member);
+				this.detachMember(member.id);
+			} else {
+				this.spatialIndex.upsert(member);
 			}
-			this.spatialIndex.upsert(member);
-		}
-		for (UUID memberId : detached) {
-			this.detachMember(memberId);
+			member = next;
 		}
 	}
 
@@ -392,7 +397,7 @@ public final class PaperSquadCoordinator {
 	}
 
 	private void formNewSquads(final long now, final PaperSquadSettings config) {
-		for (MemberRecord seed : this.members.values()) {
+		for (MemberRecord seed = this.memberOrder.first(); seed != null; seed = seed.next) {
 			if (this.squadByMember.containsKey(seed.mob.getUniqueId())) {
 				continue;
 			}
@@ -857,7 +862,7 @@ public final class PaperSquadCoordinator {
 
 	private void rebuildSpatialIndex() {
 		this.spatialIndex = this.newSpatialIndex(this.settings.get().formationRadius());
-		for (MemberRecord member : this.members.values()) {
+		for (MemberRecord member = this.memberOrder.first(); member != null; member = member.next) {
 			this.spatialIndex.add(member);
 		}
 	}
@@ -943,9 +948,12 @@ public final class PaperSquadCoordinator {
 		return x * x + y * y + z * z;
 	}
 
-	private static final class MemberRecord {
+	static final class MemberRecord {
+		private final UUID id;
 		private Mob mob;
 		private final int stableOrder;
+		private MemberRecord previous;
+		private MemberRecord next;
 		private LivingEntity rememberedTarget;
 		private long rememberedTargetUntil;
 		private long nextTargetPropagationAt;
@@ -954,7 +962,8 @@ public final class PaperSquadCoordinator {
 		private long cachedDirectiveRevision = Long.MIN_VALUE;
 		private boolean cachedSharedMemory;
 
-		private MemberRecord(final Mob mob, final int stableOrder) {
+		MemberRecord(final UUID id, final Mob mob, final int stableOrder) {
+			this.id = id;
 			this.mob = mob;
 			this.stableOrder = stableOrder;
 		}
@@ -964,6 +973,54 @@ public final class PaperSquadCoordinator {
 			this.directiveCachedAt = Long.MIN_VALUE;
 			this.cachedDirectiveRevision = Long.MIN_VALUE;
 			this.cachedSharedMemory = false;
+		}
+	}
+
+	static final class MemberChain {
+		private MemberRecord first;
+		private MemberRecord last;
+		private int size;
+
+		void add(final MemberRecord member) {
+			member.previous = this.last;
+			member.next = null;
+			if (this.last == null) {
+				this.first = member;
+			} else {
+				this.last.next = member;
+			}
+			this.last = member;
+			this.size++;
+		}
+
+		void remove(final MemberRecord member) {
+			if (member.previous == null) {
+				this.first = member.next;
+			} else {
+				member.previous.next = member.next;
+			}
+			if (member.next == null) {
+				this.last = member.previous;
+			} else {
+				member.next.previous = member.previous;
+			}
+			member.previous = null;
+			member.next = null;
+			this.size--;
+		}
+
+		void clear() {
+			this.first = null;
+			this.last = null;
+			this.size = 0;
+		}
+
+		MemberRecord first() {
+			return this.first;
+		}
+
+		int size() {
+			return this.size;
 		}
 	}
 
