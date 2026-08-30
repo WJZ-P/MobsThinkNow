@@ -3,12 +3,12 @@ package com.wjz.mobsthinknow.paper.ai;
 import com.wjz.mobsthinknow.paper.PaperFireworkSettings;
 import com.wjz.mobsthinknow.paper.PaperMetrics;
 import com.wjz.mobsthinknow.paper.PaperSettings;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
@@ -38,7 +38,8 @@ public final class PaperFireworkBoltService {
 	private final Plugin plugin;
 	private final Supplier<PaperSettings> settings;
 	private final PaperMetrics metrics;
-	private final Map<UUID, ActiveBolt> active = new LinkedHashMap<>();
+	private final Map<UUID, ActiveBolt> active = new HashMap<>();
+	private final ActiveBoltChain activeOrder = new ActiveBoltChain();
 	private BukkitTask task;
 
 	public PaperFireworkBoltService(
@@ -63,12 +64,13 @@ public final class PaperFireworkBoltService {
 			this.task.cancel();
 			this.task = null;
 		}
-		for (ActiveBolt bolt : this.active.values()) {
+		for (ActiveBolt bolt = this.activeOrder.first(); bolt != null; bolt = bolt.next) {
 			if (bolt.firework().isValid()) {
 				bolt.firework().remove();
 			}
 		}
 		this.active.clear();
+		this.activeOrder.clear();
 	}
 
 	/** 返回 false 时调用者应无副作用地降级为普通箭。 */
@@ -116,16 +118,17 @@ public final class PaperFireworkBoltService {
 		firework.setTicksToDetonate(config.projectileLifetimeTicks() + 20);
 		firework.setVelocity(velocity);
 		long now = Bukkit.getCurrentTick();
-		this.active.put(
-			firework.getUniqueId(),
-			new ActiveBolt(
-				firework,
-				shooter.getUniqueId(),
-				target.getUniqueId(),
-				direction,
-				saturatingAdd(now, config.projectileLifetimeTicks())
-			)
+		UUID fireworkId = firework.getUniqueId();
+		ActiveBolt bolt = new ActiveBolt(
+			fireworkId,
+			firework,
+			shooter.getUniqueId(),
+			target.getUniqueId(),
+			direction,
+			saturatingAdd(now, config.projectileLifetimeTicks())
 		);
+		this.active.put(fireworkId, bolt);
+		this.activeOrder.add(bolt);
 		this.metrics.fireworkLaunched();
 		return true;
 	}
@@ -143,33 +146,36 @@ public final class PaperFireworkBoltService {
 		if (entityIds.isEmpty()) {
 			return;
 		}
-		Iterator<Map.Entry<UUID, ActiveBolt>> iterator = this.active.entrySet().iterator();
-		while (iterator.hasNext()) {
-			ActiveBolt bolt = iterator.next().getValue();
+		ActiveBolt bolt = this.activeOrder.first();
+		while (bolt != null) {
+			ActiveBolt next = bolt.next;
 			if (entityIds.contains(bolt.shooterId()) || entityIds.contains(bolt.targetId())) {
 				if (bolt.firework().isValid()) {
 					bolt.firework().remove();
 				}
-				iterator.remove();
+				this.remove(bolt);
 			}
+			bolt = next;
 		}
 	}
 
 	private void tick() {
 		long now = Bukkit.getCurrentTick();
 		PaperFireworkSettings config = this.settings.get().skeletonCrossbowTactics().firework();
-		Iterator<Map.Entry<UUID, ActiveBolt>> iterator = this.active.entrySet().iterator();
-		while (iterator.hasNext()) {
-			ActiveBolt bolt = iterator.next().getValue();
+		ActiveBolt bolt = this.activeOrder.first();
+		while (bolt != null) {
+			ActiveBolt next = bolt.next;
 			Firework firework = bolt.firework();
 			if (!firework.isValid() || firework.isDead() || firework.isDetonated()) {
-				iterator.remove();
+				this.remove(bolt);
+				bolt = next;
 				continue;
 			}
 			if (now >= bolt.expiresAt()) {
 				this.detonate(firework, firework.getLocation());
 				this.metrics.fireworkTimedOut();
-				iterator.remove();
+				this.remove(bolt);
+				bolt = next;
 				continue;
 			}
 
@@ -182,16 +188,24 @@ public final class PaperFireworkBoltService {
 				FluidCollisionMode.NEVER,
 				true,
 				ENTITY_RAY_SIZE,
-				entity -> isIntendedTarget(entity, bolt.targetId())
+				bolt
 			);
 			if (hit != null) {
 				Vector impact = hit.getHitPosition();
 				this.detonate(firework, new Location(world, impact.getX(), impact.getY(), impact.getZ()));
-				iterator.remove();
+				this.remove(bolt);
+				bolt = next;
 				continue;
 			}
 			// 原版烟花会自行加速；每 tick 重置速度，让配置值成为真实硬上限并保持弹道可预测。
 			firework.setVelocity(bolt.direction().clone().multiply(config.projectileSpeed()));
+			bolt = next;
+		}
+	}
+
+	private void remove(final ActiveBolt bolt) {
+		if (this.active.remove(bolt.id, bolt)) {
+			this.activeOrder.remove(bolt);
 		}
 	}
 
@@ -218,18 +232,103 @@ public final class PaperFireworkBoltService {
 		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
-	private record ActiveBolt(
-		Firework firework,
-		UUID shooterId,
-		UUID targetId,
-		Vector direction,
-		long expiresAt
-	) {
-		private ActiveBolt {
-			Objects.requireNonNull(firework, "firework");
-			Objects.requireNonNull(shooterId, "shooterId");
-			Objects.requireNonNull(targetId, "targetId");
-			direction = Objects.requireNonNull(direction, "direction").clone();
+	static final class ActiveBolt implements Predicate<Entity> {
+		private final UUID id;
+		private final Firework firework;
+		private final UUID shooterId;
+		private final UUID targetId;
+		private final Vector direction;
+		private final long expiresAt;
+		private ActiveBolt previous;
+		private ActiveBolt next;
+
+		ActiveBolt(
+			final UUID id,
+			final Firework firework,
+			final UUID shooterId,
+			final UUID targetId,
+			final Vector direction,
+			final long expiresAt
+		) {
+			this.id = Objects.requireNonNull(id, "id");
+			this.firework = Objects.requireNonNull(firework, "firework");
+			this.shooterId = Objects.requireNonNull(shooterId, "shooterId");
+			this.targetId = Objects.requireNonNull(targetId, "targetId");
+			this.direction = Objects.requireNonNull(direction, "direction").clone();
+			this.expiresAt = expiresAt;
+		}
+
+		private Firework firework() {
+			return this.firework;
+		}
+
+		private UUID shooterId() {
+			return this.shooterId;
+		}
+
+		private UUID targetId() {
+			return this.targetId;
+		}
+
+		private Vector direction() {
+			return this.direction;
+		}
+
+		private long expiresAt() {
+			return this.expiresAt;
+		}
+
+		@Override
+		public boolean test(final Entity entity) {
+			return isIntendedTarget(entity, this.targetId);
+		}
+	}
+
+	static final class ActiveBoltChain {
+		private ActiveBolt first;
+		private ActiveBolt last;
+		private int size;
+
+		void add(final ActiveBolt bolt) {
+			bolt.previous = this.last;
+			bolt.next = null;
+			if (this.last == null) {
+				this.first = bolt;
+			} else {
+				this.last.next = bolt;
+			}
+			this.last = bolt;
+			this.size++;
+		}
+
+		void remove(final ActiveBolt bolt) {
+			if (bolt.previous == null) {
+				this.first = bolt.next;
+			} else {
+				bolt.previous.next = bolt.next;
+			}
+			if (bolt.next == null) {
+				this.last = bolt.previous;
+			} else {
+				bolt.next.previous = bolt.previous;
+			}
+			bolt.previous = null;
+			bolt.next = null;
+			this.size--;
+		}
+
+		void clear() {
+			this.first = null;
+			this.last = null;
+			this.size = 0;
+		}
+
+		ActiveBolt first() {
+			return this.first;
+		}
+
+		int size() {
+			return this.size;
 		}
 	}
 }
