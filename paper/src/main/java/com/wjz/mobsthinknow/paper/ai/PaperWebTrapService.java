@@ -64,6 +64,7 @@ public final class PaperWebTrapService implements Listener {
 	private final Map<BlockKey, Trap> active = new HashMap<>();
 	private final Map<UUID, Integer> activeByWorld = new HashMap<>();
 	private final Map<UUID, LinkedHashSet<BlockKey>> activeByOwner = new HashMap<>();
+	private final ChunkIndex activeByChunk = new ChunkIndex();
 	private final PriorityQueue<Expiry> expiries = new PriorityQueue<>();
 	private Plugin plugin;
 	private BukkitTask task;
@@ -144,6 +145,7 @@ public final class PaperWebTrapService implements Listener {
 		this.active.put(key, trap);
 		this.activeByWorld.merge(key.worldId(), 1, Integer::sum);
 		this.activeByOwner.computeIfAbsent(trap.ownerId(), ignored -> new LinkedHashSet<>()).add(key);
+		this.activeByChunk.add(key);
 		this.expiries.add(new Expiry(key, expiresAt));
 		this.compactExpiriesIfNeeded();
 		this.playPlacementFeedback(block, web);
@@ -400,12 +402,8 @@ public final class PaperWebTrapService implements Listener {
 
 	private void restoreChunk(final Chunk chunk) {
 		UUID worldId = chunk.getWorld().getUID();
-		for (BlockKey key : new ArrayList<>(this.active.keySet())) {
-			if (key.worldId().equals(worldId)
-				&& Math.floorDiv(key.x(), 16) == chunk.getX()
-				&& Math.floorDiv(key.z(), 16) == chunk.getZ()) {
-				this.remove(key, true, false, chunk.getWorld());
-			}
+		for (BlockKey key : this.activeByChunk.snapshot(worldId, chunk.getX(), chunk.getZ())) {
+			this.remove(key, true, false, chunk.getWorld());
 		}
 	}
 
@@ -452,6 +450,7 @@ public final class PaperWebTrapService implements Listener {
 		this.active.clear();
 		this.activeByWorld.clear();
 		this.activeByOwner.clear();
+		this.activeByChunk.clear();
 		this.expiries.clear();
 		this.cleanupBudgetTick = Long.MIN_VALUE;
 		this.expiriesCheckedThisTick = 0;
@@ -504,6 +503,7 @@ public final class PaperWebTrapService implements Listener {
 			keys.remove(key);
 			return keys.isEmpty() ? null : keys;
 		});
+		this.activeByChunk.remove(key);
 		this.compactExpiriesIfNeeded();
 		if (!restore) {
 			return true;
@@ -573,7 +573,7 @@ public final class PaperWebTrapService implements Listener {
 		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
-	private record BlockKey(UUID worldId, int x, int y, int z) {
+	record BlockKey(UUID worldId, int x, int y, int z) {
 		static BlockKey at(final Block block) {
 			return new BlockKey(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
 		}
@@ -588,6 +588,40 @@ public final class PaperWebTrapService implements Listener {
 
 		Location location(final World world) {
 			return new Location(world, this.x + 0.5, this.y, this.z + 0.5);
+		}
+	}
+
+	record ChunkKey(UUID worldId, int x, int z) {
+		static ChunkKey at(final BlockKey key) {
+			return new ChunkKey(key.worldId(), Math.floorDiv(key.x(), 16), Math.floorDiv(key.z(), 16));
+		}
+	}
+
+	static final class ChunkIndex {
+		private final Map<ChunkKey, LinkedHashSet<BlockKey>> entries = new HashMap<>();
+
+		void add(final BlockKey key) {
+			this.entries.computeIfAbsent(ChunkKey.at(key), ignored -> new LinkedHashSet<>()).add(key);
+		}
+
+		void remove(final BlockKey key) {
+			this.entries.computeIfPresent(ChunkKey.at(key), (ignored, keys) -> {
+				keys.remove(key);
+				return keys.isEmpty() ? null : keys;
+			});
+		}
+
+		List<BlockKey> snapshot(final UUID worldId, final int chunkX, final int chunkZ) {
+			LinkedHashSet<BlockKey> keys = this.entries.get(new ChunkKey(worldId, chunkX, chunkZ));
+			return keys == null ? List.of() : List.copyOf(keys);
+		}
+
+		void clear() {
+			this.entries.clear();
+		}
+
+		int chunkCount() {
+			return this.entries.size();
 		}
 	}
 
