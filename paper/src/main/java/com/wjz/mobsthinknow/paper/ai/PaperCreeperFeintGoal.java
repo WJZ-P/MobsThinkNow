@@ -235,9 +235,13 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 		final PaperCreeperFeintSettings config
 	) {
 		boolean visible = this.creeper.hasLineOfSight(selected);
+		double yaw = Math.toRadians(selected.getYaw());
+		double horizontalScale = Math.cos(Math.toRadians(selected.getPitch()));
 		boolean watching = visible && CreeperTacticalPlanner.isTargetWatching(
-			toVector(selected.getLocation().getDirection()),
-			toVector(this.creeper.getLocation()).subtract(toVector(selected.getLocation()))
+			-horizontalScale * Math.sin(yaw),
+			horizontalScale * Math.cos(yaw),
+			this.creeper.getX() - selected.getX(),
+			this.creeper.getZ() - selected.getZ()
 		);
 		boolean blocking = selected instanceof Player player && player.isBlocking();
 		return CreeperFeintPlanner.shouldFeint(

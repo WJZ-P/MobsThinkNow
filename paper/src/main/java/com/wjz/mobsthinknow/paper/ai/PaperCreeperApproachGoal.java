@@ -110,9 +110,13 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		PaperSettings config = this.settings.get();
 		int iq = this.intelligence.get(this.creeper);
 		boolean visible = this.creeper.hasLineOfSight(target);
+		double yaw = Math.toRadians(target.getYaw());
+		double horizontalScale = Math.cos(Math.toRadians(target.getPitch()));
 		boolean watching = visible && CreeperTacticalPlanner.isTargetWatching(
-			toVector(target.getLocation().getDirection()),
-			toVector(this.creeper.getLocation()).subtract(toVector(target.getLocation()))
+			-horizontalScale * Math.sin(yaw),
+			horizontalScale * Math.cos(yaw),
+			this.creeper.getX() - target.getX(),
+			this.creeper.getZ() - target.getZ()
 		);
 		boolean blocking = target instanceof Player player && player.isBlocking();
 		ApproachMode mode = CreeperTacticalPlanner.chooseApproach(

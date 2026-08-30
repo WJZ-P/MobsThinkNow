@@ -21,6 +21,16 @@ class CreeperTacticalPlannerTest {
 	}
 
 	@Test
+	void primitiveWatchingCoordinatesMatchTheVectorEntryPoint() {
+		Vec3d look = new Vec3d(-0.4, 0.7, 0.8);
+		Vec3d toward = new Vec3d(-3.0, 2.0, 6.0);
+		assertEquals(
+			CreeperTacticalPlanner.isTargetWatching(look, toward),
+			CreeperTacticalPlanner.isTargetWatching(look.x(), look.z(), toward.x(), toward.z())
+		);
+	}
+
+	@Test
 	void flankDestinationIsBehindAndBesideTarget() {
 		Vec3d destination = CreeperTacticalPlanner.approachDestination(
 			CreeperTacticalPlanner.ApproachMode.FLANK_RIGHT,

@@ -273,9 +273,13 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		if (!visible) {
 			return false;
 		}
+		double yaw = Math.toRadians(current.getYaw());
+		double horizontalScale = Math.cos(Math.toRadians(current.getPitch()));
 		boolean watching = CreeperTacticalPlanner.isTargetWatching(
-			toVector(current.getLocation().getDirection()),
-			toVector(this.creeper.getLocation()).subtract(toVector(current.getLocation()))
+			-horizontalScale * Math.sin(yaw),
+			horizontalScale * Math.cos(yaw),
+			this.creeper.getX() - current.getX(),
+			this.creeper.getZ() - current.getZ()
 		);
 		boolean blocking = current instanceof Player player && player.isBlocking();
 		double startDistance = CreeperTacticalPlanner.fuseStartDistance(

@@ -11,9 +11,39 @@ public final class CreeperTacticalPlanner {
 	}
 
 	public static boolean isTargetWatching(final Vec3d targetLook, final Vec3d targetToCreeper) {
-		Vec3d look = targetLook.horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		Vec3d towardCreeper = targetToCreeper.horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		return look.x() * towardCreeper.x() + look.z() * towardCreeper.z() >= WATCHING_DOT_THRESHOLD;
+		return isTargetWatching(
+			targetLook.x(),
+			targetLook.z(),
+			targetToCreeper.x(),
+			targetToCreeper.z()
+		);
+	}
+
+	public static boolean isTargetWatching(
+		double lookX,
+		double lookZ,
+		double towardX,
+		double towardZ
+	) {
+		double lookLengthSquared = lookX * lookX + lookZ * lookZ;
+		if (lookLengthSquared < 1.0E-9) {
+			lookX = 0.0;
+			lookZ = 1.0;
+		} else {
+			double inverseLength = 1.0 / Math.sqrt(lookLengthSquared);
+			lookX *= inverseLength;
+			lookZ *= inverseLength;
+		}
+		double towardLengthSquared = towardX * towardX + towardZ * towardZ;
+		if (towardLengthSquared < 1.0E-9) {
+			towardX = 0.0;
+			towardZ = 1.0;
+		} else {
+			double inverseLength = 1.0 / Math.sqrt(towardLengthSquared);
+			towardX *= inverseLength;
+			towardZ *= inverseLength;
+		}
+		return lookX * towardX + lookZ * towardZ >= WATCHING_DOT_THRESHOLD;
 	}
 
 	public static ApproachMode chooseApproach(
