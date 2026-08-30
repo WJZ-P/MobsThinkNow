@@ -9,6 +9,27 @@ import org.junit.jupiter.api.Test;
 
 class CreeperFeintPlannerTest {
 	@Test
+	void primitiveRepositionInputsMatchTheVectorEntryPoint() {
+		Vec3d target = new Vec3d(-8.0, 5.0, 13.0);
+		Vec3d velocity = new Vec3d(0.7, -0.4, -1.2);
+		Vec3d look = new Vec3d(-0.3, 0.8, 0.9);
+		assertEquals(
+			CreeperFeintPlanner.repositionDestination(target, velocity, look, -1, 9),
+			CreeperFeintPlanner.repositionDestination(
+				target.x(),
+				target.y(),
+				target.z(),
+				velocity.x(),
+				velocity.z(),
+				look.x(),
+				look.z(),
+				-1,
+				9
+			)
+		);
+	}
+
+	@Test
 	void requiresSkillAttentionSightAndAStagingBand() {
 		assertTrue(CreeperFeintPlanner.shouldFeint(10, true, true, true, false, false, 0.0, 36.0, 4.0));
 		assertTrue(CreeperFeintPlanner.shouldFeint(8, true, true, false, true, false, 0.0, 30.0, 4.0));

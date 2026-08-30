@@ -53,16 +53,68 @@ public final class CreeperFeintPlanner {
 		final int stableSide,
 		final int intelligence
 	) {
+		return repositionDestination(
+			targetPosition.x(),
+			targetPosition.y(),
+			targetPosition.z(),
+			targetVelocity.x(),
+			targetVelocity.z(),
+			targetLook.x(),
+			targetLook.z(),
+			stableSide,
+			intelligence
+		);
+	}
+
+	/** Primitive platform entry point for the once-per-feint reposition snapshot. */
+	public static Vec3d repositionDestination(
+		final double targetX,
+		final double targetY,
+		final double targetZ,
+		final double targetVelocityX,
+		final double targetVelocityZ,
+		double targetLookX,
+		double targetLookZ,
+		final int stableSide,
+		final int intelligence
+	) {
 		int iq = Math.clamp(intelligence, 1, 10);
-		Vec3d facing = targetLook.horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		Vec3d lateral = new Vec3d(-facing.z(), 0.0, facing.x());
-		Vec3d prediction = capHorizontal(targetVelocity.scale(3.0 + iq * 0.25), 2.5);
+		double lookLengthSquared = targetLookX * targetLookX + targetLookZ * targetLookZ;
+		if (lookLengthSquared < 1.0E-9) {
+			targetLookX = 0.0;
+			targetLookZ = 1.0;
+		} else {
+			double inverseLookLength = 1.0 / Math.sqrt(lookLengthSquared);
+			targetLookX *= inverseLookLength;
+			targetLookZ *= inverseLookLength;
+		}
+		double leadTicks = 3.0 + iq * 0.25;
+		double predictionX = targetVelocityX * leadTicks;
+		double predictionZ = targetVelocityZ * leadTicks;
+		double predictionLengthSquared = predictionX * predictionX + predictionZ * predictionZ;
+		if (predictionLengthSquared > 2.5 * 2.5) {
+			double predictionScale = 2.5 / Math.sqrt(predictionLengthSquared);
+			predictionX *= predictionScale;
+			predictionZ *= predictionScale;
+		}
 		double rearOffset = 2.4 + iq * 0.08;
-		double sideOffset = 3.3 + iq * 0.09;
-		Vec3d rawOffset = facing.scale(-rearOffset)
-			.add(lateral.scale(stableSide < 0 ? -sideOffset : sideOffset));
-		Vec3d safeOffset = rawOffset.horizontalUnitOr(facing.scale(-1.0)).scale(REPOSITION_RADIUS);
-		return targetPosition.add(prediction).add(safeOffset);
+		double sideOffset = (stableSide < 0 ? -1.0 : 1.0) * (3.3 + iq * 0.09);
+		double rawX = -targetLookX * rearOffset - targetLookZ * sideOffset;
+		double rawZ = -targetLookZ * rearOffset + targetLookX * sideOffset;
+		double rawLengthSquared = rawX * rawX + rawZ * rawZ;
+		if (rawLengthSquared < 1.0E-9) {
+			rawX = -targetLookX;
+			rawZ = -targetLookZ;
+			rawLengthSquared = rawX * rawX + rawZ * rawZ;
+		}
+		double repositionScale = rawLengthSquared < 1.0E-9
+			? REPOSITION_RADIUS
+			: REPOSITION_RADIUS / Math.sqrt(rawLengthSquared);
+		return new Vec3d(
+			targetX + predictionX + rawX * repositionScale,
+			targetY,
+			targetZ + predictionZ + rawZ * repositionScale
+		);
 	}
 
 	public static int primeTicks(final double unitRandom) {
@@ -76,14 +128,6 @@ public final class CreeperFeintPlanner {
 	public static int cooldownTicks(final int configuredBaseTicks, final double unitRandom) {
 		double factor = 0.80 + clampUnit(unitRandom) * 0.40;
 		return Math.max(1, (int)Math.round(Math.max(1, configuredBaseTicks) * factor));
-	}
-
-	private static Vec3d capHorizontal(final Vec3d value, final double maximumLength) {
-		Vec3d horizontal = value.horizontal();
-		double lengthSquared = horizontal.horizontalLengthSquared();
-		return lengthSquared <= maximumLength * maximumLength
-			? horizontal
-			: horizontal.scale(maximumLength / Math.sqrt(lengthSquared));
 	}
 
 	private static double clampUnit(final double value) {

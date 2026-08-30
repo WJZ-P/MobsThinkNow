@@ -21,6 +21,7 @@ import org.bukkit.SoundCategory;
 import org.bukkit.entity.Creeper;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
 /**
  * Paper 端的可见假引爆：高智力苦力怕在真实起爆圈外短促闪烁，然后退火并移到观察者侧后方。
@@ -276,10 +277,17 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 	}
 
 	private Location destinationFor(final LivingEntity current, final int side) {
+		double yaw = Math.toRadians(current.getYaw());
+		double horizontalScale = Math.cos(Math.toRadians(current.getPitch()));
+		Vector targetVelocity = current.getVelocity();
 		Vec3d destinationVector = CreeperFeintPlanner.repositionDestination(
-			toVector(current.getLocation()),
-			toVector(current.getVelocity()),
-			toVector(current.getLocation().getDirection()),
+			current.getX(),
+			current.getY(),
+			current.getZ(),
+			targetVelocity.getX(),
+			targetVelocity.getZ(),
+			-horizontalScale * Math.sin(yaw),
+			horizontalScale * Math.cos(yaw),
 			side,
 			this.intelligence.get(this.creeper)
 		);
@@ -316,14 +324,6 @@ public final class PaperCreeperFeintGoal implements Goal<Creeper> {
 	private boolean delegatedToSquad() {
 		return this.squads.isHoldingForOrders(this.creeper)
 			|| this.squads.isAssignedTransportPayload(this.creeper);
-	}
-
-	private static Vec3d toVector(final Location location) {
-		return new Vec3d(location.getX(), location.getY(), location.getZ());
-	}
-
-	private static Vec3d toVector(final org.bukkit.util.Vector vector) {
-		return new Vec3d(vector.getX(), vector.getY(), vector.getZ());
 	}
 
 	private double unitJitter(final long tick, final long salt) {
