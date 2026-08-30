@@ -20,6 +20,7 @@ import org.bukkit.entity.Creeper;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Ocelot;
 import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
 /** 预测移动目标并在被观察/举盾时选择稳定侧翼点的 Paper 接敌 Goal。 */
 public final class PaperCreeperApproachGoal implements Goal<Creeper> {
@@ -110,13 +111,18 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		PaperSettings config = this.settings.get();
 		int iq = this.intelligence.get(this.creeper);
 		boolean visible = this.creeper.hasLineOfSight(target);
+		double targetX = target.getX();
+		double targetY = target.getY();
+		double targetZ = target.getZ();
 		double yaw = Math.toRadians(target.getYaw());
 		double horizontalScale = Math.cos(Math.toRadians(target.getPitch()));
+		double lookX = -horizontalScale * Math.sin(yaw);
+		double lookZ = horizontalScale * Math.cos(yaw);
 		boolean watching = visible && CreeperTacticalPlanner.isTargetWatching(
-			-horizontalScale * Math.sin(yaw),
-			horizontalScale * Math.cos(yaw),
-			this.creeper.getX() - target.getX(),
-			this.creeper.getZ() - target.getZ()
+			lookX,
+			lookZ,
+			this.creeper.getX() - targetX,
+			this.creeper.getZ() - targetZ
 		);
 		boolean blocking = target instanceof Player player && player.isBlocking();
 		ApproachMode mode = CreeperTacticalPlanner.chooseApproach(
@@ -129,12 +135,13 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 			this.stableSide
 		);
 
-		Vec3d targetPosition = toVector(target.getLocation());
-		Vec3d targetVelocity = toVector(target.getVelocity());
-		Vec3d targetLook = toVector(target.getLocation().getDirection());
+		Vector targetVelocity = target.getVelocity();
 		Vec3d predictedCenter = CreeperTacticalPlanner.fuseDestination(
-			targetPosition,
-			targetVelocity,
+			targetX,
+			targetY,
+			targetZ,
+			targetVelocity.getX(),
+			targetVelocity.getZ(),
 			0.0,
 			iq
 		);
@@ -149,9 +156,13 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		} else {
 			destination = toLocation(CreeperTacticalPlanner.approachDestination(
 				mode,
-				targetPosition,
-				targetVelocity,
-				targetLook,
+				targetX,
+				targetY,
+				targetZ,
+				targetVelocity.getX(),
+				targetVelocity.getZ(),
+				lookX,
+				lookZ,
 				iq
 			));
 		}
@@ -166,9 +177,13 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 			mode = ApproachMode.INTERCEPT;
 			destination = toLocation(CreeperTacticalPlanner.approachDestination(
 				mode,
-				targetPosition,
-				targetVelocity,
-				targetLook,
+				targetX,
+				targetY,
+				targetZ,
+				targetVelocity.getX(),
+				targetVelocity.getZ(),
+				lookX,
+				lookZ,
 				iq
 			));
 			moving = moveTo(pathfinder, destination, speed);
@@ -247,11 +262,4 @@ public final class PaperCreeperApproachGoal implements Goal<Creeper> {
 		return path != null && pathfinder.moveTo(path, speed);
 	}
 
-	private static Vec3d toVector(final Location location) {
-		return new Vec3d(location.getX(), location.getY(), location.getZ());
-	}
-
-	private static Vec3d toVector(final org.bukkit.util.Vector vector) {
-		return new Vec3d(vector.getX(), vector.getY(), vector.getZ());
-	}
 }

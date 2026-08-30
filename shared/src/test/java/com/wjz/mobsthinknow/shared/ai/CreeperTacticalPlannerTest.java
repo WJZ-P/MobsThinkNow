@@ -45,6 +45,41 @@ class CreeperTacticalPlannerTest {
 	}
 
 	@Test
+	void primitiveDestinationInputsMatchVectorEntryPoints() {
+		Vec3d target = new Vec3d(10.0, 4.0, -6.0);
+		Vec3d velocity = new Vec3d(1.4, -0.2, -0.7);
+		Vec3d look = new Vec3d(-0.3, 0.8, 0.9);
+		for (CreeperTacticalPlanner.ApproachMode mode : CreeperTacticalPlanner.ApproachMode.values()) {
+			assertEquals(
+				CreeperTacticalPlanner.approachDestination(mode, target, velocity, look, 8),
+				CreeperTacticalPlanner.approachDestination(
+					mode,
+					target.x(),
+					target.y(),
+					target.z(),
+					velocity.x(),
+					velocity.z(),
+					look.x(),
+					look.z(),
+					8
+				)
+			);
+		}
+		assertEquals(
+			CreeperTacticalPlanner.fuseDestination(target, velocity, 0.35, 8),
+			CreeperTacticalPlanner.fuseDestination(
+				target.x(),
+				target.y(),
+				target.z(),
+				velocity.x(),
+				velocity.z(),
+				0.35,
+				8
+			)
+		);
+	}
+
+	@Test
 	void difficultyRaisesThreatWithoutBreakingConfiguredCap() {
 		double easy = CreeperTacticalPlanner.movingFuseSpeed(1.25, 6, DifficultyTier.EASY);
 		double normal = CreeperTacticalPlanner.movingFuseSpeed(1.25, 6, DifficultyTier.NORMAL);

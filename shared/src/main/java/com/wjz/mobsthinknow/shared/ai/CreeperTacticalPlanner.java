@@ -74,21 +74,67 @@ public final class CreeperTacticalPlanner {
 		final Vec3d targetLook,
 		final int intelligence
 	) {
-		int iq = IntelligenceDistribution.clamp(intelligence);
-		Vec3d prediction = cappedHorizontal(targetVelocity.scale(3.0 + iq * 0.6), 3.5);
-		Vec3d predictedTarget = targetPosition.add(prediction);
 		if (mode == ApproachMode.DIRECT) {
 			return targetPosition;
 		}
-		if (mode == ApproachMode.INTERCEPT) {
-			return predictedTarget;
+		return approachDestination(
+			mode,
+			targetPosition.x(),
+			targetPosition.y(),
+			targetPosition.z(),
+			targetVelocity.x(),
+			targetVelocity.z(),
+			targetLook.x(),
+			targetLook.z(),
+			intelligence
+		);
+	}
+
+	/** Primitive platform entry point that avoids constructing input vectors on hot goal ticks. */
+	public static Vec3d approachDestination(
+		final ApproachMode mode,
+		final double targetX,
+		final double targetY,
+		final double targetZ,
+		final double targetVelocityX,
+		final double targetVelocityZ,
+		double targetLookX,
+		double targetLookZ,
+		final int intelligence
+	) {
+		int iq = IntelligenceDistribution.clamp(intelligence);
+		double leadTicks = 3.0 + iq * 0.6;
+		double predictionX = targetVelocityX * leadTicks;
+		double predictionZ = targetVelocityZ * leadTicks;
+		double predictionLengthSquared = predictionX * predictionX + predictionZ * predictionZ;
+		if (predictionLengthSquared > 3.5 * 3.5) {
+			double predictionScale = 3.5 / Math.sqrt(predictionLengthSquared);
+			predictionX *= predictionScale;
+			predictionZ *= predictionScale;
 		}
-		Vec3d facing = targetLook.horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		Vec3d lateral = new Vec3d(-facing.z(), 0.0, facing.x());
+		if (mode == ApproachMode.DIRECT) {
+			return new Vec3d(targetX, targetY, targetZ);
+		}
+		if (mode == ApproachMode.INTERCEPT) {
+			return new Vec3d(targetX + predictionX, targetY, targetZ + predictionZ);
+		}
+		double lookLengthSquared = targetLookX * targetLookX + targetLookZ * targetLookZ;
+		if (lookLengthSquared < 1.0E-9) {
+			targetLookX = 0.0;
+			targetLookZ = 1.0;
+		} else {
+			double inverseLookLength = 1.0 / Math.sqrt(lookLengthSquared);
+			targetLookX *= inverseLookLength;
+			targetLookZ *= inverseLookLength;
+		}
 		double side = mode == ApproachMode.FLANK_LEFT ? -1.0 : 1.0;
-		return predictedTarget
-			.add(facing.scale(-(2.0 + iq * 0.08)))
-			.add(lateral.scale(side * (2.2 + iq * 0.06)));
+		double rearOffset = -(2.0 + iq * 0.08);
+		double sideOffset = side * (2.2 + iq * 0.06);
+		return new Vec3d(
+			targetX + predictionX + targetLookX * rearOffset - targetLookZ * sideOffset,
+			targetY,
+			targetZ + predictionZ + targetLookZ * rearOffset + targetLookX * sideOffset
+		);
 	}
 
 	public static double approachSpeed(final int intelligence, final DifficultyTier difficulty) {
@@ -188,23 +234,44 @@ public final class CreeperTacticalPlanner {
 		final double fuseProgress,
 		final int intelligence
 	) {
+		return fuseDestination(
+			targetPosition.x(),
+			targetPosition.y(),
+			targetPosition.z(),
+			targetVelocity.x(),
+			targetVelocity.z(),
+			fuseProgress,
+			intelligence
+		);
+	}
+
+	/** Primitive platform entry point that retains the same horizontal lead cap. */
+	public static Vec3d fuseDestination(
+		final double targetX,
+		final double targetY,
+		final double targetZ,
+		final double targetVelocityX,
+		final double targetVelocityZ,
+		final double fuseProgress,
+		final int intelligence
+	) {
 		double remainingLeadTicks = Math.max(
 			2.0,
 			(1.0 - Math.clamp(fuseProgress, 0.0, 1.0)) * (5.0 + IntelligenceDistribution.clamp(intelligence) * 0.5)
 		);
-		return targetPosition.add(cappedHorizontal(targetVelocity.scale(remainingLeadTicks), 3.0));
+		double predictionX = targetVelocityX * remainingLeadTicks;
+		double predictionZ = targetVelocityZ * remainingLeadTicks;
+		double predictionLengthSquared = predictionX * predictionX + predictionZ * predictionZ;
+		if (predictionLengthSquared > 3.0 * 3.0) {
+			double predictionScale = 3.0 / Math.sqrt(predictionLengthSquared);
+			predictionX *= predictionScale;
+			predictionZ *= predictionScale;
+		}
+		return new Vec3d(targetX + predictionX, targetY, targetZ + predictionZ);
 	}
 
 	public static int repathTicks(final int intelligence) {
 		return Math.max(4, 11 - IntelligenceDistribution.clamp(intelligence) / 2);
-	}
-
-	private static Vec3d cappedHorizontal(final Vec3d value, final double maximumLength) {
-		Vec3d horizontal = value.horizontal();
-		double lengthSquared = horizontal.horizontalLengthSquared();
-		return lengthSquared <= maximumLength * maximumLength
-			? horizontal
-			: horizontal.scale(maximumLength / Math.sqrt(lengthSquared));
 	}
 
 	public enum ApproachMode {

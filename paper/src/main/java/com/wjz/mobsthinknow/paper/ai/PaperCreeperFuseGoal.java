@@ -19,6 +19,7 @@ import org.bukkit.SoundCategory;
 import org.bukkit.entity.Creeper;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
 /**
  * 可移动、可中止并参与爆点预约的引信 Goal。外部打火石强制点燃永不被插件退火。
@@ -147,9 +148,13 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		PaperSettings config = this.settings.get();
 		int iq = this.intelligence.get(this.creeper);
 		double progress = this.fuseProgress();
+		Vector targetVelocity = current.getVelocity();
 		Vec3d predicted = CreeperTacticalPlanner.fuseDestination(
-			toVector(current.getLocation()),
-			toVector(current.getVelocity()),
+			current.getX(),
+			current.getY(),
+			current.getZ(),
+			targetVelocity.getX(),
+			targetVelocity.getZ(),
 			progress,
 			iq
 		);
@@ -340,11 +345,4 @@ public final class PaperCreeperFuseGoal implements Goal<Creeper> {
 		return new Location(this.creeper.getWorld(), vector.x(), vector.y(), vector.z());
 	}
 
-	private static Vec3d toVector(final Location location) {
-		return new Vec3d(location.getX(), location.getY(), location.getZ());
-	}
-
-	private static Vec3d toVector(final org.bukkit.util.Vector vector) {
-		return new Vec3d(vector.getX(), vector.getY(), vector.getZ());
-	}
 }
