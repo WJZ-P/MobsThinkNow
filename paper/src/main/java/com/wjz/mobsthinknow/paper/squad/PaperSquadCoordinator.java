@@ -193,6 +193,26 @@ public final class PaperSquadCoordinator {
 		SquadGeometry geometry = this.geometryFor(squad, leader, now);
 		MixedSquadRole role = squad.roles.getOrDefault(mob.getUniqueId(), MixedSquadRole.FRONTLINE);
 		Vec3d destination = this.destinationFor(squad, member, geometry, role);
+		if (member.cachedDirective != null && member.cachedDirective.matches(
+			squad.id,
+			squad.term,
+			squad.state,
+			squad.plan,
+			role,
+			destination,
+			geometry.focusX(),
+			geometry.focusY(),
+			geometry.focusZ(),
+			squad.leaderId,
+			squad.targetId,
+			sharedMemory
+		)) {
+			member.directiveCachedAt = now;
+			member.cachedDirectiveRevision = squad.directiveRevision;
+			member.cachedSharedMemory = sharedMemory;
+			this.directiveCacheHits++;
+			return member.cachedDirective;
+		}
 		PaperSquadDirective directive = new PaperSquadDirective(
 			squad.id,
 			squad.term,
