@@ -15,13 +15,35 @@ public final class BlastReservationPlanner {
 		final double conflictRadius,
 		final int separationTicks
 	) {
+		return conflicts(
+			firstCenter.x(),
+			firstCenter.z(),
+			firstDetonationTick,
+			secondCenter.x(),
+			secondCenter.z(),
+			secondDetonationTick,
+			conflictRadius,
+			separationTicks
+		);
+	}
+
+	public static boolean conflicts(
+		final double firstX,
+		final double firstZ,
+		final long firstDetonationTick,
+		final double secondX,
+		final double secondZ,
+		final long secondDetonationTick,
+		final double conflictRadius,
+		final int separationTicks
+	) {
 		double radius = Math.max(0.0, conflictRadius);
 		long timeDifference = absoluteDifference(firstDetonationTick, secondDetonationTick);
 		if (timeDifference >= Math.max(0, separationTicks)) {
 			return false;
 		}
-		double x = firstCenter.x() - secondCenter.x();
-		double z = firstCenter.z() - secondCenter.z();
+		double x = firstX - secondX;
+		double z = firstZ - secondZ;
 		return x * x + z * z < radius * radius;
 	}
 
@@ -32,13 +54,44 @@ public final class BlastReservationPlanner {
 		final int stableSide,
 		final double stagingDistance
 	) {
-		Vec3d forward = targetLook.horizontalUnitOr(new Vec3d(0.0, 0.0, 1.0));
-		Vec3d lateral = new Vec3d(-forward.z(), 0.0, forward.x())
-			.scale(stableSide < 0 ? -1.0 : 1.0);
+		return stagingPoint(
+			targetPosition.x(),
+			targetPosition.y(),
+			targetPosition.z(),
+			targetLook.x(),
+			targetLook.z(),
+			stableSide,
+			stagingDistance
+		);
+	}
+
+	public static Vec3d stagingPoint(
+		final double targetX,
+		final double targetY,
+		final double targetZ,
+		double lookX,
+		double lookZ,
+		final int stableSide,
+		final double stagingDistance
+	) {
+		double lengthSquared = lookX * lookX + lookZ * lookZ;
+		if (lengthSquared < 1.0E-9) {
+			lookX = 0.0;
+			lookZ = 1.0;
+		} else {
+			double inverseLength = 1.0 / Math.sqrt(lengthSquared);
+			lookX *= inverseLength;
+			lookZ *= inverseLength;
+		}
+		double side = stableSide < 0 ? -1.0 : 1.0;
+		double lateralX = -lookZ * side;
+		double lateralZ = lookX * side;
 		double distance = Math.max(3.0, stagingDistance);
-		return targetPosition
-			.add(forward.scale(-distance * 0.72))
-			.add(lateral.scale(distance * 0.70));
+		return new Vec3d(
+			targetX - lookX * distance * 0.72 + lateralX * distance * 0.70,
+			targetY,
+			targetZ - lookZ * distance * 0.72 + lateralZ * distance * 0.70
+		);
 	}
 
 	public static int cellCoordinate(final double coordinate, final double cellSize) {

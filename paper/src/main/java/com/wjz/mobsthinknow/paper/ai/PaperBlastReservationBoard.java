@@ -45,7 +45,8 @@ public final class PaperBlastReservationBoard {
 		this.cleanupExpired(now);
 		return this.findConflict(
 			creeper.getUniqueId(),
-			toVector(predictedCenter),
+			predictedCenter.getX(),
+			predictedCenter.getZ(),
 			predictedCenter.getWorld().getUID(),
 			predictedDetonationTick,
 			now
@@ -76,9 +77,17 @@ public final class PaperBlastReservationBoard {
 			return false;
 		}
 		UUID ownerId = creeper.getUniqueId();
-		Vec3d center = toVector(predictedCenter);
+		double centerX = predictedCenter.getX();
+		double centerZ = predictedCenter.getZ();
 		UUID worldId = predictedCenter.getWorld().getUID();
-		Availability availability = this.findConflict(ownerId, center, worldId, predictedDetonationTick, now);
+		Availability availability = this.findConflict(
+			ownerId,
+			centerX,
+			centerZ,
+			worldId,
+			predictedDetonationTick,
+			now
+		);
 		if (!forced && availability != Availability.AVAILABLE) {
 			this.release(ownerId);
 			if (availability == Availability.SATURATED) {
@@ -94,12 +103,13 @@ public final class PaperBlastReservationBoard {
 		if (previous != null) {
 			this.removeFromCell(previous);
 		}
-		CellKey cell = cellFor(worldId, center, config.creeperBlastConflictRadius());
+		CellKey cell = cellFor(worldId, centerX, centerZ, config.creeperBlastConflictRadius());
 		Reservation replacement = new Reservation(
 			ownerId,
 			target.getUniqueId(),
 			worldId,
-			center,
+			centerX,
+			centerZ,
 			predictedDetonationTick,
 			expiresAt,
 			cell
@@ -119,9 +129,14 @@ public final class PaperBlastReservationBoard {
 		final LivingEntity target,
 		final int stableSide
 	) {
+		double yaw = Math.toRadians(target.getYaw());
+		double horizontalScale = Math.cos(Math.toRadians(target.getPitch()));
 		Vec3d point = BlastReservationPlanner.stagingPoint(
-			toVector(target.getLocation()),
-			toVector(target.getLocation().getDirection()),
+			target.getX(),
+			target.getY(),
+			target.getZ(),
+			-horizontalScale * Math.sin(yaw),
+			horizontalScale * Math.cos(yaw),
 			stableSide,
 			Math.max(7.0, this.settings.get().creeperBlastConflictRadius() + 1.0)
 		);
@@ -154,14 +169,15 @@ public final class PaperBlastReservationBoard {
 
 	private Availability findConflict(
 		final UUID ownerId,
-		final Vec3d center,
+		final double centerX,
+		final double centerZ,
 		final UUID worldId,
 		final long detonationTick,
 		final long now
 	) {
 		PaperSettings config = this.settings.get();
 		double cellSize = config.creeperBlastConflictRadius();
-		CellKey centerCell = cellFor(worldId, center, cellSize);
+		CellKey centerCell = cellFor(worldId, centerX, centerZ, cellSize);
 		int rawChecks = 0;
 		for (int dz = -1; dz <= 1; dz++) {
 			for (int dx = -1; dx <= 1; dx++) {
@@ -181,9 +197,11 @@ public final class PaperBlastReservationBoard {
 						return Availability.SATURATED;
 					}
 					if (BlastReservationPlanner.conflicts(
-						center,
+						centerX,
+						centerZ,
 						detonationTick,
-						candidate.center(),
+						candidate.centerX(),
+						candidate.centerZ(),
 						candidate.detonationTick(),
 						config.creeperBlastConflictRadius(),
 						config.creeperBlastSeparationTicks()
@@ -242,20 +260,17 @@ public final class PaperBlastReservationBoard {
 		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
-	private static CellKey cellFor(final UUID worldId, final Vec3d center, final double cellSize) {
+	private static CellKey cellFor(
+		final UUID worldId,
+		final double centerX,
+		final double centerZ,
+		final double cellSize
+	) {
 		return new CellKey(
 			worldId,
-			BlastReservationPlanner.cellCoordinate(center.x(), cellSize),
-			BlastReservationPlanner.cellCoordinate(center.z(), cellSize)
+			BlastReservationPlanner.cellCoordinate(centerX, cellSize),
+			BlastReservationPlanner.cellCoordinate(centerZ, cellSize)
 		);
-	}
-
-	private static Vec3d toVector(final Location location) {
-		return new Vec3d(location.getX(), location.getY(), location.getZ());
-	}
-
-	private static Vec3d toVector(final org.bukkit.util.Vector vector) {
-		return new Vec3d(vector.getX(), vector.getY(), vector.getZ());
 	}
 
 	public enum Availability {
@@ -271,7 +286,8 @@ public final class PaperBlastReservationBoard {
 		UUID ownerId,
 		UUID targetId,
 		UUID worldId,
-		Vec3d center,
+		double centerX,
+		double centerZ,
 		long detonationTick,
 		long expiresAt,
 		CellKey cell

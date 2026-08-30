@@ -17,6 +17,20 @@ class BlastReservationPlannerTest {
 	}
 
 	@Test
+	void primitiveConflictCoordinatesMatchTheVectorEntryPoint() {
+		Vec3d first = new Vec3d(-4.5, 70.0, 9.25);
+		Vec3d second = new Vec3d(0.75, -10.0, 7.0);
+		assertEquals(
+			BlastReservationPlanner.conflicts(first, 100L, second, 118L, 6.0, 24),
+			BlastReservationPlanner.conflicts(
+				first.x(), first.z(), 100L,
+				second.x(), second.z(), 118L,
+				6.0, 24
+			)
+		);
+	}
+
+	@Test
 	void stagingPointIsBehindAndOnStableSide() {
 		Vec3d left = BlastReservationPlanner.stagingPoint(
 			new Vec3d(10.0, 3.0, 10.0),
@@ -34,6 +48,10 @@ class BlastReservationPlannerTest {
 		assertTrue(right.z() < 10.0);
 		assertTrue((left.x() - 10.0) * (right.x() - 10.0) < 0.0);
 		assertEquals(3.0, left.y());
+		assertEquals(
+			left,
+			BlastReservationPlanner.stagingPoint(10.0, 3.0, 10.0, 0.0, 1.0, -1, 7.0)
+		);
 	}
 
 	@Test
